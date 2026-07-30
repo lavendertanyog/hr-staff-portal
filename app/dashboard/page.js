@@ -19,6 +19,7 @@ export default function StaffDashboard() {
   const [inbox, setInbox] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [clockedIn, setClockedIn] = useState(false);
 
   useEffect(() => {
     try {
@@ -36,10 +37,12 @@ export default function StaffDashboard() {
       axios.get(`${API_BASE}/api/v1/projects/active-list?userId=${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/leave/balance/${uid}`).catch(() => null),
-    ]).then(([projRes, inboxRes, balRes]) => {
+      axios.get(`${API_BASE}/api/v1/attendance/active-session/${uid}`).catch(() => null),
+    ]).then(([projRes, inboxRes, balRes, sessionRes]) => {
       setProjects(projRes?.data?.data || []);
       setInbox(inboxRes?.data?.data?.slice(0, 6) || []);
       setLeaveBalance(balRes?.data?.data || null);
+      setClockedIn(!!sessionRes?.data?.data);
     }).finally(() => setLoading(false));
   }, [user?.user_id]);
 
@@ -47,9 +50,9 @@ export default function StaffDashboard() {
   const unreadCount = inbox.filter((i) => i.status === 'UNREAD').length;
 
   const stats = [
-    { label: 'Active Projects', value: loading ? '—' : projects.length },
-    { label: 'Leave Balance', value: loading ? '—' : leaveBalance ? `${leaveBalance.remainingDays} days` : '—' },
-    { label: 'Unread Notifications', value: loading ? '—' : unreadCount },
+    { label: 'Active Projects', value: loading ? '—' : projects.length, href: '/progress' },
+    { label: 'Leave Balance', value: loading ? '—' : leaveBalance ? `${leaveBalance.remainingDays} days` : '—', href: '/leave' },
+    { label: 'Unread Notifications', value: loading ? '—' : unreadCount, href: '/inbox' },
   ];
 
   return (
@@ -64,10 +67,11 @@ export default function StaffDashboard() {
       {/* Stat cards */}
       <div className="grid gap-6 xl:grid-cols-3 mb-10">
         {stats.map((item) => (
-          <div key={item.label} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <Link key={item.label} href={item.href}
+            className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-slate-300 cursor-pointer">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{item.label}</p>
             <p className="mt-4 text-4xl font-semibold text-slate-950">{item.value}</p>
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -76,10 +80,10 @@ export default function StaffDashboard() {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">Quick Actions</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Clock In / Out', href: '/attendance', bg: '#EEF4FF', color: '#1a3a8f' },
+            { label: clockedIn ? 'Clock Out' : 'Clock In', href: '/attendance', bg: '#EEF4FF', color: '#1a3a8f' },
             { label: 'Apply Leave', href: '/leave', bg: '#EEFBF3', color: '#166534' },
             { label: 'Log Progress', href: '/progress', bg: '#FFFBEB', color: '#92400e' },
-            { label: 'Request Hours', href: '/progress?tab=budget', bg: '#FDF4FF', color: '#6b21a8' },
+            { label: 'Request Budget', href: '/progress?tab=budget', bg: '#FDF4FF', color: '#6b21a8' },
           ].map((a) => (
             <Link key={a.href} href={a.href}
               className="rounded-2xl px-4 py-4 text-sm font-semibold transition hover:opacity-90"
@@ -108,7 +112,8 @@ export default function StaffDashboard() {
         ) : (
           <ul className="divide-y divide-slate-50">
             {inbox.map((item, i) => (
-              <li key={item.notification_id || i} className="px-6 py-4 flex items-start justify-between gap-4 hover:bg-slate-50 transition">
+              <li key={item.notification_id || i}
+                className={`px-6 py-4 flex items-start justify-between gap-4 hover:bg-slate-50 transition ${item.status === 'READ' ? 'opacity-50' : ''}`}>
                 <div className="min-w-0">
                   <p className={`text-sm truncate ${item.status === 'UNREAD' ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>{item.title}</p>
                   <p className="text-xs text-slate-400 mt-0.5 truncate">{item.subtitle}</p>

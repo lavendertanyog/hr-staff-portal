@@ -247,7 +247,13 @@ export default function LeavePage() {
         <div className="mb-8 grid gap-6 lg:grid-cols-2">
           {/* Form card */}
           <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">{editingId ? 'Edit Leave Request' : 'New Leave Request'}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-3">{editingId ? 'Edit Leave Request' : 'New Leave Request'}</p>
+            {balance && (
+              <div className="mb-5 flex items-center gap-2 rounded-2xl border border-[#EEF4FF] bg-[#F7FAFF] px-4 py-3">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Balance</span>
+                <span className="text-sm font-bold text-[#0c3b8f]">Annual/Emergency: {balance.remainingDays} of {balance.totalDays} days left</span>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Category</label>
@@ -257,20 +263,21 @@ export default function LeavePage() {
                 </select>
               </div>
 
-              {/* Selected dates display (driven by calendar) */}
+              {/* Dates: type directly, or click the calendar on the right */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
-                  <div className={`rounded-xl border px-4 py-3 text-sm ${startDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-200 text-slate-400'}`}>
-                    {startDate || 'Select on calendar →'}
-                  </div>
+                  <input type="date" value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${startDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-300 text-slate-700'}`} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                  <div className={`rounded-xl border px-4 py-3 text-sm ${endDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-200 text-slate-400'}`}>
-                    {endDate || 'Select on calendar →'}
-                  </div>
+                  <input type="date" value={endDate} min={startDate || undefined}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${endDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-300 text-slate-700'}`} />
                 </div>
+                <p className="col-span-2 text-xs text-slate-400">Type dates directly, or click them on the calendar →</p>
               </div>
 
               <div>

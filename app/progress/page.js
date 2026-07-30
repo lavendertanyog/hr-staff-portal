@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
 
@@ -19,6 +19,14 @@ function StatusPill({ status }) {
   };
   return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-600'}`}>{s.replace('_', ' ')}</span>;
 }
+
+function SourceBadge({ isAuto }) {
+  return isAuto
+    ? <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700">Auto</span>
+    : <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-sky-50 text-sky-700">Manual</span>;
+}
+
+const isAutoEntry = (summary) => String(summary || '').startsWith('Auto-progress baseline');
 
 function ProgressContent() {
   const router = useRouter();
@@ -44,6 +52,17 @@ function ProgressContent() {
   const [budgetHours, setBudgetHours] = useState('');
   const [budgetJustification, setBudgetJustification] = useState('');
 
+  // Progress history filters
+  const [progressProjectFilter, setProgressProjectFilter] = useState('ALL');
+  const [progressStatusFilter, setProgressStatusFilter] = useState('ALL'); // ALL | COMPLETED | ONGOING | DELETED
+
+  // Budget history filters
+  const [budgetStatusFilter, setBudgetStatusFilter] = useState('ALL');
+  const [budgetSearch, setBudgetSearch] = useState('');
+  const [expandedBudgetId, setExpandedBudgetId] = useState(null);
+
+  const historyRef = useRef(null);
+
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem('staff_portal_user');
@@ -55,16 +74,15 @@ function ProgressContent() {
   const fetchData = useCallback(async (uid) => {
     setLoading(true);
     try {
-      const [projRes, progressRes, inboxRes, allocRes] = await Promise.all([
+      const [projRes, progressRes, budgetRes, allocRes] = await Promise.all([
         axios.get(`${API_BASE}/api/v1/projects/active-list?userId=${uid}`).catch(() => null),
         axios.get(`${API_BASE}/api/v1/projects/progress-history/${uid}`).catch(() => null),
-        axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`).catch(() => null),
+        axios.get(`${API_BASE}/api/v1/projects/budget-requests/mine/${uid}`).catch(() => null),
         axios.get(`${API_BASE}/api/v1/allocations/${uid}`).catch(() => null),
       ]);
       setProjects(projRes?.data?.data || []);
       setProgressHistory(progressRes?.data?.data || []);
-      const allInbox = inboxRes?.data?.data || [];
-      setBudgetRequests(allInbox.filter((i) => i.category === 'BUDGET'));
+      setBudgetRequests(budgetRes?.data?.data || []);
       setAllocations(allocRes?.data?.data || []);
     } finally { setLoading(false); }
   }, []);
@@ -107,6 +125,29 @@ function ProgressContent() {
     finally { setSubmitting(false); }
   };
 
+  const scrollToHistory = () => {
+    historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const filteredProgressHistory = progressHistory.filter((r) => {
+    if (progressProjectFilter !== 'ALL' && r.project_code !== progressProjectFilter) return false;
+    const isDeleted = !r.project_name;
+    const isCompleted = Number(r.completion_percentage) >= 100;
+    if (progressStatusFilter === 'DELETED' && !isDeleted) return false;
+    if (progressStatusFilter === 'COMPLETED' && !(isCompleted && !isDeleted)) return false;
+    if (progressStatusFilter === 'ONGOING' && !(!isCompleted && !isDeleted)) return false;
+    return true;
+  });
+
+  const progressProjectOptions = Array.from(new Set(progressHistory.map((r) => r.project_code))).filter(Boolean);
+
+  const filteredBudgetRequests = budgetRequests.filter((r) => {
+    if (budgetStatusFilter !== 'ALL' && String(r.status).toUpperCase() !== budgetStatusFilter) return false;
+    const q = budgetSearch.trim().toLowerCase();
+    if (q && !String(r.project_code || '').toLowerCase().includes(q) && !String(r.project_name || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
   return (
     <div className="p-8">
       <div className="mb-10">
@@ -119,11 +160,11 @@ function ProgressContent() {
       <div className="mb-6 flex gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 w-fit shadow-sm">
         <button onClick={() => setTab('progress')}
           className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${tab === 'progress' ? 'bg-[#1a3a8f] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>
-          Progress Updates
+          Progress
         </button>
         <button onClick={() => setTab('budget')}
           className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${tab === 'budget' ? 'bg-[#1a3a8f] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>
-          Budget Requests
+          Budget
         </button>
       </div>
 
@@ -142,6 +183,7 @@ function ProgressContent() {
                 // Get the latest logged progress for this project
                 const latestLog = progressHistory.find((h) => h.project_code === alloc.project_code);
                 const pct = latestLog ? Math.min(100, Math.max(0, Number(latestLog.completion_percentage || 0))) : 0;
+                const isComplete = pct >= 100;
                 const totalHrs = Number(alloc.hours_per_week || 0);
                 const usedHrs = +(pct / 100 * totalHrs).toFixed(2);
                 const remainingHrs = +(totalHrs - usedHrs).toFixed(2);
@@ -153,7 +195,7 @@ function ProgressContent() {
 
                 return (
                   <div key={alloc.allocation_id || alloc.project_code}
-                    className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition">
+                    className="flex flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition">
                     {/* Project header */}
                     <div className="flex items-start justify-between mb-4">
                       <div>
@@ -204,36 +246,43 @@ function ProgressContent() {
                       </div>
                     </div>
 
+                    {/* Spacer pushes the footer (timestamp + button) to the bottom of the card */}
+                    <div className="flex-1" />
+
                     {latestLog && (
                       <p className="mt-3 text-xs text-slate-400 text-right">
                         Last update: {String(latestLog.logged_at).slice(0, 10)}
                       </p>
                     )}
 
-                    {/* Quick-log shortcut */}
-                    <button type="button"
-                      onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); setMessage(''); }}
-                      className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
-                      style={{ background: '#0c3b8f' }}>
-                      + Log Progress
-                    </button>
+                    {isComplete ? (
+                      <button type="button"
+                        onClick={scrollToHistory}
+                        className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
+                        style={{ background: '#16a34a' }}>
+                        View History
+                      </button>
+                    ) : (
+                      <button type="button"
+                        onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); setMessage(''); }}
+                        className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
+                        style={{ background: '#0c3b8f' }}>
+                        + Update
+                      </button>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
 
-          <div className="mb-6 flex gap-3">
-            <button onClick={() => { setShowProgressForm(!showProgressForm); setMessage(''); }}
-              className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-              style={{ background: showProgressForm ? '#64748b' : '#0c3b8f' }}>
-              {showProgressForm ? 'Cancel' : '+ Log Progress Update'}
-            </button>
-          </div>
-
           {showProgressForm && (
             <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-lg">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">New Progress Entry</p>
+              <div className="mb-5 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Progress Entry</p>
+                <button type="button" onClick={() => { setShowProgressForm(false); setMessage(''); }}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+              </div>
               <form onSubmit={handleProgressSubmit} className="space-y-5">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
@@ -260,15 +309,35 @@ function ProgressContent() {
             </div>
           )}
 
-          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div ref={historyRef} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden scroll-mt-6">
             <div className="px-6 py-5 border-b border-slate-100">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Progress Log</p>
               <p className="mt-1 font-semibold text-slate-900">History</p>
             </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+              <select value={progressProjectFilter} onChange={(e) => setProgressProjectFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <option value="ALL">All Projects</option>
+                {progressProjectOptions.map((code) => <option key={code} value={code}>{code}</option>)}
+              </select>
+              <div className="flex gap-1.5">
+                {['ALL', 'ONGOING', 'COMPLETED', 'DELETED'].map((s) => (
+                  <button key={s} type="button" onClick={() => setProgressStatusFilter(s)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      progressStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}>
+                    {s.charAt(0) + s.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {loading ? (
               <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
-            ) : progressHistory.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-slate-400">No progress logs yet. Use the button above to log your first update.</p>
+            ) : filteredProgressHistory.length === 0 ? (
+              <p className="px-6 py-8 text-sm text-slate-400">No progress logs match this filter.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -276,14 +345,17 @@ function ProgressContent() {
                     <tr>
                       <th className="px-6 py-4 whitespace-nowrap">Project</th>
                       <th className="px-6 py-4 whitespace-nowrap">Completion</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Source</th>
                       <th className="px-6 py-4 whitespace-nowrap">Summary</th>
                       <th className="px-6 py-4 whitespace-nowrap">Logged</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {progressHistory.slice(0, 50).map((r) => (
+                    {filteredProgressHistory.slice(0, 50).map((r) => (
                       <tr key={r.log_id} className="hover:bg-slate-50 transition">
-                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.project_code}</td>
+                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
+                          {r.project_code}{!r.project_name && <span className="ml-1.5 text-xs font-normal text-red-500">(deleted)</span>}
+                        </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="h-2 w-24 rounded-full bg-slate-100 shrink-0">
@@ -292,6 +364,7 @@ function ProgressContent() {
                             <span className="text-sm font-semibold text-slate-900 whitespace-nowrap">{Number(r.completion_percentage).toFixed(0)}%</span>
                           </div>
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap"><SourceBadge isAuto={isAutoEntry(r.progress_summary)} /></td>
                         <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.progress_summary || '—'}</td>
                         <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{String(r.logged_at).slice(0, 10)}</td>
                       </tr>
@@ -304,17 +377,13 @@ function ProgressContent() {
         </>
       ) : (
         <>
-          <div className="mb-6">
-            <button onClick={() => { setShowBudgetForm(!showBudgetForm); setMessage(''); }}
-              className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-              style={{ background: showBudgetForm ? '#64748b' : '#0c3b8f' }}>
-              {showBudgetForm ? 'Cancel' : '+ Request Additional Hours'}
-            </button>
-          </div>
-
           {showBudgetForm && (
             <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-lg">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">New Budget Request</p>
+              <div className="mb-5 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Budget Request</p>
+                <button type="button" onClick={() => { setShowBudgetForm(false); setMessage(''); }}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+              </div>
               <form onSubmit={handleBudgetSubmit} className="space-y-5">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
@@ -342,14 +411,39 @@ function ProgressContent() {
           )}
 
           <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-100">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
-              <p className="mt-1 font-semibold text-slate-900">My Requests</p>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 border-b border-slate-100">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
+                <p className="mt-1 font-semibold text-slate-900">My Requests</p>
+              </div>
+              <button onClick={() => { setShowBudgetForm(!showBudgetForm); setMessage(''); }}
+                className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
+                style={{ background: showBudgetForm ? '#64748b' : '#0c3b8f' }}>
+                {showBudgetForm ? 'Cancel' : '+ Request Additional Hours'}
+              </button>
             </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+              <input type="text" value={budgetSearch} onChange={(e) => setBudgetSearch(e.target.value)}
+                placeholder="Search project code or name…"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 w-56 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <div className="flex flex-wrap gap-1.5">
+                {['ALL', 'PENDING', 'MANAGER_APPROVED', 'APPROVED', 'REJECTED'].map((s) => (
+                  <button key={s} type="button" onClick={() => setBudgetStatusFilter(s)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      budgetStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}>
+                    {s.replace('_', ' ').charAt(0) + s.replace('_', ' ').slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {loading ? (
               <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
-            ) : budgetRequests.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-slate-400">No budget requests yet.</p>
+            ) : filteredBudgetRequests.length === 0 ? (
+              <p className="px-6 py-8 text-sm text-slate-400">No budget requests match this filter.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -358,18 +452,48 @@ function ProgressContent() {
                       <th className="px-6 py-4 whitespace-nowrap">Project</th>
                       <th className="px-6 py-4 whitespace-nowrap">Hours</th>
                       <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                      <th className="px-6 py-4">Reason</th>
                       <th className="px-6 py-4 whitespace-nowrap">Submitted</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Details</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {budgetRequests.map((r, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition">
-                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{String(r.subtitle || '').split(' • ')[0] || '—'}</td>
-                        <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.subtitle || '').split(' • ')[1] || '—'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.status} /></td>
-                        <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
-                      </tr>
-                    ))}
+                    {filteredBudgetRequests.map((r) => {
+                      const isOpen = expandedBudgetId === r.request_id;
+                      return (
+                        <React.Fragment key={r.request_id}>
+                          <tr className="hover:bg-slate-50 transition">
+                            <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.project_code}</td>
+                            <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{r.requested_hours}</td>
+                            <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.status} /></td>
+                            <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.justification || '—'}</td>
+                            <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <button type="button" onClick={() => setExpandedBudgetId(isOpen ? null : r.request_id)}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-800">
+                                {isOpen ? 'Hide' : 'View'}
+                              </button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-slate-50/60">
+                              <td colSpan={6} className="px-6 py-4">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Justification</p>
+                                    <p className="mt-0.5 text-sm text-slate-700">{r.justification || '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Reviewer Remarks</p>
+                                    <p className="mt-0.5 text-sm text-slate-700">{r.reviewer_remarks || '—'}</p>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

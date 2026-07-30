@@ -46,6 +46,7 @@ export default function AttendancePage() {
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [manualMessage, setManualMessage] = useState('');
   const [manualMessageType, setManualMessageType] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     try {
@@ -180,15 +181,44 @@ export default function AttendancePage() {
 
   return (
     <div className="p-8">
-      <div className="mb-10">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
-        <p className="mt-2 text-sm text-slate-500">Clock in/out live, or manually enter your actual times for project or general work.</p>
+      <div className="mb-10 flex items-start gap-3">
+        <div>
+          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
+          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
+          <p className="mt-2 text-sm text-slate-500">Clock in/out live, or manually enter your actual times for project or general work.</p>
+        </div>
+        <button type="button" onClick={() => setShowHelp((v) => !v)} title="How it works"
+          className="mt-3 flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-slate-300 text-slate-500 text-sm font-bold hover:bg-slate-100 transition">
+          ?
+        </button>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      {showHelp && (
+        <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-2xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
+          <ul className="space-y-4 text-sm text-slate-600">
+            {[
+              { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
+              { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
+              { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
+              { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
+            ].map((s) => (
+              <li key={s.n} className="flex gap-4">
+                <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
+                <div>
+                  <p className="font-semibold text-slate-800">{s.t}</p>
+                  <p className="text-slate-500 mt-0.5">{s.d}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
+        </div>
+      )}
+
+      <div className="grid gap-6">
         {/* Log Time card */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-2xl">
           {/* Segment tabs */}
           <div className="mb-6 flex gap-2 rounded-2xl bg-slate-100 p-1">
             <button type="button" onClick={() => setLogTab('clock')}
@@ -249,10 +279,6 @@ export default function AttendancePage() {
                   messageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
                 }`}>{message}</div>
               )}
-
-              <p className="mt-5 text-xs text-slate-400 text-center">
-                Please ensure your browser has location services enabled for accurate shift logging.
-              </p>
             </>
           ) : (
             <form onSubmit={handleManualSubmit}>
@@ -297,28 +323,6 @@ export default function AttendancePage() {
               )}
             </form>
           )}
-        </div>
-
-        {/* Info card */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
-          <ul className="space-y-4 text-sm text-slate-600">
-            {[
-              { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
-              { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
-              { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
-              { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
-            ].map((s) => (
-              <li key={s.n} className="flex gap-4">
-                <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
-                <div>
-                  <p className="font-semibold text-slate-800">{s.t}</p>
-                  <p className="text-slate-500 mt-0.5">{s.d}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
         </div>
       </div>
     </div>

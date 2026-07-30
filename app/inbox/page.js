@@ -111,7 +111,7 @@ export default function InboxPage() {
             {filtered.map((item, i) => (
               <li key={item.notification_id || i}
                 onClick={() => handleOpenItem(item)}
-                className={`grid grid-cols-[72px_1fr_72px] sm:grid-cols-[96px_1fr_96px] items-center gap-3 px-4 sm:px-6 py-4 cursor-pointer hover:bg-slate-50 transition ${item.status === 'UNREAD' ? 'bg-blue-50/20' : ''}`}>
+                className={`grid grid-cols-[72px_1fr_72px] sm:grid-cols-[96px_1fr_96px] items-center gap-3 px-4 sm:px-6 py-4 cursor-pointer hover:bg-slate-50 transition ${item.status === 'UNREAD' ? 'bg-blue-50/20' : 'opacity-60'}`}>
                 <div className="flex-shrink-0">
                   <span className="block w-full truncate rounded-xl px-2 py-1 text-center text-[11px] sm:text-xs font-semibold bg-slate-100 text-slate-500">
                     {categoryLabel(item.category)}
