@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import Image from 'next/image';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 const CATEGORIES = ['ANNUAL', 'EMERGENCY', 'SICK'];
@@ -117,7 +116,6 @@ export default function LeavePage() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [logoMissing, setLogoMissing] = useState(false);
 
   const [category, setCategory] = useState('ANNUAL');
   const [startDate, setStartDate] = useState('');
@@ -191,14 +189,14 @@ export default function LeavePage() {
 
   const handleCancelLeave = async (leaveId) => {
     if (!user?.user_id) return;
-    const confirmed = window.confirm('Cancel this pending leave request?');
+    const confirmed = window.confirm('Delete this pending leave request?');
     if (!confirmed) return;
 
     try {
       await axios.delete(`${API_BASE}/api/v1/leave/${leaveId}`, {
         data: { userId: user.user_id },
       });
-      setMessage('Leave request cancelled successfully.');
+      setMessage('Leave request deleted successfully.');
       setMessageType('success');
       await fetchData(user.user_id);
     } catch (err) {
@@ -215,17 +213,12 @@ export default function LeavePage() {
           <h1 className="mt-3 text-4xl font-semibold text-slate-950">Leave</h1>
           <p className="mt-2 text-sm text-slate-500">Apply for leave and track your request history.</p>
         </div>
-        <div className="flex items-center gap-6">
-          {balance && (
-            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-4 shadow-sm text-right">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Annual Leave Balance</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-950">{balance.remainingDays} <span className="text-base font-normal text-slate-400">/ {balance.totalDays} days</span></p>
-            </div>
-          )}
-          {!logoMissing ? (
-            <Image src="/nextan-logo.png" alt="Nextan" width={140} height={46} className="h-auto w-full max-w-[140px] object-contain hidden lg:block" priority onError={() => setLogoMissing(true)} />
-          ) : null}
-        </div>
+        {balance && (
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-4 shadow-sm text-right">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Annual Leave Balance</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-950">{balance.remainingDays} <span className="text-base font-normal text-slate-400">/ {balance.totalDays} days</span></p>
+          </div>
+        )}
       </div>
 
       <div className="mb-6 flex gap-3">
@@ -312,45 +305,47 @@ export default function LeavePage() {
         ) : requests.length === 0 ? (
           <p className="px-6 py-8 text-sm text-slate-400">No leave requests yet.</p>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              <tr>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Start</th>
-                <th className="px-6 py-4">End</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Remarks</th>
-                <th className="px-6 py-4">Submitted</th>
-                <th className="px-6 py-4">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {requests.map((r) => (
-                <tr key={r.leave_id} className="hover:bg-slate-50 transition">
-                  <td className="px-6 py-4 font-semibold text-slate-800">{r.category}</td>
-                  <td className="px-6 py-4 text-slate-600">{String(r.start_date).slice(0, 10)}</td>
-                  <td className="px-6 py-4 text-slate-600">{String(r.end_date).slice(0, 10)}</td>
-                  <td className="px-6 py-4"><StatusPill status={r.workflow_status} /></td>
-                  <td className="px-6 py-4 text-slate-500 max-w-[180px] truncate">{r.reviewer_remarks || '—'}</td>
-                  <td className="px-6 py-4 text-xs text-slate-400">{String(r.created_at).slice(0, 10)}</td>
-                  <td className="px-6 py-4">
-                    {r.workflow_status === 'PENDING' ? (
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => handleEditClick(r)}
-                          className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">
-                          Edit
-                        </button>
-                        <button type="button" onClick={() => handleCancelLeave(r.leave_id)}
-                          className="rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
-                          Cancel
-                        </button>
-                      </div>
-                    ) : '—'}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <tr>
+                  <th className="px-6 py-4 whitespace-nowrap">Category</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Start</th>
+                  <th className="px-6 py-4 whitespace-nowrap">End</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Remarks</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Submitted</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {requests.map((r) => (
+                  <tr key={r.leave_id} className="hover:bg-slate-50 transition">
+                    <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.category}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.start_date).slice(0, 10)}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.end_date).slice(0, 10)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.workflow_status} /></td>
+                    <td className="px-6 py-4 text-slate-500 max-w-[180px] truncate">{r.reviewer_remarks || '—'}</td>
+                    <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{String(r.created_at).slice(0, 10)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {r.workflow_status === 'PENDING' ? (
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => handleEditClick(r)}
+                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">
+                            Edit
+                          </button>
+                          <button type="button" onClick={() => handleCancelLeave(r.leave_id)}
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
+                            Delete
+                          </button>
+                        </div>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

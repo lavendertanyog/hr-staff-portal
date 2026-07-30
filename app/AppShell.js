@@ -11,6 +11,7 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [logoMissing, setLogoMissing] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -49,7 +50,7 @@ export default function AppShell({ children }) {
 
       <main className="flex-1 overflow-y-auto">
         {isMobile && (
-          <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
@@ -60,6 +61,13 @@ export default function AppShell({ children }) {
               </svg>
               Menu
             </button>
+            {!logoMissing ? (
+              <img src="/nextan-logo.png" alt="Nextan" width={100} height={32}
+                className="h-8 w-auto max-w-[100px] object-contain"
+                onError={() => setLogoMissing(true)} />
+            ) : (
+              <span className="text-sm font-bold text-blue-900 tracking-tight">nextan</span>
+            )}
           </div>
         )}
         {children}

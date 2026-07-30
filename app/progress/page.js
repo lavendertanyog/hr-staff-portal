@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import Image from 'next/image';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -34,7 +33,6 @@ function ProgressContent() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
-  const [logoMissing, setLogoMissing] = useState(false);
 
   const [showProgressForm, setShowProgressForm] = useState(false);
   const [progressProject, setProgressProject] = useState('');
@@ -111,17 +109,10 @@ function ProgressContent() {
 
   return (
     <div className="p-8">
-      <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Progress & Budget</h1>
-          <p className="mt-2 text-sm text-slate-500">Log project progress updates and request additional budget hours.</p>
-        </div>
-        <div className="px-2 py-1">
-          {!logoMissing ? (
-            <Image src="/nextan-logo.png" alt="Nextan" width={140} height={46} className="h-auto w-full max-w-[140px] object-contain" priority onError={() => setLogoMissing(true)} />
-          ) : null}
-        </div>
+      <div className="mb-10">
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Progress & Budget</h1>
+        <p className="mt-2 text-sm text-slate-500">Log project progress updates and request additional budget hours.</p>
       </div>
 
       {/* Tab switcher */}
@@ -279,33 +270,35 @@ function ProgressContent() {
             ) : progressHistory.length === 0 ? (
               <p className="px-6 py-8 text-sm text-slate-400">No progress logs yet. Use the button above to log your first update.</p>
             ) : (
-              <table className="min-w-full text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  <tr>
-                    <th className="px-6 py-4">Project</th>
-                    <th className="px-6 py-4">Completion</th>
-                    <th className="px-6 py-4">Summary</th>
-                    <th className="px-6 py-4">Logged</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {progressHistory.slice(0, 50).map((r) => (
-                    <tr key={r.log_id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-semibold text-slate-800">{r.project_code}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-2 w-24 rounded-full bg-slate-100">
-                            <div className="h-2 rounded-full" style={{ width: `${Math.min(100, Number(r.completion_percentage))}%`, background: '#1a3a8f' }} />
-                          </div>
-                          <span className="text-sm font-semibold text-slate-900">{Number(r.completion_percentage).toFixed(0)}%</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.progress_summary || '—'}</td>
-                      <td className="px-6 py-4 text-xs text-slate-400">{String(r.logged_at).slice(0, 10)}</td>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    <tr>
+                      <th className="px-6 py-4 whitespace-nowrap">Project</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Completion</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Summary</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Logged</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {progressHistory.slice(0, 50).map((r) => (
+                      <tr key={r.log_id} className="hover:bg-slate-50 transition">
+                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.project_code}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-2 w-24 rounded-full bg-slate-100 shrink-0">
+                              <div className="h-2 rounded-full" style={{ width: `${Math.min(100, Number(r.completion_percentage))}%`, background: '#1a3a8f' }} />
+                            </div>
+                            <span className="text-sm font-semibold text-slate-900 whitespace-nowrap">{Number(r.completion_percentage).toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.progress_summary || '—'}</td>
+                        <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{String(r.logged_at).slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </>
@@ -358,26 +351,28 @@ function ProgressContent() {
             ) : budgetRequests.length === 0 ? (
               <p className="px-6 py-8 text-sm text-slate-400">No budget requests yet.</p>
             ) : (
-              <table className="min-w-full text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  <tr>
-                    <th className="px-6 py-4">Project</th>
-                    <th className="px-6 py-4">Hours</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Submitted</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {budgetRequests.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-semibold text-slate-800">{String(r.subtitle || '').split(' • ')[0] || '—'}</td>
-                      <td className="px-6 py-4 text-slate-600">{String(r.subtitle || '').split(' • ')[1] || '—'}</td>
-                      <td className="px-6 py-4"><StatusPill status={r.status} /></td>
-                      <td className="px-6 py-4 text-xs text-slate-400">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    <tr>
+                      <th className="px-6 py-4 whitespace-nowrap">Project</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Hours</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Submitted</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {budgetRequests.map((r, i) => (
+                      <tr key={i} className="hover:bg-slate-50 transition">
+                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{String(r.subtitle || '').split(' • ')[0] || '—'}</td>
+                        <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.subtitle || '').split(' • ')[1] || '—'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.status} /></td>
+                        <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </>

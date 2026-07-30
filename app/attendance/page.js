@@ -36,7 +36,6 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
-  const [logoMissing, setLogoMissing] = useState(false);
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
 
   // Manual entry state
@@ -181,20 +180,10 @@ export default function AttendancePage() {
 
   return (
     <div className="p-8">
-      <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Log Time</h1>
-          <p className="mt-2 text-sm text-slate-500">Clock in/out live, or manually enter your actual times for project or general work.</p>
-        </div>
-        <div className="px-2 py-1">
-          {!logoMissing ? (
-            <img src="/nextan-logo.png" alt="Nextan" width={140} height={46} className="h-auto w-full max-w-[140px] object-contain"
-              onError={() => setLogoMissing(true)} />
-          ) : (
-            <p className="text-xs uppercase tracking-[0.28em] text-[#163EAF]">Nextan</p>
-          )}
-        </div>
+      <div className="mb-10">
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
+        <p className="mt-2 text-sm text-slate-500">Clock in/out live, or manually enter your actual times for project or general work.</p>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -278,16 +267,16 @@ export default function AttendancePage() {
                   ))}
                 </select>
               </div>
-              <div className="mb-5 grid grid-cols-2 gap-4">
-                <div>
+              <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
                   <input type="datetime-local" value={manualStart} onChange={(e) => setManualStart(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
                   <input type="datetime-local" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div className="mb-6">

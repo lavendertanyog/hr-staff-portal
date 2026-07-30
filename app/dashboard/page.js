@@ -19,7 +19,6 @@ export default function StaffDashboard() {
   const [inbox, setInbox] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [logoMissing, setLogoMissing] = useState(false);
 
   useEffect(() => {
     try {
@@ -56,24 +55,10 @@ export default function StaffDashboard() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {staffName}</h1>
-          <p className="mt-2 text-sm text-slate-500">Manage your attendance, leave, and project progress in one place.</p>
-        </div>
-        <div className="px-2 py-1">
-          {!logoMissing ? (
-            <img src="/nextan-logo.png" alt="Nextan" width={140} height={46}
-              className="h-auto w-full max-w-[140px] object-contain"
-              onError={() => setLogoMissing(true)} />
-          ) : (
-            <div className="text-[#163EAF]">
-              <p className="text-xs uppercase tracking-[0.28em]">Nextan</p>
-              <p className="mt-2 text-base font-semibold text-[#2D376B]">Staff Portal</p>
-            </div>
-          )}
-        </div>
+      <div className="mb-10">
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {staffName}</h1>
+        <p className="mt-2 text-sm text-slate-500">Manage your attendance, leave, and project progress in one place.</p>
       </div>
 
       {/* Stat cards */}

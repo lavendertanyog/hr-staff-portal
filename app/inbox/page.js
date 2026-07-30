@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import Image from 'next/image';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -35,8 +34,8 @@ export default function InboxPage() {
   const [user, setUser] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [logoMissing, setLogoMissing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'LEAVE' | 'BUDGET' | 'NOTIFICATION'
+  const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     try {
@@ -65,6 +64,11 @@ export default function InboxPage() {
     } catch {}
   };
 
+  const handleOpenItem = (item) => {
+    setSelectedItem(item);
+    if (item.status === 'UNREAD') markRead(item.notification_id);
+  };
+
   const filtered = activeFilter === 'ALL' ? items : items.filter((i) => i.category === activeFilter);
   const unreadCount = items.filter((i) => i.status === 'UNREAD').length;
 
@@ -77,19 +81,12 @@ export default function InboxPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Inbox</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            {loading ? '…' : `${unreadCount} unread · ${items.length} total`}
-          </p>
-        </div>
-        <div className="px-2 py-1">
-          {!logoMissing ? (
-            <Image src="/nextan-logo.png" alt="Nextan" width={140} height={46} className="h-auto w-full max-w-[140px] object-contain" priority onError={() => setLogoMissing(true)} />
-          ) : null}
-        </div>
+      <div className="mb-10">
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Inbox</h1>
+        <p className="mt-2 text-sm text-slate-500">
+          {loading ? '…' : `${unreadCount} unread · ${items.length} total`}
+        </p>
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -113,28 +110,67 @@ export default function InboxPage() {
           <ul className="divide-y divide-slate-50">
             {filtered.map((item, i) => (
               <li key={item.notification_id || i}
-                onClick={() => markRead(item.notification_id)}
-                className={`px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50 transition ${item.status === 'UNREAD' ? 'bg-blue-50/20' : ''}`}>
-                <div className="mt-0.5 flex-shrink-0 rounded-xl px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-500">
-                  {categoryLabel(item.category)}
+                onClick={() => handleOpenItem(item)}
+                className={`grid grid-cols-[72px_1fr_72px] sm:grid-cols-[96px_1fr_96px] items-center gap-3 px-4 sm:px-6 py-4 cursor-pointer hover:bg-slate-50 transition ${item.status === 'UNREAD' ? 'bg-blue-50/20' : ''}`}>
+                <div className="flex-shrink-0">
+                  <span className="block w-full truncate rounded-xl px-2 py-1 text-center text-[11px] sm:text-xs font-semibold bg-slate-100 text-slate-500">
+                    {categoryLabel(item.category)}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0">
                   <p className={`text-sm truncate ${item.status === 'UNREAD' ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
                     {item.title}
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{item.subtitle}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">{item.subtitle}</p>
                   {item.created_at && (
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400 mt-1 truncate">
                       {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })}
                     </p>
                   )}
                 </div>
-                {statusBadge(item.status)}
+                <div className="flex-shrink-0 flex justify-end">
+                  {statusBadge(item.status)}
+                </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {/* Detail modal */}
+      {selectedItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSelectedItem(null)}>
+          <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="rounded-xl px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-500">
+                    {categoryLabel(selectedItem.category)}
+                  </span>
+                  {statusBadge(selectedItem.status)}
+                </div>
+                <h2 className="text-lg font-semibold text-slate-900 break-words">{selectedItem.title}</h2>
+              </div>
+              <button onClick={() => setSelectedItem(null)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 text-xl leading-none flex-shrink-0">&times;</button>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{selectedItem.subtitle}</p>
+              {selectedItem.created_at && (
+                <p className="mt-4 text-xs text-slate-400">
+                  {new Date(selectedItem.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end px-6 pb-6 pt-2">
+              <button onClick={() => setSelectedItem(null)}
+                className="rounded-2xl bg-[#1a3a8f] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12307a] transition">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
