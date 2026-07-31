@@ -48,14 +48,19 @@ export default function AttendancePage() {
   const [manualMessageType, setManualMessageType] = useState('');
   const [showHelp, setShowHelp] = useState(false);
 
-  // Combine today's date with a "HH:MM" time input into a full local datetime string
-  const combineWithToday = (timeStr) => {
-    if (!timeStr) return null;
+  // Today's date, e.g. for a disabled <input type="date"> — always today, never editable
+  const todayISO = (() => {
     const today = new Date();
     const y = today.getFullYear();
     const m = String(today.getMonth() + 1).padStart(2, '0');
     const d = String(today.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}T${timeStr}:00`;
+    return `${y}-${m}-${d}`;
+  })();
+
+  // Combine today's date with a "HH:MM" time input into a full local datetime string
+  const combineWithToday = (timeStr) => {
+    if (!timeStr) return null;
+    return `${todayISO}T${timeStr}:00`;
   };
 
   useEffect(() => {
@@ -322,7 +327,6 @@ export default function AttendancePage() {
             </>
           ) : !clockedIn ? (
             <form onSubmit={handleManualClockIn}>
-              <p className="mb-5 text-sm text-slate-500">Forgot to clock in earlier? Log your actual clock-in time below — today's date is used automatically.</p>
               <div className="mb-5">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
                 <select value={manualProject} onChange={(e) => setManualProject(e.target.value)}
@@ -334,11 +338,17 @@ export default function AttendancePage() {
                   ))}
                 </select>
               </div>
-              <div className="mb-5">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Clock In Time</label>
-                <input type="time" value={manualClockInTime} onChange={(e) => setManualClockInTime(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="mt-1.5 text-xs text-slate-400">Date is always today — just enter the time.</p>
+              <div className="mb-5 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                  <input type="date" value={todayISO} disabled
+                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
+                  <input type="time" value={manualClockInTime} onChange={(e) => setManualClockInTime(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
               </div>
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
@@ -365,12 +375,39 @@ export default function AttendancePage() {
                   Active session — {selectedProject === GENERAL ? 'General (non-project)' : selectedProject}
                 </span>
               </div>
-              <p className="mb-5 text-sm text-slate-500">Log your actual clock-out time below — today's date is used automatically.</p>
-              <div className="mb-5">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Clock Out Time</label>
-                <input type="time" value={manualClockOutTime} onChange={(e) => setManualClockOutTime(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="mt-1.5 text-xs text-slate-400">Date is always today — just enter the time.</p>
+
+              {/* Already clocked in — greyed out so you can't start a second clock-in from here */}
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Clock In (logged)</p>
+              <div className="mb-5 opacity-60 pointer-events-none">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
+                <input type="text" value={selectedProject === GENERAL ? 'General (non-project)' : selectedProject} disabled readOnly
+                  className="w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-500 cursor-not-allowed" />
+              </div>
+              <div className="mb-6 grid grid-cols-2 gap-4 opacity-60 pointer-events-none">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                  <input type="date" value={todayISO} disabled
+                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
+                  <input type="time" disabled
+                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                </div>
+              </div>
+
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Clock Out</p>
+              <div className="mb-5 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                  <input type="date" value={todayISO} disabled
+                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
+                  <input type="time" value={manualClockOutTime} onChange={(e) => setManualClockOutTime(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
               </div>
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
