@@ -265,17 +265,19 @@ export default function LeavePage() {
       )}
 
       {showForm && (
-        <div className="mb-8 grid gap-6 lg:grid-cols-2">
-          {/* Form card */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-3">{editingId ? 'Edit Leave Request' : 'New Leave Request'}</p>
-            {balance && (
-              <div className="mb-5 flex items-center gap-2 rounded-2xl border border-[#EEF4FF] bg-[#F7FAFF] px-4 py-3">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Balance</span>
-                <span className="text-sm font-bold text-[#0c3b8f]">Annual/Emergency: {balance.remainingDays} of {balance.totalDays} days left</span>
-              </div>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-5">
+        <>
+          <div className="mb-4">
+            <button onClick={() => { setShowForm(false); setMessage(''); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setMcFile(null); setMcFileError(''); }}
+              className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
+              style={{ background: '#64748b' }}>
+              ← Back
+            </button>
+          </div>
+          <div className="mb-8 grid gap-6 lg:grid-cols-2">
+            {/* Form card */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-3">{editingId ? 'Edit Leave Request' : 'New Leave Request'}</p>
+              <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Category</label>
                 <select value={category} onChange={(e) => setCategory(e.target.value)}
@@ -326,12 +328,13 @@ export default function LeavePage() {
           </div>
 
           {/* Calendar */}
-          <MiniCalendar
-            startDate={startDate}
-            endDate={endDate}
-            onDateClick={handleCalendarClick}
-          />
-        </div>
+            <MiniCalendar
+              startDate={startDate}
+              endDate={endDate}
+              onDateClick={handleCalendarClick}
+            />
+          </div>
+        </>
       )}
 
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -340,17 +343,11 @@ export default function LeavePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
             <p className="mt-1 font-semibold text-slate-900">My Requests</p>
           </div>
-          {!showForm ? (
+          {!showForm && (
             <button onClick={() => { setShowForm(true); setMessage(''); setEditingId(null); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
               style={{ background: '#0c3b8f' }}>
               + Apply for Leave
-            </button>
-          ) : (
-            <button onClick={() => { setShowForm(false); setMessage(''); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setMcFile(null); setMcFileError(''); }}
-              className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-              style={{ background: '#64748b' }}>
-              ← Back
             </button>
           )}
         </div>

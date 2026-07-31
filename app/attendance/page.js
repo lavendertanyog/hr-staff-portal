@@ -337,16 +337,16 @@ export default function AttendancePage() {
                   ))}
                 </select>
               </div>
-              <div className="mb-5 grid grid-cols-2 gap-4">
-                <div>
+              <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
                   <input type="date" value={todayISO} disabled
-                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                    className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
                   <input type="time" value={manualClockInTime} onChange={(e) => setManualClockInTime(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div className="mb-6">
