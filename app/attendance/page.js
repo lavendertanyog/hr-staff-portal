@@ -375,27 +375,6 @@ export default function AttendancePage() {
                 </span>
               </div>
 
-              {/* Already clocked in — greyed out so you can't start a second clock-in from here */}
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Clock In (logged)</p>
-              <div className="mb-5 opacity-60 pointer-events-none">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                <input type="text" value={selectedProject === GENERAL ? 'General (non-project)' : selectedProject} disabled readOnly
-                  className="w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-500 cursor-not-allowed" />
-              </div>
-              <div className="mb-6 grid grid-cols-2 gap-4 opacity-60 pointer-events-none">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                  <input type="date" value={todayISO} disabled
-                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
-                  <input type="time" disabled
-                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
-                </div>
-              </div>
-
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Clock Out</p>
               <div className="mb-5 grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
@@ -416,7 +395,7 @@ export default function AttendancePage() {
               </div>
               <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {manualSubmitting ? 'Please wait…' : 'LOG CLOCK OUT'}
+                {manualSubmitting ? 'Please wait…' : 'Clock Out'}
               </button>
               {manualMessage && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
