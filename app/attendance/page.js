@@ -395,7 +395,7 @@ export default function AttendancePage() {
               </div>
               <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {manualSubmitting ? 'Please wait…' : 'Clock Out'}
+                {manualSubmitting ? 'Please wait…' : 'CLOCK OUT'}
               </button>
               {manualMessage && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
