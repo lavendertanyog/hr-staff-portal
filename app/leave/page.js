@@ -8,9 +8,20 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjw
 const CATEGORIES = ['ANNUAL', 'EMERGENCY', 'SICK'];
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MC_ACCEPT = '.png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf';
+const MC_MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
 function toYMD(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function StatusPill({ status }) {
@@ -122,6 +133,9 @@ export default function LeavePage() {
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
   const [editingId, setEditingId] = useState(null);
+  const [mcFile, setMcFile] = useState(null);
+  const [mcFileError, setMcFileError] = useState('');
+  const [uploadingMcId, setUploadingMcId] = useState(null);
 
   useEffect(() => {
     try {
@@ -160,21 +174,30 @@ export default function LeavePage() {
     if (!startDate || !endDate) { setMessage('Please select a start and end date on the calendar.'); setMessageType('error'); return; }
     setSubmitting(true); setMessage('');
     try {
+      const mcFileUrl = mcFile ? await fileToBase64(mcFile) : undefined;
       if (editingId) {
         await axios.patch(`${API_BASE}/api/v1/leave/${editingId}`, {
-          userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined,
+          userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
         });
         setMessage('Leave request updated successfully.'); setMessageType('success');
       } else {
         await axios.post(`${API_BASE}/api/v1/leave/apply`, {
-          userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined,
+          userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
         });
         setMessage('Leave request submitted successfully.'); setMessageType('success');
       }
       setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setEditingId(null);
+      setMcFile(null); setMcFileError('');
       await fetchData(user.user_id);
     } catch (err) { setMessage(err.response?.data?.error || 'Submission failed.'); setMessageType('error'); }
     finally { setSubmitting(false); }
+  };
+
+  const handleMcFileChange = (file) => {
+    setMcFileError('');
+    if (!file) { setMcFile(null); return; }
+    if (file.size > MC_MAX_BYTES) { setMcFileError('File is too large — max 5MB.'); setMcFile(null); return; }
+    setMcFile(file);
   };
 
   const handleEditClick = (r) => {
@@ -183,8 +206,22 @@ export default function LeavePage() {
     setStartDate(String(r.start_date).slice(0, 10));
     setEndDate(String(r.end_date).slice(0, 10));
     setReason(r.reason || '');
+    setMcFile(null); setMcFileError('');
     setMessage('');
     setShowForm(true);
+  };
+
+  const handleMcUpload = async (leaveId, file) => {
+    if (!file || !user?.user_id) return;
+    if (file.size > MC_MAX_BYTES) { setMessage('File is too large — max 5MB.'); setMessageType('error'); return; }
+    setUploadingMcId(leaveId); setMessage('');
+    try {
+      const mcFileUrl = await fileToBase64(file);
+      await axios.post(`${API_BASE}/api/v1/leave/${leaveId}/mc-upload`, { userId: user.user_id, mcFileUrl });
+      setMessage('MC document uploaded successfully.'); setMessageType('success');
+      await fetchData(user.user_id);
+    } catch (err) { setMessage(err.response?.data?.error || 'MC upload failed.'); setMessageType('error'); }
+    finally { setUploadingMcId(null); }
   };
 
   const handleCancelLeave = async (leaveId) => {
@@ -218,22 +255,6 @@ export default function LeavePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Annual Leave Balance</p>
             <p className="mt-2 text-3xl font-semibold text-slate-950">{balance.remainingDays} <span className="text-base font-normal text-slate-400">/ {balance.totalDays} days</span></p>
           </div>
-        )}
-      </div>
-
-      <div className="mb-6 flex gap-3">
-        {!showForm ? (
-          <button onClick={() => { setShowForm(true); setMessage(''); setEditingId(null); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); }}
-            className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-            style={{ background: '#0c3b8f' }}>
-            + Apply for Leave
-          </button>
-        ) : (
-          <button onClick={() => { setShowForm(false); setMessage(''); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); }}
-            className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-            style={{ background: '#64748b' }}>
-            ← Back
-          </button>
         )}
       </div>
 
@@ -286,6 +307,17 @@ export default function LeavePage() {
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
 
+              {category === 'SICK' && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">MC Upload <span className="font-normal text-slate-400">(optional — you can also upload this later)</span></label>
+                  <input type="file" accept={MC_ACCEPT} onChange={(e) => handleMcFileChange(e.target.files?.[0] || null)}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#EEF4FF] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#0c3b8f]" />
+                  <p className="mt-1.5 text-xs text-slate-400">Accepts PNG, JPG, or PDF — max 5MB.</p>
+                  {mcFile && <p className="mt-1.5 text-xs font-medium text-[#0c3b8f]">Selected: {mcFile.name}</p>}
+                  {mcFileError && <p className="mt-1.5 text-xs font-medium text-red-600">{mcFileError}</p>}
+                </div>
+              )}
+
               <button type="submit" disabled={submitting || !startDate || !endDate}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
                 {submitting ? 'Please wait…' : editingId ? 'SAVE CHANGES' : 'SUBMIT'}
@@ -303,9 +335,24 @@ export default function LeavePage() {
       )}
 
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
-          <p className="mt-1 font-semibold text-slate-900">My Requests</p>
+        <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
+            <p className="mt-1 font-semibold text-slate-900">My Requests</p>
+          </div>
+          {!showForm ? (
+            <button onClick={() => { setShowForm(true); setMessage(''); setEditingId(null); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); }}
+              className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
+              style={{ background: '#0c3b8f' }}>
+              + Apply for Leave
+            </button>
+          ) : (
+            <button onClick={() => { setShowForm(false); setMessage(''); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setMcFile(null); setMcFileError(''); }}
+              className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
+              style={{ background: '#64748b' }}>
+              ← Back
+            </button>
+          )}
         </div>
         {loading ? (
           <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
@@ -335,18 +382,35 @@ export default function LeavePage() {
                     <td className="px-6 py-4 text-slate-500 max-w-[180px] truncate">{r.reviewer_remarks || '—'}</td>
                     <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{String(r.created_at).slice(0, 10)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {r.workflow_status === 'PENDING' ? (
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => handleEditClick(r)}
-                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">
-                            Edit
-                          </button>
-                          <button type="button" onClick={() => handleCancelLeave(r.leave_id)}
-                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
-                            Delete
-                          </button>
-                        </div>
-                      ) : '—'}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {r.workflow_status === 'PENDING' && (
+                          <>
+                            <button type="button" onClick={() => handleEditClick(r)}
+                              className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">
+                              Edit
+                            </button>
+                            <button type="button" onClick={() => handleCancelLeave(r.leave_id)}
+                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {r.category === 'SICK' && (
+                          r.mc_file_url ? (
+                            <a href={r.mc_file_url} target="_blank" rel="noreferrer"
+                              className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                              View MC
+                            </a>
+                          ) : (
+                            <label className={`rounded-xl border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 cursor-pointer ${uploadingMcId === r.leave_id ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                              {uploadingMcId === r.leave_id ? 'Uploading…' : 'Upload MC'}
+                              <input type="file" accept={MC_ACCEPT} className="hidden" disabled={uploadingMcId === r.leave_id}
+                                onChange={(e) => { const f = e.target.files?.[0] || null; e.target.value = ''; if (f) handleMcUpload(r.leave_id, f); }} />
+                            </label>
+                          )
+                        )}
+                        {r.workflow_status !== 'PENDING' && r.category !== 'SICK' && '—'}
+                      </div>
                     </td>
                   </tr>
                 ))}

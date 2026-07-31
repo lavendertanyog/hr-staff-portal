@@ -277,35 +277,38 @@ function ProgressContent() {
           )}
 
           {showProgressForm && (
-            <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-lg">
-              <div className="mb-5 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Progress Entry</p>
-                <button type="button" onClick={() => { setShowProgressForm(false); setMessage(''); }}
-                  className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+              onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowProgressForm(false); setMessage(''); } }}>
+              <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="mb-5 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Progress Entry</p>
+                  <button type="button" onClick={() => { setShowProgressForm(false); setMessage(''); }}
+                    className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+                </div>
+                <form onSubmit={handleProgressSubmit} className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
+                    <select value={progressProject} onChange={(e) => setProgressProject(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                      <option value="">Select project…</option>
+                      {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Completion % <span className="font-normal text-slate-400">(0 – 100)</span></label>
+                    <input type="number" min="0" max="100" step="0.1" value={progressPct} onChange={(e) => setProgressPct(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Summary <span className="font-normal text-slate-400">(optional)</span></label>
+                    <textarea rows={3} value={progressSummary} onChange={(e) => setProgressSummary(e.target.value)} placeholder="What did you work on?"
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
+                    {submitting ? 'Please wait…' : 'SUBMIT PROGRESS'}
+                  </button>
+                </form>
               </div>
-              <form onSubmit={handleProgressSubmit} className="space-y-5">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                  <select value={progressProject} onChange={(e) => setProgressProject(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                    <option value="">Select project…</option>
-                    {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Completion % <span className="font-normal text-slate-400">(0 – 100)</span></label>
-                  <input type="number" min="0" max="100" step="0.1" value={progressPct} onChange={(e) => setProgressPct(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Summary <span className="font-normal text-slate-400">(optional)</span></label>
-                  <textarea rows={3} value={progressSummary} onChange={(e) => setProgressSummary(e.target.value)} placeholder="What did you work on?"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                  {submitting ? 'Please wait…' : 'SUBMIT PROGRESS'}
-                </button>
-              </form>
             </div>
           )}
 
@@ -378,35 +381,38 @@ function ProgressContent() {
       ) : (
         <>
           {showBudgetForm && (
-            <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-lg">
-              <div className="mb-5 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Budget Request</p>
-                <button type="button" onClick={() => { setShowBudgetForm(false); setMessage(''); }}
-                  className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+              onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowBudgetForm(false); setMessage(''); } }}>
+              <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="mb-5 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Budget Request</p>
+                  <button type="button" onClick={() => { setShowBudgetForm(false); setMessage(''); }}
+                    className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+                </div>
+                <form onSubmit={handleBudgetSubmit} className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
+                    <select value={budgetProject} onChange={(e) => setBudgetProject(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                      <option value="">Select project…</option>
+                      {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Additional Hours Requested</label>
+                    <input type="number" min="0.5" step="0.5" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Justification <span className="font-normal text-slate-400">(optional)</span></label>
+                    <textarea rows={3} value={budgetJustification} onChange={(e) => setBudgetJustification(e.target.value)} placeholder="Explain why additional hours are needed…"
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
+                    {submitting ? 'Please wait…' : 'SUBMIT REQUEST'}
+                  </button>
+                </form>
               </div>
-              <form onSubmit={handleBudgetSubmit} className="space-y-5">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                  <select value={budgetProject} onChange={(e) => setBudgetProject(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                    <option value="">Select project…</option>
-                    {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Additional Hours Requested</label>
-                  <input type="number" min="0.5" step="0.5" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Justification <span className="font-normal text-slate-400">(optional)</span></label>
-                  <textarea rows={3} value={budgetJustification} onChange={(e) => setBudgetJustification(e.target.value)} placeholder="Explain why additional hours are needed…"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                  {submitting ? 'Please wait…' : 'SUBMIT REQUEST'}
-                </button>
-              </form>
             </div>
           )}
 
