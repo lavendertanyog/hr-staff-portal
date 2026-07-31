@@ -38,15 +38,25 @@ export default function AttendancePage() {
   const [messageType, setMessageType] = useState('');
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
 
-  // Manual entry state
+  // Manual entry state — same active session as Clock In/Out, just typed times instead of live "now"
   const [manualProject, setManualProject] = useState('');
-  const [manualStart, setManualStart] = useState('');
-  const [manualEnd, setManualEnd] = useState('');
+  const [manualClockInTime, setManualClockInTime] = useState('');
+  const [manualClockOutTime, setManualClockOutTime] = useState('');
   const [manualRemark, setManualRemark] = useState('');
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [manualMessage, setManualMessage] = useState('');
   const [manualMessageType, setManualMessageType] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+
+  // Combine today's date with a "HH:MM" time input into a full local datetime string
+  const combineWithToday = (timeStr) => {
+    if (!timeStr) return null;
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}T${timeStr}:00`;
+  };
 
   useEffect(() => {
     try {
@@ -160,28 +170,56 @@ export default function AttendancePage() {
     finally { setLoading(false); }
   };
 
-  const handleManualSubmit = async (e) => {
+  const handleManualClockIn = async (e) => {
     e.preventDefault();
     if (!user?.user_id) return;
-    if (!manualStart || !manualEnd) { setManualMessage('Please enter both a start and end time.'); setManualMessageType('error'); return; }
+    if (!manualProject) { setManualMessage('Please select a project, or "General (non-project)".'); setManualMessageType('error'); return; }
+    if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
+    const projectCode = manualProject === GENERAL ? undefined : manualProject;
     try {
-      await axios.post(`${API_BASE}/api/v1/attendance/manual-entry`, {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-in`, {
         userId: user.user_id,
-        projectCode: manualProject === GENERAL || !manualProject ? undefined : manualProject,
-        startTime: manualStart,
-        endTime: manualEnd,
+        projectCode,
+        isManualLocation: true,
+        clockInTime: combineWithToday(manualClockInTime),
         remark: manualRemark.trim() || undefined,
       });
-      setManualMessage('Time entry logged successfully.'); setManualMessageType('success');
-      setManualProject(''); setManualStart(''); setManualEnd(''); setManualRemark('');
-    } catch (e) { setManualMessage(e.response?.data?.error || 'Manual entry failed.'); setManualMessageType('error'); }
+      const id = res.data?.data?.attendance_id;
+      setAttendanceId(id); setClockedIn(true); setSelectedProject(manualProject);
+      sessionStorage.setItem('staff_attendance_id', id);
+      sessionStorage.setItem('staff_attendance_project', manualProject);
+      sessionStorage.setItem('staff_attendance_user_id', user.user_id);
+      setManualMessage('Clock-in logged successfully.'); setManualMessageType('success');
+      setManualClockInTime(''); setManualRemark('');
+    } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-in failed.'); setManualMessageType('error'); }
+    finally { setManualSubmitting(false); }
+  };
+
+  const handleManualClockOut = async (e) => {
+    e.preventDefault();
+    if (!attendanceId || !user?.user_id) return;
+    if (!manualClockOutTime) { setManualMessage('Please enter a clock-out time.'); setManualMessageType('error'); return; }
+    setManualSubmitting(true); setManualMessage('');
+    try {
+      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
+        userId: user.user_id, attendanceId,
+        clockOutTime: combineWithToday(manualClockOutTime),
+        remark: manualRemark.trim() || undefined,
+      });
+      setClockedIn(false); setAttendanceId(null);
+      sessionStorage.removeItem('staff_attendance_id');
+      sessionStorage.removeItem('staff_attendance_project');
+      sessionStorage.removeItem('staff_attendance_user_id');
+      setManualMessage('Clock-out logged. Hours have been recorded.'); setManualMessageType('success');
+      setManualClockOutTime(''); setManualRemark('');
+    } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-out failed.'); setManualMessageType('error'); }
     finally { setManualSubmitting(false); }
   };
 
   return (
     <div className="p-8">
-      <div className="mb-10 flex items-start gap-3">
+      <div className="mb-10 flex items-start gap-3 relative">
         <div>
           <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
           <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
@@ -191,10 +229,11 @@ export default function AttendancePage() {
           className="mt-3 flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-slate-300 text-slate-500 text-sm font-bold hover:bg-slate-100 transition">
           ?
         </button>
-      </div>
 
-      {showHelp && (
-        <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-2xl">
+        {/* On desktop this floats to the right of the page instead of pushing content down */}
+        {showHelp && (
+        <div className="mt-2 rounded-3xl border border-slate-200 bg-white p-8 shadow-xl w-full max-w-2xl
+                         lg:absolute lg:top-full lg:right-0 lg:mt-3 lg:w-[26rem] lg:max-w-none lg:z-30">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
           <ul className="space-y-4 text-sm text-slate-600">
             {[
@@ -214,7 +253,8 @@ export default function AttendancePage() {
           </ul>
           <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
         </div>
-      )}
+        )}
+      </div>
 
       <div className="grid gap-6">
         {/* Log Time card */}
@@ -280,30 +320,57 @@ export default function AttendancePage() {
                 }`}>{message}</div>
               )}
             </>
-          ) : (
-            <form onSubmit={handleManualSubmit}>
-              <p className="mb-5 text-sm text-slate-500">Forgot to clock in? Enter your actual start and end time directly.</p>
+          ) : !clockedIn ? (
+            <form onSubmit={handleManualClockIn}>
+              <p className="mb-5 text-sm text-slate-500">Forgot to clock in earlier? Log your actual clock-in time below — today's date is used automatically.</p>
               <div className="mb-5">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
                 <select value={manualProject} onChange={(e) => setManualProject(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Select a project…</option>
                   <option value={GENERAL}>General (non-project)</option>
                   {projects.map((p) => (
                     <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>
                   ))}
                 </select>
               </div>
-              <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
-                  <input type="datetime-local" value={manualStart} onChange={(e) => setManualStart(e.target.value)}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                  <input type="datetime-local" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
+              <div className="mb-5">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Clock In Time</label>
+                <input type="time" value={manualClockInTime} onChange={(e) => setManualClockInTime(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="mt-1.5 text-xs text-slate-400">Date is always today — just enter the time.</p>
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+                <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
+                  placeholder="What are you working on?"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="submit" disabled={manualSubmitting || !manualProject || !manualClockInTime}
+                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
+                style={{ background: '#0c3b8f' }}>
+                {manualSubmitting ? 'Please wait…' : 'LOG CLOCK IN'}
+              </button>
+              {manualMessage && (
+                <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
+                  manualMessageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
+                }`}>{manualMessage}</div>
+              )}
+            </form>
+          ) : (
+            <form onSubmit={handleManualClockOut}>
+              <div className="mb-5 flex items-center gap-3">
+                <div className="h-3 w-3 rounded-full bg-green-500" />
+                <span className="text-sm font-semibold text-green-700">
+                  Active session — {selectedProject === GENERAL ? 'General (non-project)' : selectedProject}
+                </span>
+              </div>
+              <p className="mb-5 text-sm text-slate-500">Log your actual clock-out time below — today's date is used automatically.</p>
+              <div className="mb-5">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Clock Out Time</label>
+                <input type="time" value={manualClockOutTime} onChange={(e) => setManualClockOutTime(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="mt-1.5 text-xs text-slate-400">Date is always today — just enter the time.</p>
               </div>
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
@@ -311,10 +378,9 @@ export default function AttendancePage() {
                   placeholder="What did you work on?"
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <button type="submit" disabled={manualSubmitting || !manualStart || !manualEnd}
-                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
-                style={{ background: '#0c3b8f' }}>
-                {manualSubmitting ? 'Please wait…' : 'LOG TIME'}
+              <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
+                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                {manualSubmitting ? 'Please wait…' : 'LOG CLOCK OUT'}
               </button>
               {manualMessage && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
