@@ -224,7 +224,7 @@ export default function AttendancePage() {
 
   return (
     <div className="p-8">
-      <div className="mb-10 flex items-start gap-3 relative">
+      <div className="mb-10 flex items-start gap-3">
         <div>
           <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
           <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
@@ -234,34 +234,33 @@ export default function AttendancePage() {
           className="mt-3 flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-slate-300 text-slate-500 text-sm font-bold hover:bg-slate-100 transition">
           ?
         </button>
-
-        {/* On desktop this floats to the right of the page instead of pushing content down */}
-        {showHelp && (
-        <div className="mt-2 rounded-3xl border border-slate-200 bg-white p-8 shadow-xl w-full max-w-2xl
-                         lg:absolute lg:top-full lg:right-0 lg:mt-3 lg:w-[26rem] lg:max-w-none lg:z-30">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
-          <ul className="space-y-4 text-sm text-slate-600">
-            {[
-              { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
-              { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
-              { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
-              { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
-            ].map((s) => (
-              <li key={s.n} className="flex gap-4">
-                <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
-                <div>
-                  <p className="font-semibold text-slate-800">{s.t}</p>
-                  <p className="text-slate-500 mt-0.5">{s.d}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
-        </div>
-        )}
       </div>
 
-      <div className="grid gap-6">
+      {/* Mobile: help card stacks above the Log Time card. Desktop: sits beside it in a second column. */}
+      <div className={`grid gap-6 items-start ${showHelp ? 'lg:grid-cols-[minmax(0,42rem)_26rem]' : ''}`}>
+        {showHelp && (
+          <div className="order-first lg:order-last rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
+            <ul className="space-y-4 text-sm text-slate-600">
+              {[
+                { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
+                { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
+                { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
+                { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
+              ].map((s) => (
+                <li key={s.n} className="flex gap-4">
+                  <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
+                  <div>
+                    <p className="font-semibold text-slate-800">{s.t}</p>
+                    <p className="text-slate-500 mt-0.5">{s.d}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
+          </div>
+        )}
+
         {/* Log Time card */}
         <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-2xl">
           {/* Segment tabs */}
