@@ -238,12 +238,16 @@ export default function AttendancePage() {
     if (!manualProject) { setManualMessage('Please select a project, or "General (non-project)".'); setManualMessageType('error'); return; }
     if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
+    // Silently attempt location capture in the background, same as live Clock In
+    const coords = await requestLocationSilently();
     const projectCode = manualProject === GENERAL ? undefined : manualProject;
     try {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-in`, {
         userId: user.user_id,
         projectCode,
-        isManualLocation: true,
+        isManualLocation: !coords.latitude,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         clockInTime: combineWithToday(manualClockInTime),
         remark: manualRemark.trim() || undefined,
       });
