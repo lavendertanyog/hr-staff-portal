@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
@@ -24,6 +24,63 @@ function requestLocationSilently() {
 }
 
 const GENERAL = 'GENERAL';
+
+// Searchable project picker: type to filter, or just pick from the list — replaces a plain <select>
+function ProjectSearchSelect({ value, onChange, projects, placeholder }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const options = useMemo(() => [
+    { code: GENERAL, name: 'General (non-project)' },
+    ...projects.map((p) => ({ code: p.project_code, name: p.project_name })),
+  ], [projects]);
+
+  const selected = options.find((o) => o.code === value);
+  const labelOf = (o) => (o.code === GENERAL ? o.name : `${o.code} — ${o.name}`);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => (o.code + ' ' + o.name).toLowerCase().includes(q));
+  }, [options, query]);
+
+  return (
+    <div className="relative">
+      <div ref={ref} className="relative">
+        <input
+          type="text"
+          value={open ? query : (selected ? labelOf(selected) : '')}
+          onFocus={() => { setOpen(true); setQuery(''); }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {open && (
+          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+            {filtered.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-slate-400">No matching projects</p>
+            ) : filtered.map((o) => (
+              <button key={o.code} type="button"
+                onClick={() => { onChange(o.code); setOpen(false); setQuery(''); }}
+                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${
+                  value === o.code ? 'bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'text-slate-700'
+                }`}>
+                {labelOf(o)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AttendancePage() {
   const router = useRouter();
@@ -287,14 +344,8 @@ export default function AttendancePage() {
               {!clockedIn && (
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Select Project</label>
-                  <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select a project…</option>
-                    <option value={GENERAL}>General (non-project)</option>
-                    {projects.map((p) => (
-                      <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>
-                    ))}
-                  </select>
+                  <ProjectSearchSelect value={selectedProject} onChange={setSelectedProject} projects={projects}
+                    placeholder="Search or select a project…" />
                 </div>
               )}
 
@@ -328,14 +379,8 @@ export default function AttendancePage() {
             <form onSubmit={handleManualClockIn}>
               <div className="mb-5">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                <select value={manualProject} onChange={(e) => setManualProject(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select a project…</option>
-                  <option value={GENERAL}>General (non-project)</option>
-                  {projects.map((p) => (
-                    <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>
-                  ))}
-                </select>
+                <ProjectSearchSelect value={manualProject} onChange={setManualProject} projects={projects}
+                  placeholder="Search or select a project…" />
               </div>
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
