@@ -82,6 +82,21 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder }) {
   );
 }
 
+// Today's date as "YYYY-MM-DD", for defaulting (but no longer locking) manual entry date fields
+function todayISOStr() {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Current device time as "HH:MM", for defaulting (but not locking) manual entry time fields
+function nowHHMM() {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
 export default function AttendancePage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -95,29 +110,35 @@ export default function AttendancePage() {
   const [messageType, setMessageType] = useState('');
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
 
-  // Manual entry state — same active session as Clock In/Out, just typed times instead of live "now"
+  // Manual entry state — same active session as Clock In/Out, just typed date/times instead of live "now"
   const [manualProject, setManualProject] = useState('');
-  const [manualClockInTime, setManualClockInTime] = useState('');
-  const [manualClockOutTime, setManualClockOutTime] = useState('');
+  const [manualClockInDate, setManualClockInDate] = useState(() => todayISOStr());
+  const [manualClockInTime, setManualClockInTime] = useState(() => nowHHMM());
+  const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
+  const [manualClockOutTime, setManualClockOutTime] = useState(() => nowHHMM());
   const [manualRemark, setManualRemark] = useState('');
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [manualMessage, setManualMessage] = useState('');
   const [manualMessageType, setManualMessageType] = useState('');
   const [showHelp, setShowHelp] = useState(false);
 
-  // Today's date, e.g. for a disabled <input type="date"> — always today, never editable
-  const todayISO = (() => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  })();
+  const todayISO = todayISOStr();
 
-  // Combine today's date with a "HH:MM" time input into a full local datetime string
-  const combineWithToday = (timeStr) => {
-    if (!timeStr) return null;
-    return `${todayISO}T${timeStr}:00`;
+  // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full local datetime string
+  const combineDateTime = (dateStr, timeStr) => {
+    if (!dateStr || !timeStr) return null;
+    return `${dateStr}T${timeStr}:00`;
+  };
+
+  // Refresh the manual entry date/time to "now" whenever the fields are still at their
+  // untouched defaults — so switching to the tab later in the day shows current time,
+  // without clobbering a date/time the user already deliberately picked.
+  const openManualTab = () => {
+    setLogTab('manual');
+    setManualClockInDate((d) => d || todayISOStr());
+    setManualClockInTime((t) => t || nowHHMM());
+    setManualClockOutDate((d) => d || todayISOStr());
+    setManualClockOutTime((t) => t || nowHHMM());
   };
 
   useEffect(() => {
@@ -236,6 +257,7 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!user?.user_id) return;
     if (!manualProject) { setManualMessage('Please select a project, or "General (non-project)".'); setManualMessageType('error'); return; }
+    if (!manualClockInDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
     if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
     // Silently attempt location capture in the background, same as live Clock In
@@ -248,7 +270,7 @@ export default function AttendancePage() {
         isManualLocation: !coords.latitude,
         latitude: coords.latitude,
         longitude: coords.longitude,
-        clockInTime: combineWithToday(manualClockInTime),
+        clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
         remark: manualRemark.trim() || undefined,
       });
       const id = res.data?.data?.attendance_id;
@@ -257,7 +279,7 @@ export default function AttendancePage() {
       sessionStorage.setItem('staff_attendance_project', manualProject);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
       setManualMessage('Clock-in logged successfully.'); setManualMessageType('success');
-      setManualClockInTime(''); setManualRemark('');
+      setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark('');
     } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-in failed.'); setManualMessageType('error'); }
     finally { setManualSubmitting(false); }
   };
@@ -265,12 +287,13 @@ export default function AttendancePage() {
   const handleManualClockOut = async (e) => {
     e.preventDefault();
     if (!attendanceId || !user?.user_id) return;
+    if (!manualClockOutDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
     if (!manualClockOutTime) { setManualMessage('Please enter a clock-out time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId,
-        clockOutTime: combineWithToday(manualClockOutTime),
+        clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
         remark: manualRemark.trim() || undefined,
       });
       setClockedIn(false); setAttendanceId(null);
@@ -278,7 +301,7 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
       setManualMessage('Clock-out logged. Hours have been recorded.'); setManualMessageType('success');
-      setManualClockOutTime(''); setManualRemark('');
+      setManualClockOutDate(todayISOStr()); setManualClockOutTime(nowHHMM()); setManualRemark('');
     } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-out failed.'); setManualMessageType('error'); }
     finally { setManualSubmitting(false); }
   };
@@ -330,7 +353,7 @@ export default function AttendancePage() {
               className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'clock' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
               Clock In/Out
             </button>
-            <button type="button" onClick={() => setLogTab('manual')}
+            <button type="button" onClick={openManualTab}
               className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'manual' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
               Manual Entry
             </button>
@@ -389,8 +412,8 @@ export default function AttendancePage() {
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                  <input type="date" value={todayISO} disabled
-                    className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                  <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => setManualClockInDate(e.target.value)}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
@@ -427,8 +450,8 @@ export default function AttendancePage() {
               <div className="mb-5 grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                  <input type="date" value={todayISO} disabled
-                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => setManualClockOutDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
