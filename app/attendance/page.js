@@ -97,6 +97,52 @@ function nowHHMM() {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
+const STANDARD_WORKDAY_HOURS = 8;
+
+function evenSplitHours(count) {
+  const each = Math.round((STANDARD_WORKDAY_HOURS / Math.max(count, 1)) * 100) / 100;
+  return Array.from({ length: count }, () => each);
+}
+
+function fmtHours(h) {
+  const n = Number(h || 0);
+  return n % 1 === 0 ? `${n}h` : `${n.toFixed(2)}h`;
+}
+
+function projectLabel(code, projects) {
+  if (!code) return 'General (non-project)';
+  const p = projects.find((p) => p.project_code === code);
+  return p ? `${p.project_code} — ${p.project_name}` : code;
+}
+
+// Short beep via Web Audio API — no audio asset needed.
+function playBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {}
+}
+
+function showBrowserNotification(title, body) {
+  try {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body });
+    }
+  } catch {}
+}
+
 export default function AttendancePage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -109,6 +155,23 @@ export default function AttendancePage() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
+
+  // Multi-project clock-in setup (before clocking in)
+  const [clockMode, setClockMode] = useState('general'); // 'general' | 'projects'
+  const [numProjects, setNumProjects] = useState(1);
+  const [projectRows, setProjectRows] = useState([{ code: '', hours: STANDARD_WORKDAY_HOURS }]);
+
+  // Active session allocation tracking (after clocking in)
+  const [allocations, setAllocations] = useState([]);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
+  const [addProjectCode, setAddProjectCode] = useState('');
+  const [addProjectBusy, setAddProjectBusy] = useState(false);
+  const [editingAllocId, setEditingAllocId] = useState(null);
+  const [editingHoursVal, setEditingHoursVal] = useState('');
+  const [extendingAllocId, setExtendingAllocId] = useState(null);
+  const [extendHoursVal, setExtendHoursVal] = useState('1');
+  const notifiedRef = useRef(new Set());
 
   // Manual entry state — same active session as Clock In/Out, just typed date/times instead of live "now"
   const [manualProject, setManualProject] = useState('');
@@ -177,12 +240,32 @@ export default function AttendancePage() {
           setAttendanceId(active.attendance_id);
           setSelectedProject(active.project_code || GENERAL);
           setClockedIn(true);
+          setAllocations(active.allocations || []);
           sessionStorage.setItem('staff_attendance_id', active.attendance_id);
           sessionStorage.setItem('staff_attendance_project', active.project_code || '');
           sessionStorage.setItem('staff_attendance_user_id', user.user_id);
+
+          // Check the currently active block for an elapsed time budget and fire a
+          // notification + beep once per allocation (server-side notified_at also guards this
+          // across devices/reloads).
+          const activeBlock = (active.allocations || []).find((a) => a.status === 'ACTIVE');
+          if (activeBlock && activeBlock.started_at && !activeBlock.notified_at) {
+            const elapsedHrs = (Date.now() - new Date(activeBlock.started_at).getTime()) / 3600000;
+            if (elapsedHrs >= Number(activeBlock.allocated_hours) && !notifiedRef.current.has(activeBlock.allocation_id)) {
+              notifiedRef.current.add(activeBlock.allocation_id);
+              playBeep();
+              showBrowserNotification(
+                'Allocated time is up',
+                `Your planned time for ${projectLabel(activeBlock.project_code, projects)} has run out. Extend it or mark it complete.`
+              );
+              axios.post(`${API_BASE}/api/v1/attendance/allocations/${activeBlock.allocation_id}/mark-notified`, { userId: user.user_id }).catch(() => {});
+            }
+          }
         } else {
           setClockedIn(false);
           setAttendanceId(null);
+          setAllocations([]);
+          notifiedRef.current = new Set();
           sessionStorage.removeItem('staff_attendance_id');
           sessionStorage.removeItem('staff_attendance_project');
           sessionStorage.removeItem('staff_attendance_user_id');
@@ -201,7 +284,13 @@ export default function AttendancePage() {
       window.clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [user?.user_id]);
+  }, [user?.user_id, projects]);
+
+  // Local 1s tick to smoothly animate progress bars between server polls.
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!user?.user_id) return;
@@ -211,26 +300,50 @@ export default function AttendancePage() {
 
   const showMsg = (text, type) => { setMessage(text); setMessageType(type); };
 
+  // Rebuild the project rows whenever the count changes, keeping any codes already picked
+  // and re-splitting the standard 8h workday evenly across the new count.
+  const setProjectCount = (n) => {
+    const count = Math.max(1, Math.min(8, n));
+    setNumProjects(count);
+    setProjectRows((prev) => {
+      const hours = evenSplitHours(count);
+      return Array.from({ length: count }, (_, i) => ({ code: prev[i]?.code || '', hours: hours[i] }));
+    });
+  };
+
   const handleClockIn = async () => {
-    if (!selectedProject) { showMsg('Please select a project, or "General (non-project)".', 'error'); return; }
     if (!user?.user_id) return;
+    let allocationsPayload;
+    if (clockMode === 'general') {
+      allocationsPayload = [{ projectCode: null, allocatedHours: null }];
+    } else {
+      if (projectRows.some((r) => !r.code)) { showMsg('Please select a project for every row, or remove it.', 'error'); return; }
+      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: r.hours }));
+    }
+
     setLoading(true); setMessage('');
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
     // Silently attempt location capture in the background
     const coords = await requestLocationSilently();
-    const projectCode = selectedProject === GENERAL ? undefined : selectedProject;
     try {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-in`, {
         userId: user.user_id,
-        projectCode,
         isManualLocation: !coords.latitude,
         latitude: coords.latitude,
         longitude: coords.longitude,
         remark: clockRemark.trim() || undefined,
+        allocations: allocationsPayload,
       });
-      const id = res.data?.data?.attendance_id;
-      setAttendanceId(id); setClockedIn(true);
+      const data = res.data?.data;
+      const id = data?.attendance_id;
+      const firstCode = data?.allocations?.[0]?.project_code || GENERAL;
+      setAttendanceId(id); setClockedIn(true); setSelectedProject(firstCode);
+      setAllocations(data?.allocations || []);
+      notifiedRef.current = new Set();
       sessionStorage.setItem('staff_attendance_id', id);
-      sessionStorage.setItem('staff_attendance_project', selectedProject);
+      sessionStorage.setItem('staff_attendance_project', firstCode);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
       showMsg('Clocked in successfully.', 'success');
     } catch (e) { showMsg(e.response?.data?.error || 'Clock-in failed.', 'error'); }
@@ -241,16 +354,65 @@ export default function AttendancePage() {
     if (!attendanceId || !user?.user_id) return;
     setLoading(true); setMessage('');
     try {
-      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId, remark: clockRemark.trim() || undefined,
       });
-      setClockedIn(false); setAttendanceId(null); setClockRemark('');
+      const recon = res.data?.data?.reconciliation;
+      setClockedIn(false); setAttendanceId(null); setClockRemark(''); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
-      showMsg('Clocked out. Hours have been recorded.', 'success');
+      if (recon?.mismatch) {
+        showMsg(`Clocked out. Note: you planned ${fmtHours(recon.totalAllocatedHours)} across your projects, but actually worked ${fmtHours(recon.actualWorkedHours)}. Recorded hours use your actual clock time.`, 'success');
+      } else {
+        showMsg('Clocked out. Hours have been recorded.', 'success');
+      }
     } catch (e) { showMsg(e.response?.data?.error || 'Clock-out failed.', 'error'); }
     finally { setLoading(false); }
+  };
+
+  const handleAddProject = async () => {
+    if (!addProjectCode || !attendanceId || !user?.user_id) return;
+    setAddProjectBusy(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations`, {
+        userId: user.user_id, attendanceId, projectCode: addProjectCode,
+      });
+      setAllocations(res.data?.data?.allocations || []);
+      setAddProjectOpen(false); setAddProjectCode('');
+      showMsg('Project added — remaining time has been re-split.', 'success');
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to add project.', 'error'); }
+    finally { setAddProjectBusy(false); }
+  };
+
+  const handleCompleteAllocation = async (allocationId) => {
+    if (!user?.user_id) return;
+    try {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/complete`, { userId: user.user_id });
+      setAllocations(res.data?.data?.allocations || []);
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to mark project complete.', 'error'); }
+  };
+
+  const handleSaveEditHours = async (allocationId) => {
+    const hrs = parseFloat(editingHoursVal);
+    if (!user?.user_id || !hrs || hrs <= 0) { setEditingAllocId(null); return; }
+    try {
+      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, { userId: user.user_id, allocatedHours: hrs });
+      setAllocations((prev) => prev.map((a) => (a.allocation_id === allocationId ? res.data?.data : a)));
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
+    finally { setEditingAllocId(null); }
+  };
+
+  const handleExtend = async (allocationId) => {
+    const hrs = parseFloat(extendHoursVal);
+    if (!user?.user_id || !hrs || hrs <= 0) { setExtendingAllocId(null); return; }
+    try {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/extend`, { userId: user.user_id, extraHours: hrs });
+      const updated = res.data?.data;
+      setAllocations((prev) => prev.map((a) => (a.allocation_id === allocationId ? updated : a)));
+      notifiedRef.current.delete(allocationId);
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to extend time.', 'error'); }
+    finally { setExtendingAllocId(null); }
   };
 
   const handleManualClockIn = async (e) => {
@@ -364,27 +526,178 @@ export default function AttendancePage() {
               <div className="mb-6 flex items-center gap-3">
                 <div className={`h-3 w-3 rounded-full ${clockedIn ? 'bg-green-500' : 'bg-slate-300'}`} />
                 <span className={`text-sm font-semibold ${clockedIn ? 'text-green-700' : 'text-slate-500'}`}>
-                  {clockedIn ? `Active session — ${selectedProject === GENERAL ? 'General (non-project)' : selectedProject}` : 'Not clocked in'}
+                  {clockedIn ? 'Active session' : 'Not clocked in'}
                 </span>
               </div>
 
               {!clockedIn && (
+                <>
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">What are you clocking in for?</label>
+                    <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
+                      <button type="button" onClick={() => setClockMode('general')}
+                        className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'general' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
+                        General (non-project)
+                      </button>
+                      <button type="button" onClick={() => setClockMode('projects')}
+                        className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'projects' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
+                        Project(s)
+                      </button>
+                    </div>
+                  </div>
+
+                  {clockMode === 'projects' && (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="block text-sm font-semibold text-slate-700">How many projects today?</label>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setProjectCount(numProjects - 1)}
+                            className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">−</button>
+                          <span className="w-6 text-center text-sm font-semibold text-slate-800">{numProjects}</span>
+                          <button type="button" onClick={() => setProjectCount(numProjects + 1)}
+                            className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">+</button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-4">Hours default to an even split of an 8-hour day — you can overwrite any of them.</p>
+                      <div className="space-y-4">
+                        {projectRows.map((row, i) => (
+                          <div key={i} className="flex gap-3 items-start">
+                            <div className="flex-1 min-w-0">
+                              <ProjectSearchSelect
+                                value={row.code}
+                                onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
+                                projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
+                                placeholder={`Project ${i + 1}…`}
+                              />
+                            </div>
+                            <div className="w-24 flex-shrink-0">
+                              <input type="number" min="0.25" step="0.25" value={row.hours}
+                                onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
+                                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!clockedIn && (
                 <div className="mb-6">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Select Project</label>
-                  <ProjectSearchSelect value={selectedProject} onChange={setSelectedProject} projects={projects}
-                    placeholder="Search or select a project…" />
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+                  <textarea rows={2} value={clockRemark} onChange={(e) => setClockRemark(e.target.value)}
+                    placeholder="What are you working on?"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
 
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea rows={2} value={clockRemark} onChange={(e) => setClockRemark(e.target.value)}
-                  placeholder="What are you working on?"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
+              {clockedIn && (
+                <div className="mb-6 space-y-3">
+                  {allocations.map((a) => {
+                    const isActive = a.status === 'ACTIVE';
+                    const isCompleted = a.status === 'COMPLETED';
+                    const elapsedHrs = isActive && a.started_at ? (nowTick - new Date(a.started_at).getTime()) / 3600000 : 0;
+                    const pct = isCompleted ? 100 : Math.min(100, Math.round((elapsedHrs / Math.max(a.allocated_hours, 0.01)) * 100));
+                    const overBudget = isActive && elapsedHrs >= a.allocated_hours;
+                    return (
+                      <div key={a.allocation_id}
+                        className={`rounded-2xl border p-4 ${isActive ? 'border-blue-300 bg-blue-50/40' : isCompleted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className={`text-sm font-semibold ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                            {projectLabel(a.project_code, projects)}
+                          </span>
+                          <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                            isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
+                            : isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
+                          </span>
+                        </div>
+
+                        {!isCompleted && (
+                          <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden mb-2">
+                            <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          {editingAllocId === a.allocation_id ? (
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="0.25" step="0.25" autoFocus value={editingHoursVal}
+                                onChange={(e) => setEditingHoursVal(e.target.value)}
+                                className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
+                              <button onClick={() => handleSaveEditHours(a.allocation_id)} className="text-blue-700 font-semibold">Save</button>
+                              <button onClick={() => setEditingAllocId(null)} className="text-slate-400">Cancel</button>
+                            </div>
+                          ) : (
+                            <span>
+                              {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
+                              {!isCompleted && (
+                                <button onClick={() => { setEditingAllocId(a.allocation_id); setEditingHoursVal(String(a.allocated_hours)); }}
+                                  className="ml-2 text-[#0c3b8f] font-semibold">Edit</button>
+                              )}
+                            </span>
+                          )}
+
+                          {!isCompleted && extendingAllocId !== a.allocation_id && (
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => handleCompleteAllocation(a.allocation_id)} className="text-slate-600 font-semibold hover:text-slate-900">
+                                Mark Complete Now
+                              </button>
+                              <button onClick={() => { setExtendingAllocId(a.allocation_id); setExtendHoursVal('1'); }} className="text-[#0c3b8f] font-semibold">
+                                Extend
+                              </button>
+                            </div>
+                          )}
+                          {extendingAllocId === a.allocation_id && (
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="0.25" step="0.25" autoFocus value={extendHoursVal}
+                                onChange={(e) => setExtendHoursVal(e.target.value)}
+                                className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
+                              <button onClick={() => handleExtend(a.allocation_id)} className="text-blue-700 font-semibold">+Add</button>
+                              <button onClick={() => setExtendingAllocId(null)} className="text-slate-400">Cancel</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {addProjectOpen ? (
+                    <div className="rounded-2xl border border-dashed border-slate-300 p-4">
+                      <ProjectSearchSelect value={addProjectCode} onChange={setAddProjectCode}
+                        projects={projects.filter((p) => !allocations.some((a) => a.project_code === p.project_code))}
+                        placeholder="Search or select a project…" />
+                      <div className="mt-3 flex gap-2">
+                        <button onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
+                          className="flex-1 rounded-xl py-2 text-sm font-bold text-white disabled:opacity-60" style={{ background: '#0c3b8f' }}>
+                          {addProjectBusy ? 'Adding…' : 'Add Project'}
+                        </button>
+                        <button onClick={() => { setAddProjectOpen(false); setAddProjectCode(''); }}
+                          className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setAddProjectOpen(true)}
+                      className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
+                      + Add Project
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {clockedIn && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+                  <textarea rows={2} value={clockRemark} onChange={(e) => setClockRemark(e.target.value)}
+                    placeholder="What are you working on?"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              )}
 
               {!clockedIn ? (
-                <button onClick={handleClockIn} disabled={loading || !selectedProject}
+                <button onClick={handleClockIn} disabled={loading}
                   className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                   style={{ background: '#0c3b8f' }}>
                   {loading ? 'Please wait…' : 'CLOCK IN'}
