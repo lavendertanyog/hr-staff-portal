@@ -609,11 +609,23 @@ export default function AttendancePage() {
         const isActive = modalAlloc.status === 'ACTIVE';
         const isCompletedModal = modalAlloc.status === 'COMPLETED';
         const modalElapsedHrs = isActive && modalAlloc.started_at ? (nowTick - new Date(modalAlloc.started_at).getTime()) / 3600000 : 0;
+        const stepHours = (delta) => {
+          const current = parseFloat(modalHoursVal) || 0;
+          setModalHoursVal(String(Math.max(0.25, Math.round((current + delta) * 100) / 100)));
+        };
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setModalAllocId(null)}>
-            <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => setModalAllocId(null)} aria-label="Close"
+                className="absolute top-4 right-4 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
               {/* Header — surfaces the same status/progress context the card behind shows, since the modal covers it */}
-              <div className="flex items-start justify-between gap-3 mb-1">
+              <div className="flex items-center gap-2 mb-1.5 pr-8">
                 <p className="text-lg font-semibold text-slate-900">Edit Allocation</p>
                 <span className={`flex-shrink-0 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
                   isActive ? 'bg-blue-100 text-blue-700' : isCompletedModal ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
@@ -621,30 +633,33 @@ export default function AttendancePage() {
                   {isActive ? 'Active' : isCompletedModal ? 'Completed' : 'Pending'}
                 </span>
               </div>
-              <p className="text-sm text-slate-500 mb-1">{projectLabel(modalAlloc.project_code, projects)}</p>
+              <p className="text-sm font-medium text-slate-700">{projectLabel(modalAlloc.project_code, projects)}</p>
               {isActive && (
-                <p className="text-xs text-slate-400 mb-5">{fmtHours(modalElapsedHrs)} tracked so far of {fmtHours(modalAlloc.allocated_hours)} planned</p>
+                <p className="text-[11px] text-slate-400 mt-1 mb-8">{fmtHours(modalElapsedHrs)} tracked so far of {fmtHours(modalAlloc.allocated_hours)} planned</p>
               )}
-              {!isActive && <div className="mb-5" />}
+              {!isActive && <div className="mb-8" />}
 
               <label className="block text-sm font-semibold text-slate-700 mb-2">Allocated Hours</label>
-              <input type="number" min="0.25" step="0.25" autoFocus value={modalHoursVal} placeholder="e.g. 2.5"
-                onChange={(e) => setModalHoursVal(e.target.value)}
-                className="w-full rounded-xl border-2 border-[#D1D5DB] px-4 py-3 text-sm mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              <div className="flex items-center gap-2 mb-6">
+                <button type="button" onClick={() => stepHours(-0.25)}
+                  className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">−</button>
+                <input type="number" min="0.25" step="0.25" autoFocus value={modalHoursVal} placeholder="e.g. 2.5"
+                  onChange={(e) => setModalHoursVal(e.target.value)}
+                  className="w-full min-w-0 rounded-xl border-2 border-[#D1D5DB] px-4 py-3 text-sm text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <button type="button" onClick={() => stepHours(0.25)}
+                  className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">+</button>
+              </div>
 
-              <div className="flex flex-col gap-2.5">
-                <button onClick={handleSaveEditHours}
-                  className="w-full rounded-2xl py-3 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
-                  Save Changes
-                </button>
+              <button onClick={handleSaveEditHours}
+                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
+                Save Changes
+              </button>
+              {!isCompletedModal && (
                 <button onClick={handleModalMarkComplete}
-                  className="w-full rounded-2xl py-3 text-sm font-semibold text-[#0c3b8f] border-2 border-[#0c3b8f]/25 hover:bg-[#0c3b8f]/5 transition">
+                  className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
                   Mark as Completed
                 </button>
-                <button onClick={() => setModalAllocId(null)} className="w-full py-1.5 text-sm font-semibold text-slate-400 hover:text-slate-600">
-                  Cancel
-                </button>
-              </div>
+              )}
             </div>
           </div>
         );
