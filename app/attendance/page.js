@@ -325,7 +325,8 @@ export default function AttendancePage() {
       allocationsPayload = [{ projectCode: null, allocatedHours: null }];
     } else {
       if (projectRows.some((r) => !r.code)) { showMsg('Please select a project for every row, or remove it.', 'error'); return; }
-      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: r.hours }));
+      if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
+      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
     }
 
     setLoading(true); setMessage('');
@@ -435,7 +436,8 @@ export default function AttendancePage() {
       allocationsPayload = [{ projectCode: null, allocatedHours: null }];
     } else {
       if (projectRows.some((r) => !r.code)) { setManualMessage('Please select a project for every row, or remove it.'); setManualMessageType('error'); return; }
-      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: r.hours }));
+      if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualMessage('Please enter valid hours for every project.'); setManualMessageType('error'); return; }
+      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
     }
     if (!manualClockInDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
     if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
@@ -536,7 +538,7 @@ export default function AttendancePage() {
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <input type="number" min="0.25" step="0.25" value={row.hours}
-                      onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
+                      onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
                       className="w-16 rounded-xl border-2 border-[#D1D5DB] px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                     <span className="text-xs text-slate-400">hrs</span>
                   </div>
@@ -810,20 +812,18 @@ export default function AttendancePage() {
                 </div>
               )}
 
-              <div className="flex sm:justify-end">
-                {!clockedIn ? (
+              {!clockedIn ? (
                   <button onClick={handleClockIn} disabled={loading}
-                    className="w-full sm:w-auto sm:min-w-[160px] rounded-2xl py-3.5 px-6 text-sm font-bold text-white disabled:opacity-60 transition"
+                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                     style={{ background: '#0c3b8f' }}>
                     {loading ? 'Please wait…' : 'Clock In'}
                   </button>
                 ) : (
                   <button onClick={handleClockOut} disabled={loading}
-                    className="w-full sm:w-auto sm:min-w-[160px] rounded-2xl py-3.5 px-6 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
                     {loading ? 'Please wait…' : 'Clock Out'}
                   </button>
                 )}
-              </div>
 
               {message && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
@@ -849,13 +849,13 @@ export default function AttendancePage() {
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
                 <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
-                  placeholder="What are you working on?"
+                  placeholder="Add notes or specific tasks (optional)"
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <button type="submit" disabled={manualSubmitting || !manualClockInTime || manualProjectSetupDisabled}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                 style={{ background: '#0c3b8f' }}>
-                {manualSubmitting ? 'Please wait…' : 'LOG CLOCK IN'}
+                {manualSubmitting ? 'Please wait…' : 'Clock In'}
               </button>
               {manualMessage && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
@@ -892,7 +892,7 @@ export default function AttendancePage() {
               </div>
               <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {manualSubmitting ? 'Please wait…' : 'CLOCK OUT'}
+                {manualSubmitting ? 'Please wait…' : 'Clock Out'}
               </button>
               {manualMessage && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
