@@ -53,7 +53,7 @@ function ProgressContent() {
   const [budgetJustification, setBudgetJustification] = useState('');
 
   // Progress history filters
-  const [progressProjectFilter, setProgressProjectFilter] = useState('ALL');
+  const [progressSearch, setProgressSearch] = useState('');
   const [progressStatusFilter, setProgressStatusFilter] = useState('ALL'); // ALL | COMPLETED | ONGOING | DELETED
 
   // Budget history filters
@@ -130,7 +130,8 @@ function ProgressContent() {
   };
 
   const filteredProgressHistory = progressHistory.filter((r) => {
-    if (progressProjectFilter !== 'ALL' && r.project_code !== progressProjectFilter) return false;
+    const q = progressSearch.trim().toLowerCase();
+    if (q && !String(r.project_code || '').toLowerCase().includes(q) && !String(r.project_name || '').toLowerCase().includes(q)) return false;
     const isDeleted = !r.project_name;
     const isCompleted = Number(r.completion_percentage) >= 100;
     if (progressStatusFilter === 'DELETED' && !isDeleted) return false;
@@ -138,8 +139,6 @@ function ProgressContent() {
     if (progressStatusFilter === 'ONGOING' && !(!isCompleted && !isDeleted)) return false;
     return true;
   });
-
-  const progressProjectOptions = Array.from(new Set(progressHistory.map((r) => r.project_code))).filter(Boolean);
 
   const filteredBudgetRequests = budgetRequests.filter((r) => {
     if (budgetStatusFilter !== 'ALL' && String(r.status).toUpperCase() !== budgetStatusFilter) return false;
@@ -315,17 +314,11 @@ function ProgressContent() {
           <div ref={historyRef} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden scroll-mt-6">
             <div className="px-6 py-5 border-b border-slate-100">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Progress Log</p>
-              <p className="mt-1 font-semibold text-slate-900">History</p>
             </div>
 
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-              <select value={progressProjectFilter} onChange={(e) => setProgressProjectFilter(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <option value="ALL">All Projects</option>
-                {progressProjectOptions.map((code) => <option key={code} value={code}>{code}</option>)}
-              </select>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {['ALL', 'ONGOING', 'COMPLETED', 'DELETED'].map((s) => (
                   <button key={s} type="button" onClick={() => setProgressStatusFilter(s)}
                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
@@ -335,12 +328,17 @@ function ProgressContent() {
                   </button>
                 ))}
               </div>
+              <input type="text" value={progressSearch} onChange={(e) => setProgressSearch(e.target.value)}
+                placeholder="Search project code or name…"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
             </div>
 
             {loading ? (
-              <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
+              <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
             ) : filteredProgressHistory.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-slate-400">No progress logs match this filter.</p>
+              <p className="px-6 py-8 text-sm text-slate-400 text-center">
+                {progressHistory.length === 0 ? "You haven't logged any progress yet." : 'No progress logs match this filter.'}
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -418,10 +416,7 @@ function ProgressContent() {
 
           <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 border-b border-slate-100">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
-                <p className="mt-1 font-semibold text-slate-900">My Requests</p>
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
               <button onClick={() => { setShowBudgetForm(!showBudgetForm); setMessage(''); }}
                 className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
                 style={{ background: showBudgetForm ? '#64748b' : '#0c3b8f' }}>
@@ -431,25 +426,27 @@ function ProgressContent() {
 
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-              <input type="text" value={budgetSearch} onChange={(e) => setBudgetSearch(e.target.value)}
-                placeholder="Search project code or name…"
-                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 w-56 focus:outline-none focus:ring-2 focus:ring-blue-400" />
               <div className="flex flex-wrap gap-1.5">
                 {['ALL', 'PENDING', 'MANAGER_APPROVED', 'APPROVED', 'REJECTED'].map((s) => (
                   <button key={s} type="button" onClick={() => setBudgetStatusFilter(s)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                       budgetStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                     }`}>
                     {s.replace('_', ' ').charAt(0) + s.replace('_', ' ').slice(1).toLowerCase()}
                   </button>
                 ))}
               </div>
+              <input type="text" value={budgetSearch} onChange={(e) => setBudgetSearch(e.target.value)}
+                placeholder="Search project code or name…"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
             </div>
 
             {loading ? (
-              <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
+              <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
             ) : filteredBudgetRequests.length === 0 ? (
-              <p className="px-6 py-8 text-sm text-slate-400">No budget requests match this filter.</p>
+              <p className="px-6 py-8 text-sm text-slate-400 text-center">
+                {budgetRequests.length === 0 ? "You haven't submitted any budget requests yet." : 'No budget requests match this filter.'}
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
