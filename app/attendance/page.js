@@ -173,8 +173,8 @@ export default function AttendancePage() {
   const [extendHoursVal, setExtendHoursVal] = useState('1');
   const notifiedRef = useRef(new Set());
 
-  // Manual entry state — same active session as Clock In/Out, just typed date/times instead of live "now"
-  const [manualProject, setManualProject] = useState('');
+  // Manual entry state — same active session, allocation setup, and tracker as Clock In/Out,
+  // just typed date/times instead of live "now".
   const [manualClockInDate, setManualClockInDate] = useState(() => todayISOStr());
   const [manualClockInTime, setManualClockInTime] = useState(() => nowHHMM());
   const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
@@ -418,27 +418,39 @@ export default function AttendancePage() {
   const handleManualClockIn = async (e) => {
     e.preventDefault();
     if (!user?.user_id) return;
-    if (!manualProject) { setManualMessage('Please select a project, or "General (non-project)".'); setManualMessageType('error'); return; }
+    let allocationsPayload;
+    if (clockMode === 'general') {
+      allocationsPayload = [{ projectCode: null, allocatedHours: null }];
+    } else {
+      if (projectRows.some((r) => !r.code)) { setManualMessage('Please select a project for every row, or remove it.'); setManualMessageType('error'); return; }
+      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: r.hours }));
+    }
     if (!manualClockInDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
     if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
     // Silently attempt location capture in the background, same as live Clock In
     const coords = await requestLocationSilently();
-    const projectCode = manualProject === GENERAL ? undefined : manualProject;
     try {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-in`, {
         userId: user.user_id,
-        projectCode,
         isManualLocation: !coords.latitude,
         latitude: coords.latitude,
         longitude: coords.longitude,
         clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
         remark: manualRemark.trim() || undefined,
+        allocations: allocationsPayload,
       });
-      const id = res.data?.data?.attendance_id;
-      setAttendanceId(id); setClockedIn(true); setSelectedProject(manualProject);
+      const data = res.data?.data;
+      const id = data?.attendance_id;
+      const firstCode = data?.allocations?.[0]?.project_code || GENERAL;
+      setAttendanceId(id); setClockedIn(true); setSelectedProject(firstCode);
+      setAllocations(data?.allocations || []);
+      notifiedRef.current = new Set();
       sessionStorage.setItem('staff_attendance_id', id);
-      sessionStorage.setItem('staff_attendance_project', manualProject);
+      sessionStorage.setItem('staff_attendance_project', firstCode);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
       setManualMessage('Clock-in logged successfully.'); setManualMessageType('success');
       setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark('');
@@ -453,20 +465,178 @@ export default function AttendancePage() {
     if (!manualClockOutTime) { setManualMessage('Please enter a clock-out time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
     try {
-      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId,
         clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
         remark: manualRemark.trim() || undefined,
       });
-      setClockedIn(false); setAttendanceId(null);
+      const recon = res.data?.data?.reconciliation;
+      setClockedIn(false); setAttendanceId(null); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
-      setManualMessage('Clock-out logged. Hours have been recorded.'); setManualMessageType('success');
+      if (recon?.mismatch) {
+        setManualMessage(`Clock-out logged. Note: you planned ${fmtHours(recon.totalAllocatedHours)} across your projects, but actually worked ${fmtHours(recon.actualWorkedHours)}. Recorded hours use your actual clock time.`);
+      } else {
+        setManualMessage('Clock-out logged. Hours have been recorded.');
+      }
+      setManualMessageType('success');
       setManualClockOutDate(todayISOStr()); setManualClockOutTime(nowHHMM()); setManualRemark('');
     } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-out failed.'); setManualMessageType('error'); }
     finally { setManualSubmitting(false); }
   };
+
+  // Shared between Clock In/Out and Manual Entry — both hit the same clock-in/out endpoints and
+  // the same active session, so the setup form and the live tracker work identically either way.
+  const projectSetupUI = (
+    <>
+      <div className="mb-6">
+        <label className="block text-sm font-semibold text-slate-700 mb-2">What are you clocking in for?</label>
+        <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
+          <button type="button" onClick={() => setClockMode('general')}
+            className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'general' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
+            General (non-project)
+          </button>
+          <button type="button" onClick={() => setClockMode('projects')}
+            className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'projects' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
+            Project(s)
+          </button>
+        </div>
+      </div>
+
+      {clockMode === 'projects' && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <label className="block text-sm font-semibold text-slate-700">How many projects today?</label>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setProjectCount(numProjects - 1)}
+                className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">−</button>
+              <span className="w-6 text-center text-sm font-semibold text-slate-800">{numProjects}</span>
+              <button type="button" onClick={() => setProjectCount(numProjects + 1)}
+                className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">+</button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mb-4">Hours default to an even split of an 8-hour day — you can overwrite any of them.</p>
+          <div className="space-y-4">
+            {projectRows.map((row, i) => (
+              <div key={i} className="flex gap-3 items-start">
+                <div className="flex-1 min-w-0">
+                  <ProjectSearchSelect
+                    value={row.code}
+                    onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
+                    projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
+                    placeholder={`Project ${i + 1}…`}
+                  />
+                </div>
+                <div className="w-24 flex-shrink-0">
+                  <input type="number" min="0.25" step="0.25" value={row.hours}
+                    onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const allocationTracker = (
+    <div className="mb-6 space-y-3">
+      {allocations.map((a) => {
+        const isActive = a.status === 'ACTIVE';
+        const isCompleted = a.status === 'COMPLETED';
+        const elapsedHrs = isActive && a.started_at ? (nowTick - new Date(a.started_at).getTime()) / 3600000 : 0;
+        const pct = isCompleted ? 100 : Math.min(100, Math.round((elapsedHrs / Math.max(a.allocated_hours, 0.01)) * 100));
+        const overBudget = isActive && elapsedHrs >= a.allocated_hours;
+        return (
+          <div key={a.allocation_id}
+            className={`rounded-2xl border p-4 ${isActive ? 'border-blue-300 bg-blue-50/40' : isCompleted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className={`text-sm font-semibold ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                {projectLabel(a.project_code, projects)}
+              </span>
+              <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
+                : isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
+              </span>
+            </div>
+
+            {!isCompleted && (
+              <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden mb-2">
+                <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              {editingAllocId === a.allocation_id ? (
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0.25" step="0.25" autoFocus value={editingHoursVal}
+                    onChange={(e) => setEditingHoursVal(e.target.value)}
+                    className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
+                  <button onClick={() => handleSaveEditHours(a.allocation_id)} className="text-blue-700 font-semibold">Save</button>
+                  <button onClick={() => setEditingAllocId(null)} className="text-slate-400">Cancel</button>
+                </div>
+              ) : (
+                <span>
+                  {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
+                  {!isCompleted && (
+                    <button onClick={() => { setEditingAllocId(a.allocation_id); setEditingHoursVal(String(a.allocated_hours)); }}
+                      className="ml-2 text-[#0c3b8f] font-semibold">Edit</button>
+                  )}
+                </span>
+              )}
+
+              {!isCompleted && extendingAllocId !== a.allocation_id && (
+                <div className="flex items-center gap-3">
+                  <button onClick={() => handleCompleteAllocation(a.allocation_id)} className="text-slate-600 font-semibold hover:text-slate-900">
+                    Mark Complete Now
+                  </button>
+                  <button onClick={() => { setExtendingAllocId(a.allocation_id); setExtendHoursVal('1'); }} className="text-[#0c3b8f] font-semibold">
+                    Extend
+                  </button>
+                </div>
+              )}
+              {extendingAllocId === a.allocation_id && (
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0.25" step="0.25" autoFocus value={extendHoursVal}
+                    onChange={(e) => setExtendHoursVal(e.target.value)}
+                    className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
+                  <button onClick={() => handleExtend(a.allocation_id)} className="text-blue-700 font-semibold">+Add</button>
+                  <button onClick={() => setExtendingAllocId(null)} className="text-slate-400">Cancel</button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {addProjectOpen ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 p-4">
+          <ProjectSearchSelect value={addProjectCode} onChange={setAddProjectCode}
+            projects={projects.filter((p) => !allocations.some((a) => a.project_code === p.project_code))}
+            placeholder="Search or select a project…" />
+          <div className="mt-3 flex gap-2">
+            <button onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
+              className="flex-1 rounded-xl py-2 text-sm font-bold text-white disabled:opacity-60" style={{ background: '#0c3b8f' }}>
+              {addProjectBusy ? 'Adding…' : 'Add Project'}
+            </button>
+            <button onClick={() => { setAddProjectOpen(false); setAddProjectCode(''); }}
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAddProjectOpen(true)}
+          className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
+          + Add Project
+        </button>
+      )}
+    </div>
+  );
+
+  const manualProjectSetupDisabled = clockMode === 'projects' && projectRows.some((r) => !r.code);
 
   return (
     <div className="p-8">
@@ -530,58 +700,7 @@ export default function AttendancePage() {
                 </span>
               </div>
 
-              {!clockedIn && (
-                <>
-                  <div className="mb-6">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">What are you clocking in for?</label>
-                    <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
-                      <button type="button" onClick={() => setClockMode('general')}
-                        className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'general' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-                        General (non-project)
-                      </button>
-                      <button type="button" onClick={() => setClockMode('projects')}
-                        className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'projects' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-                        Project(s)
-                      </button>
-                    </div>
-                  </div>
-
-                  {clockMode === 'projects' && (
-                    <div className="mb-6">
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="block text-sm font-semibold text-slate-700">How many projects today?</label>
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => setProjectCount(numProjects - 1)}
-                            className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">−</button>
-                          <span className="w-6 text-center text-sm font-semibold text-slate-800">{numProjects}</span>
-                          <button type="button" onClick={() => setProjectCount(numProjects + 1)}
-                            className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">+</button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-400 mb-4">Hours default to an even split of an 8-hour day — you can overwrite any of them.</p>
-                      <div className="space-y-4">
-                        {projectRows.map((row, i) => (
-                          <div key={i} className="flex gap-3 items-start">
-                            <div className="flex-1 min-w-0">
-                              <ProjectSearchSelect
-                                value={row.code}
-                                onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
-                                projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
-                                placeholder={`Project ${i + 1}…`}
-                              />
-                            </div>
-                            <div className="w-24 flex-shrink-0">
-                              <input type="number" min="0.25" step="0.25" value={row.hours}
-                                onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
-                                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+              {!clockedIn && projectSetupUI}
 
               {!clockedIn && (
                 <div className="mb-6">
@@ -592,100 +711,7 @@ export default function AttendancePage() {
                 </div>
               )}
 
-              {clockedIn && (
-                <div className="mb-6 space-y-3">
-                  {allocations.map((a) => {
-                    const isActive = a.status === 'ACTIVE';
-                    const isCompleted = a.status === 'COMPLETED';
-                    const elapsedHrs = isActive && a.started_at ? (nowTick - new Date(a.started_at).getTime()) / 3600000 : 0;
-                    const pct = isCompleted ? 100 : Math.min(100, Math.round((elapsedHrs / Math.max(a.allocated_hours, 0.01)) * 100));
-                    const overBudget = isActive && elapsedHrs >= a.allocated_hours;
-                    return (
-                      <div key={a.allocation_id}
-                        className={`rounded-2xl border p-4 ${isActive ? 'border-blue-300 bg-blue-50/40' : isCompleted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className={`text-sm font-semibold ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                            {projectLabel(a.project_code, projects)}
-                          </span>
-                          <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                            isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
-                            : isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
-                          }`}>
-                            {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
-                          </span>
-                        </div>
-
-                        {!isCompleted && (
-                          <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden mb-2">
-                            <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between text-xs text-slate-500">
-                          {editingAllocId === a.allocation_id ? (
-                            <div className="flex items-center gap-2">
-                              <input type="number" min="0.25" step="0.25" autoFocus value={editingHoursVal}
-                                onChange={(e) => setEditingHoursVal(e.target.value)}
-                                className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
-                              <button onClick={() => handleSaveEditHours(a.allocation_id)} className="text-blue-700 font-semibold">Save</button>
-                              <button onClick={() => setEditingAllocId(null)} className="text-slate-400">Cancel</button>
-                            </div>
-                          ) : (
-                            <span>
-                              {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
-                              {!isCompleted && (
-                                <button onClick={() => { setEditingAllocId(a.allocation_id); setEditingHoursVal(String(a.allocated_hours)); }}
-                                  className="ml-2 text-[#0c3b8f] font-semibold">Edit</button>
-                              )}
-                            </span>
-                          )}
-
-                          {!isCompleted && extendingAllocId !== a.allocation_id && (
-                            <div className="flex items-center gap-3">
-                              <button onClick={() => handleCompleteAllocation(a.allocation_id)} className="text-slate-600 font-semibold hover:text-slate-900">
-                                Mark Complete Now
-                              </button>
-                              <button onClick={() => { setExtendingAllocId(a.allocation_id); setExtendHoursVal('1'); }} className="text-[#0c3b8f] font-semibold">
-                                Extend
-                              </button>
-                            </div>
-                          )}
-                          {extendingAllocId === a.allocation_id && (
-                            <div className="flex items-center gap-2">
-                              <input type="number" min="0.25" step="0.25" autoFocus value={extendHoursVal}
-                                onChange={(e) => setExtendHoursVal(e.target.value)}
-                                className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
-                              <button onClick={() => handleExtend(a.allocation_id)} className="text-blue-700 font-semibold">+Add</button>
-                              <button onClick={() => setExtendingAllocId(null)} className="text-slate-400">Cancel</button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {addProjectOpen ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 p-4">
-                      <ProjectSearchSelect value={addProjectCode} onChange={setAddProjectCode}
-                        projects={projects.filter((p) => !allocations.some((a) => a.project_code === p.project_code))}
-                        placeholder="Search or select a project…" />
-                      <div className="mt-3 flex gap-2">
-                        <button onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
-                          className="flex-1 rounded-xl py-2 text-sm font-bold text-white disabled:opacity-60" style={{ background: '#0c3b8f' }}>
-                          {addProjectBusy ? 'Adding…' : 'Add Project'}
-                        </button>
-                        <button onClick={() => { setAddProjectOpen(false); setAddProjectCode(''); }}
-                          className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => setAddProjectOpen(true)}
-                      className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
-                      + Add Project
-                    </button>
-                  )}
-                </div>
-              )}
+              {clockedIn && allocationTracker}
 
               {clockedIn && (
                 <div className="mb-6">
@@ -717,11 +743,7 @@ export default function AttendancePage() {
             </>
           ) : !clockedIn ? (
             <form onSubmit={handleManualClockIn}>
-              <div className="mb-5">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                <ProjectSearchSelect value={manualProject} onChange={setManualProject} projects={projects}
-                  placeholder="Search or select a project…" />
-              </div>
+              {projectSetupUI}
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
@@ -740,7 +762,7 @@ export default function AttendancePage() {
                   placeholder="What are you working on?"
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <button type="submit" disabled={manualSubmitting || !manualProject || !manualClockInTime}
+              <button type="submit" disabled={manualSubmitting || !manualClockInTime || manualProjectSetupDisabled}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                 style={{ background: '#0c3b8f' }}>
                 {manualSubmitting ? 'Please wait…' : 'LOG CLOCK IN'}
@@ -755,10 +777,10 @@ export default function AttendancePage() {
             <form onSubmit={handleManualClockOut}>
               <div className="mb-5 flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full bg-green-500" />
-                <span className="text-sm font-semibold text-green-700">
-                  Active session — {selectedProject === GENERAL ? 'General (non-project)' : selectedProject}
-                </span>
+                <span className="text-sm font-semibold text-green-700">Active session</span>
               </div>
+
+              {allocationTracker}
 
               <div className="mb-5 grid grid-cols-2 gap-4">
                 <div>
