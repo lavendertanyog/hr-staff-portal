@@ -511,13 +511,9 @@ export default function AttendancePage() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <label className="block text-sm font-semibold text-slate-700">How many projects today?</label>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setProjectCount(numProjects - 1)}
-                className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">−</button>
-              <span className="w-6 text-center text-sm font-semibold text-slate-800">{numProjects}</span>
-              <button type="button" onClick={() => setProjectCount(numProjects + 1)}
-                className="w-8 h-8 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">+</button>
-            </div>
+            <input type="number" min="1" max="8" value={numProjects}
+              onChange={(e) => setProjectCount(parseInt(e.target.value, 10) || 1)}
+              className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <p className="text-xs text-slate-400 mb-4">Hours default to an even split of an 8-hour day — you can overwrite any of them.</p>
           <div className="space-y-4">
