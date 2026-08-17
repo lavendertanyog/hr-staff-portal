@@ -524,7 +524,7 @@ export default function AttendancePage() {
                 <div className="w-24 flex-shrink-0">
                   <input type="number" min="0.25" step="0.25" value={row.hours}
                     onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full rounded-xl border-2 border-[#D1D5DB] px-3 py-3 text-sm text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                 </div>
               </div>
             ))}
@@ -556,16 +556,14 @@ export default function AttendancePage() {
                 }`}>
                   {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
                 </span>
-                {!isCompleted && (
-                  <button type="button" title="Edit"
-                    onClick={() => { setModalAllocId(a.allocation_id); setModalHoursVal(String(a.allocated_hours)); }}
-                    className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                  </button>
-                )}
+                <button type="button" title="Edit"
+                  onClick={() => { setModalAllocId(a.allocation_id); setModalHoursVal(String(a.allocated_hours)); }}
+                  className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
               </div>
             </div>
 
