@@ -503,7 +503,7 @@ export default function AttendancePage() {
   const projectSetupUI = (
     <>
       <div className="mb-6">
-        <label className="block text-sm font-semibold text-slate-700 mb-2">What are you clocking in for?</label>
+        <label className="block text-sm font-semibold text-slate-700 mb-3">Select Work Type</label>
         <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
           <button type="button" onClick={() => setClockMode('general')}
             className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'general' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
@@ -516,46 +516,54 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {clockMode === 'projects' && (
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-slate-700 mb-1">Projects</label>
-          <p className="text-xs text-slate-400 mb-4">Hours default to an even split of an 8-hour day — you can overwrite any of them.</p>
-          <div className="space-y-4">
-            {projectRows.map((row, i) => (
-              <div key={i} className="flex gap-3 items-start">
-                <div className="flex-1 min-w-0">
-                  <ProjectSearchSelect
-                    value={row.code}
-                    onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
-                    projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
-                    placeholder={`Project ${i + 1}…`}
-                  />
+      {clockMode === 'projects' && (() => {
+        const totalRowHours = projectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+        const totalMatches = Math.abs(totalRowHours - STANDARD_WORKDAY_HOURS) < 0.01;
+        return (
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-slate-700 mb-1">Projects</label>
+            <p className="text-xs text-slate-400 mb-4">Hours auto-split across projects. Adjust as needed.</p>
+            <div className="space-y-4">
+              {projectRows.map((row, i) => (
+                <div key={i} className="flex gap-3 items-center">
+                  <div className="flex-1 min-w-0">
+                    <ProjectSearchSelect
+                      value={row.code}
+                      onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
+                      projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
+                      placeholder="Select or search project…"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <input type="number" min="0.25" step="0.25" value={row.hours}
+                      onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
+                      className="w-16 rounded-xl border-2 border-[#D1D5DB] px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                    <span className="text-xs text-slate-400">hrs</span>
+                  </div>
+                  {projectRows.length > 1 && (
+                    <button type="button" onClick={() => removeProjectRow(i)} title="Remove project"
+                      className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
-                <div className="w-24 flex-shrink-0">
-                  <input type="number" min="0.25" step="0.25" value={row.hours}
-                    onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
-                    className="w-full rounded-xl border-2 border-[#D1D5DB] px-3 py-3 text-sm text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                </div>
-                {projectRows.length > 1 && (
-                  <button type="button" onClick={() => removeProjectRow(i)} title="Remove project"
-                    className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
+            <p className={`mt-3 text-xs font-semibold ${totalMatches ? 'text-slate-400' : 'text-amber-600'}`}>
+              Total: {totalRowHours.toFixed(2)} / {STANDARD_WORKDAY_HOURS} hrs
+            </p>
+            {projectRows.length < 8 && (
+              <button type="button" onClick={addProjectRow}
+                className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
+                + Add Project
+              </button>
+            )}
           </div>
-          {projectRows.length < 8 && (
-            <button type="button" onClick={addProjectRow}
-              className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
-              + Add Project
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 
@@ -786,7 +794,7 @@ export default function AttendancePage() {
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
                   <textarea rows={2} value={clockRemark} onChange={(e) => setClockRemark(e.target.value)}
-                    placeholder="What are you working on?"
+                    placeholder="Add notes or specific tasks (optional)"
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
@@ -797,23 +805,25 @@ export default function AttendancePage() {
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
                   <textarea rows={2} value={clockRemark} onChange={(e) => setClockRemark(e.target.value)}
-                    placeholder="What are you working on?"
+                    placeholder="Add notes or specific tasks (optional)"
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
 
-              {!clockedIn ? (
-                <button onClick={handleClockIn} disabled={loading}
-                  className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
-                  style={{ background: '#0c3b8f' }}>
-                  {loading ? 'Please wait…' : 'CLOCK IN'}
-                </button>
-              ) : (
-                <button onClick={handleClockOut} disabled={loading}
-                  className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                  {loading ? 'Please wait…' : 'CLOCK OUT'}
-                </button>
-              )}
+              <div className="flex sm:justify-end">
+                {!clockedIn ? (
+                  <button onClick={handleClockIn} disabled={loading}
+                    className="w-full sm:w-auto sm:min-w-[160px] rounded-2xl py-3.5 px-6 text-sm font-bold text-white disabled:opacity-60 transition"
+                    style={{ background: '#0c3b8f' }}>
+                    {loading ? 'Please wait…' : 'Clock In'}
+                  </button>
+                ) : (
+                  <button onClick={handleClockOut} disabled={loading}
+                    className="w-full sm:w-auto sm:min-w-[160px] rounded-2xl py-3.5 px-6 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                    {loading ? 'Please wait…' : 'Clock Out'}
+                  </button>
+                )}
+              </div>
 
               {message && (
                 <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
