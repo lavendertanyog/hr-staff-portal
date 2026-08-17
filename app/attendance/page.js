@@ -397,6 +397,16 @@ export default function AttendancePage() {
     setModalAllocId(null);
   };
 
+  const handleReopen = async () => {
+    if (!modalAllocId || !user?.user_id) return;
+    try {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}/reopen`, { userId: user.user_id });
+      setAllocations(res.data?.data?.allocations || []);
+      notifiedRef.current.delete(modalAllocId);
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to reopen project.', 'error'); }
+    finally { setModalAllocId(null); }
+  };
+
   const handleSaveEditHours = async () => {
     const hrs = parseFloat(modalHoursVal);
     if (!user?.user_id || !modalAllocId || !hrs || hrs <= 0) { setModalAllocId(null); return; }
@@ -534,8 +544,18 @@ export default function AttendancePage() {
     </>
   );
 
+  const totalAllocatedHours = allocations.reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
+
   const allocationTracker = (
     <div className="mb-6 space-y-3">
+      {allocations.length > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Allocated</span>
+          <span className={`text-xs font-bold ${totalAllocatedHours > STANDARD_WORKDAY_HOURS ? 'text-amber-600' : 'text-slate-600'}`}>
+            {fmtHours(totalAllocatedHours)} of {fmtHours(STANDARD_WORKDAY_HOURS)}
+          </span>
+        </div>
+      )}
       {allocations.map((a) => {
         const isActive = a.status === 'ACTIVE';
         const isCompleted = a.status === 'COMPLETED';
@@ -575,6 +595,7 @@ export default function AttendancePage() {
 
             <span className="text-xs text-slate-500">
               {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
+              {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· edited after completion</span>}
             </span>
           </div>
         );
@@ -652,7 +673,12 @@ export default function AttendancePage() {
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
                 Save Changes
               </button>
-              {!isCompletedModal && (
+              {isCompletedModal ? (
+                <button onClick={handleReopen}
+                  className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
+                  Reopen — I'm still working on this
+                </button>
+              ) : (
                 <button onClick={handleModalMarkComplete}
                   className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
                   Mark as Completed
