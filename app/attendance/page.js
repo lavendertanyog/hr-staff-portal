@@ -248,8 +248,8 @@ export default function AttendancePage() {
           // across devices/reloads).
           const activeBlock = (active.allocations || []).find((a) => a.status === 'ACTIVE');
           if (activeBlock && activeBlock.started_at && !activeBlock.notified_at) {
-            const elapsedHrs = (Date.now() - new Date(activeBlock.started_at).getTime()) / 3600000;
-            if (elapsedHrs >= Number(activeBlock.allocated_hours) && !notifiedRef.current.has(activeBlock.allocation_id)) {
+            const trackedHrs = Number(activeBlock.accumulated_hours || 0) + (Date.now() - new Date(activeBlock.started_at).getTime()) / 3600000;
+            if (trackedHrs >= Number(activeBlock.allocated_hours) && !notifiedRef.current.has(activeBlock.allocation_id)) {
               notifiedRef.current.add(activeBlock.allocation_id);
               playBeep();
               showBrowserNotification(
@@ -559,9 +559,12 @@ export default function AttendancePage() {
       {allocations.map((a) => {
         const isActive = a.status === 'ACTIVE';
         const isCompleted = a.status === 'COMPLETED';
-        const elapsedHrs = isActive && a.started_at ? (nowTick - new Date(a.started_at).getTime()) / 3600000 : 0;
-        const pct = isCompleted ? 100 : Math.min(100, Math.round((elapsedHrs / Math.max(a.allocated_hours, 0.01)) * 100));
-        const overBudget = isActive && elapsedHrs >= a.allocated_hours;
+        const accumulated = Number(a.accumulated_hours || 0);
+        const liveElapsedHrs = isActive && a.started_at ? (nowTick - new Date(a.started_at).getTime()) / 3600000 : 0;
+        const trackedHrs = accumulated + liveElapsedHrs;
+        const pct = isCompleted ? 100 : Math.min(100, Math.round((trackedHrs / Math.max(a.allocated_hours, 0.01)) * 100));
+        const overBudget = isActive && trackedHrs >= a.allocated_hours;
+        const isPaused = !isActive && !isCompleted && accumulated > 0;
         return (
           <div key={a.allocation_id}
             className={`rounded-2xl border p-4 ${isActive ? 'border-blue-300 bg-blue-50/40' : isCompleted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
@@ -572,9 +575,9 @@ export default function AttendancePage() {
               <div className="flex items-center gap-2">
                 <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
                   isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
-                  : isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
+                  : isCompleted ? 'bg-slate-200 text-slate-500' : isPaused ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
                 }`}>
-                  {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
+                  {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : isPaused ? 'Paused' : 'Pending'}
                 </span>
                 <button type="button" title="Edit"
                   onClick={() => { setModalAllocId(a.allocation_id); setModalHoursVal(String(a.allocated_hours)); }}
@@ -589,12 +592,13 @@ export default function AttendancePage() {
 
             {!isCompleted && (
               <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden mb-2">
-                <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
+                <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-amber-500' : isPaused ? 'bg-indigo-400' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
               </div>
             )}
 
             <span className="text-xs text-slate-500">
-              {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
+              {(isActive || isPaused) ? `${fmtHours(trackedHrs)} tracked of ` : ''}{fmtHours(a.allocated_hours)} planned
+              {isPaused && ' (paused)'}
               {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· edited after completion</span>}
             </span>
           </div>
@@ -627,7 +631,10 @@ export default function AttendancePage() {
         if (!modalAlloc) return null;
         const isActive = modalAlloc.status === 'ACTIVE';
         const isCompletedModal = modalAlloc.status === 'COMPLETED';
-        const modalElapsedHrs = isActive && modalAlloc.started_at ? (nowTick - new Date(modalAlloc.started_at).getTime()) / 3600000 : 0;
+        const modalAccumulated = Number(modalAlloc.accumulated_hours || 0);
+        const modalIsPaused = !isActive && !isCompletedModal && modalAccumulated > 0;
+        const modalLiveElapsedHrs = isActive && modalAlloc.started_at ? (nowTick - new Date(modalAlloc.started_at).getTime()) / 3600000 : 0;
+        const modalTrackedHrs = modalAccumulated + modalLiveElapsedHrs;
         const stepHours = (delta) => {
           const current = parseFloat(modalHoursVal) || 0;
           setModalHoursVal(String(Math.max(0.25, Math.round((current + delta) * 100) / 100)));
@@ -647,16 +654,19 @@ export default function AttendancePage() {
               <div className="flex items-center gap-2 mb-1.5 pr-8">
                 <p className="text-lg font-semibold text-slate-900">Edit Allocation</p>
                 <span className={`flex-shrink-0 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                  isActive ? 'bg-blue-100 text-blue-700' : isCompletedModal ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
+                  isActive ? 'bg-blue-100 text-blue-700' : isCompletedModal ? 'bg-slate-200 text-slate-500' : modalIsPaused ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
                 }`}>
-                  {isActive ? 'Active' : isCompletedModal ? 'Completed' : 'Pending'}
+                  {isActive ? 'Active' : isCompletedModal ? 'Completed' : modalIsPaused ? 'Paused' : 'Pending'}
                 </span>
               </div>
               <p className="text-sm font-medium text-slate-700">{projectLabel(modalAlloc.project_code, projects)}</p>
-              {isActive && (
-                <p className="text-[11px] text-slate-400 mt-1 mb-8">{fmtHours(modalElapsedHrs)} tracked so far of {fmtHours(modalAlloc.allocated_hours)} planned</p>
+              {(isActive || modalIsPaused) ? (
+                <p className="text-[11px] text-slate-400 mt-1 mb-8">
+                  {fmtHours(modalTrackedHrs)} tracked so far of {fmtHours(modalAlloc.allocated_hours)} planned{modalIsPaused ? ' (paused)' : ''}
+                </p>
+              ) : (
+                <div className="mb-8" />
               )}
-              {!isActive && <div className="mb-8" />}
 
               <label className="block text-sm font-semibold text-slate-700 mb-2">Allocated Hours</label>
               <div className="flex items-center gap-2 mb-6">
