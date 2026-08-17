@@ -167,10 +167,8 @@ export default function AttendancePage() {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addProjectCode, setAddProjectCode] = useState('');
   const [addProjectBusy, setAddProjectBusy] = useState(false);
-  const [editingAllocId, setEditingAllocId] = useState(null);
-  const [editingHoursVal, setEditingHoursVal] = useState('');
-  const [extendingAllocId, setExtendingAllocId] = useState(null);
-  const [extendHoursVal, setExtendHoursVal] = useState('1');
+  const [modalAllocId, setModalAllocId] = useState(null);
+  const [modalHoursVal, setModalHoursVal] = useState('');
   const notifiedRef = useRef(new Set());
 
   // Manual entry state — same active session, allocation setup, and tracker as Clock In/Out,
@@ -393,26 +391,21 @@ export default function AttendancePage() {
     } catch (e) { showMsg(e.response?.data?.error || 'Failed to mark project complete.', 'error'); }
   };
 
-  const handleSaveEditHours = async (allocationId) => {
-    const hrs = parseFloat(editingHoursVal);
-    if (!user?.user_id || !hrs || hrs <= 0) { setEditingAllocId(null); return; }
-    try {
-      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, { userId: user.user_id, allocatedHours: hrs });
-      setAllocations((prev) => prev.map((a) => (a.allocation_id === allocationId ? res.data?.data : a)));
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
-    finally { setEditingAllocId(null); }
+  const handleModalMarkComplete = async () => {
+    if (!modalAllocId) return;
+    await handleCompleteAllocation(modalAllocId);
+    setModalAllocId(null);
   };
 
-  const handleExtend = async (allocationId) => {
-    const hrs = parseFloat(extendHoursVal);
-    if (!user?.user_id || !hrs || hrs <= 0) { setExtendingAllocId(null); return; }
+  const handleSaveEditHours = async () => {
+    const hrs = parseFloat(modalHoursVal);
+    if (!user?.user_id || !modalAllocId || !hrs || hrs <= 0) { setModalAllocId(null); return; }
     try {
-      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/extend`, { userId: user.user_id, extraHours: hrs });
-      const updated = res.data?.data;
-      setAllocations((prev) => prev.map((a) => (a.allocation_id === allocationId ? updated : a)));
-      notifiedRef.current.delete(allocationId);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to extend time.', 'error'); }
-    finally { setExtendingAllocId(null); }
+      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, { userId: user.user_id, allocatedHours: hrs });
+      setAllocations((prev) => prev.map((a) => (a.allocation_id === modalAllocId ? res.data?.data : a)));
+      notifiedRef.current.delete(modalAllocId);
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
+    finally { setModalAllocId(null); }
   };
 
   const handleManualClockIn = async (e) => {
@@ -556,12 +549,24 @@ export default function AttendancePage() {
               <span className={`text-sm font-semibold ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
                 {projectLabel(a.project_code, projects)}
               </span>
-              <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
-                : isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
-              }`}>
-                {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                  isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
+                  : isCompleted ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : 'Pending'}
+                </span>
+                {!isCompleted && (
+                  <button type="button" title="Edit"
+                    onClick={() => { setModalAllocId(a.allocation_id); setModalHoursVal(String(a.allocated_hours)); }}
+                    className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             {!isCompleted && (
@@ -570,45 +575,9 @@ export default function AttendancePage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              {editingAllocId === a.allocation_id ? (
-                <div className="flex items-center gap-2">
-                  <input type="number" min="0.25" step="0.25" autoFocus value={editingHoursVal}
-                    onChange={(e) => setEditingHoursVal(e.target.value)}
-                    className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
-                  <button onClick={() => handleSaveEditHours(a.allocation_id)} className="text-blue-700 font-semibold">Save</button>
-                  <button onClick={() => setEditingAllocId(null)} className="text-slate-400">Cancel</button>
-                </div>
-              ) : (
-                <span>
-                  {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
-                  {!isCompleted && (
-                    <button onClick={() => { setEditingAllocId(a.allocation_id); setEditingHoursVal(String(a.allocated_hours)); }}
-                      className="ml-2 text-[#0c3b8f] font-semibold">Edit</button>
-                  )}
-                </span>
-              )}
-
-              {!isCompleted && extendingAllocId !== a.allocation_id && (
-                <div className="flex items-center gap-3">
-                  <button onClick={() => handleCompleteAllocation(a.allocation_id)} className="text-slate-600 font-semibold hover:text-slate-900">
-                    Mark Complete Now
-                  </button>
-                  <button onClick={() => { setExtendingAllocId(a.allocation_id); setExtendHoursVal('1'); }} className="text-[#0c3b8f] font-semibold">
-                    Extend
-                  </button>
-                </div>
-              )}
-              {extendingAllocId === a.allocation_id && (
-                <div className="flex items-center gap-2">
-                  <input type="number" min="0.25" step="0.25" autoFocus value={extendHoursVal}
-                    onChange={(e) => setExtendHoursVal(e.target.value)}
-                    className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-xs" />
-                  <button onClick={() => handleExtend(a.allocation_id)} className="text-blue-700 font-semibold">+Add</button>
-                  <button onClick={() => setExtendingAllocId(null)} className="text-slate-400">Cancel</button>
-                </div>
-              )}
-            </div>
+            <span className="text-xs text-slate-500">
+              {isActive ? `${fmtHours(elapsedHrs)} of ` : ''}{fmtHours(a.allocated_hours)} planned
+            </span>
           </div>
         );
       })}
@@ -633,6 +602,36 @@ export default function AttendancePage() {
           + Add Project
         </button>
       )}
+
+      {modalAllocId && (() => {
+        const modalAlloc = allocations.find((a) => a.allocation_id === modalAllocId);
+        if (!modalAlloc) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4" onClick={() => setModalAllocId(null)}>
+            <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 mb-1">Edit Allocation</p>
+              <p className="text-base font-semibold text-slate-800 mb-5">{projectLabel(modalAlloc.project_code, projects)}</p>
+
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Planned hours</label>
+              <input type="number" min="0.25" step="0.25" autoFocus value={modalHoursVal}
+                onChange={(e) => setModalHoursVal(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm mb-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+              <button onClick={handleSaveEditHours}
+                className="w-full rounded-2xl py-3 text-sm font-bold text-white transition mb-3" style={{ background: '#0c3b8f' }}>
+                Save Hours
+              </button>
+              <button onClick={handleModalMarkComplete}
+                className="w-full rounded-2xl py-3 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition mb-3">
+                Mark Complete Now
+              </button>
+              <button onClick={() => setModalAllocId(null)} className="w-full text-sm font-semibold text-slate-400 hover:text-slate-600">
+                Cancel
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
