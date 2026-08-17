@@ -427,7 +427,7 @@ function ProgressContent() {
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div className="flex flex-wrap gap-1.5">
-                {['ALL', 'PENDING', 'MANAGER_APPROVED', 'APPROVED', 'REJECTED'].map((s) => (
+                {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((s) => (
                   <button key={s} type="button" onClick={() => setBudgetStatusFilter(s)}
                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                       budgetStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
