@@ -328,7 +328,7 @@ function ProgressContent() {
               <div className="flex gap-1.5">
                 {['ALL', 'ONGOING', 'COMPLETED', 'DELETED'].map((s) => (
                   <button key={s} type="button" onClick={() => setProgressStatusFilter(s)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                       progressStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                     }`}>
                     {s.charAt(0) + s.slice(1).toLowerCase()}
