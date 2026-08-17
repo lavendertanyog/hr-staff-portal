@@ -158,7 +158,6 @@ export default function AttendancePage() {
 
   // Multi-project clock-in setup (before clocking in)
   const [clockMode, setClockMode] = useState('general'); // 'general' | 'projects'
-  const [numProjects, setNumProjects] = useState(1);
   const [projectRows, setProjectRows] = useState([{ code: '', hours: STANDARD_WORKDAY_HOURS }]);
 
   // Active session allocation tracking (after clocking in)
@@ -298,14 +297,24 @@ export default function AttendancePage() {
 
   const showMsg = (text, type) => { setMessage(text); setMessageType(type); };
 
-  // Rebuild the project rows whenever the count changes, keeping any codes already picked
-  // and re-splitting the standard 8h workday evenly across the new count.
-  const setProjectCount = (n) => {
-    const count = Math.max(1, Math.min(8, n));
-    setNumProjects(count);
+  // Re-split the standard 8h workday evenly across however many rows exist, keeping any codes
+  // already picked. Used whenever a row is added or removed.
+  const resplitProjectRows = (rows) => {
+    const hours = evenSplitHours(rows.length);
+    return rows.map((r, i) => ({ ...r, hours: hours[i] }));
+  };
+
+  const addProjectRow = () => {
     setProjectRows((prev) => {
-      const hours = evenSplitHours(count);
-      return Array.from({ length: count }, (_, i) => ({ code: prev[i]?.code || '', hours: hours[i] }));
+      if (prev.length >= 8) return prev;
+      return resplitProjectRows([...prev, { code: '', hours: 0 }]);
+    });
+  };
+
+  const removeProjectRow = (index) => {
+    setProjectRows((prev) => {
+      if (prev.length <= 1) return prev;
+      return resplitProjectRows(prev.filter((_, i) => i !== index));
     });
   };
 
@@ -509,12 +518,7 @@ export default function AttendancePage() {
 
       {clockMode === 'projects' && (
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <label className="block text-sm font-semibold text-slate-700">How many projects today?</label>
-            <input type="number" min="1" max="8" value={numProjects}
-              onChange={(e) => setProjectCount(parseInt(e.target.value, 10) || 1)}
-              className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
+          <label className="block text-sm font-semibold text-slate-700 mb-1">Projects</label>
           <p className="text-xs text-slate-400 mb-4">Hours default to an even split of an 8-hour day — you can overwrite any of them.</p>
           <div className="space-y-4">
             {projectRows.map((row, i) => (
@@ -532,9 +536,24 @@ export default function AttendancePage() {
                     onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: parseFloat(e.target.value) || 0 } : r)))}
                     className="w-full rounded-xl border-2 border-[#D1D5DB] px-3 py-3 text-sm text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                 </div>
+                {projectRows.length > 1 && (
+                  <button type="button" onClick={() => removeProjectRow(i)} title="Remove project"
+                    className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
               </div>
             ))}
           </div>
+          {projectRows.length < 8 && (
+            <button type="button" onClick={addProjectRow}
+              className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
+              + Add Project
+            </button>
+          )}
         </div>
       )}
     </>
