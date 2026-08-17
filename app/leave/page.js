@@ -136,6 +136,7 @@ export default function LeavePage() {
   const [mcFile, setMcFile] = useState(null);
   const [mcFileError, setMcFileError] = useState('');
   const [uploadingMcId, setUploadingMcId] = useState(null);
+  const [leaveCategoryFilter, setLeaveCategoryFilter] = useState('ALL');
 
   useEffect(() => {
     try {
@@ -223,6 +224,8 @@ export default function LeavePage() {
     } catch (err) { setMessage(err.response?.data?.error || 'MC upload failed.'); setMessageType('error'); }
     finally { setUploadingMcId(null); }
   };
+
+  const filteredRequests = leaveCategoryFilter === 'ALL' ? requests : requests.filter((r) => r.category === leaveCategoryFilter);
 
   const handleCancelLeave = async (leaveId) => {
     if (!user?.user_id) return;
@@ -339,10 +342,7 @@ export default function LeavePage() {
 
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
-            <p className="mt-1 font-semibold text-slate-900">My Requests</p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
           {!showForm && (
             <button onClick={() => { setShowForm(true); setMessage(''); setEditingId(null); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
@@ -351,10 +351,27 @@ export default function LeavePage() {
             </button>
           )}
         </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+          <div className="flex flex-wrap gap-1.5">
+            {['ALL', ...CATEGORIES].map((c) => (
+              <button key={c} type="button" onClick={() => setLeaveCategoryFilter(c)}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+                  leaveCategoryFilter === c ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}>
+                {c.charAt(0) + c.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {loading ? (
-          <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
-        ) : requests.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-slate-400">No leave requests yet.</p>
+          <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
+        ) : filteredRequests.length === 0 ? (
+          <p className="px-6 py-8 text-sm text-slate-400 text-center">
+            {requests.length === 0 ? 'No leave requests yet.' : 'No leave requests match this filter.'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -370,7 +387,7 @@ export default function LeavePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {requests.map((r) => (
+                {filteredRequests.map((r) => (
                   <tr key={r.leave_id} className="hover:bg-slate-50 transition">
                     <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.category}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.start_date).slice(0, 10)}</td>
