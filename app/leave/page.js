@@ -225,7 +225,10 @@ export default function LeavePage() {
     finally { setUploadingMcId(null); }
   };
 
-  const filteredRequests = leaveCategoryFilter === 'ALL' ? requests : requests.filter((r) => r.category === leaveCategoryFilter);
+  // Cancelling now hard-deletes the row on the backend, so a CANCELLED status should never show
+  // up here — filtered out defensively in case any legacy soft-cancelled rows are still visible.
+  const activeRequests = requests.filter((r) => String(r.workflow_status).toUpperCase() !== 'CANCELLED');
+  const filteredRequests = leaveCategoryFilter === 'ALL' ? activeRequests : activeRequests.filter((r) => r.category === leaveCategoryFilter);
 
   const handleCancelLeave = async (leaveId) => {
     if (!user?.user_id) return;
@@ -370,7 +373,7 @@ export default function LeavePage() {
           <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
         ) : filteredRequests.length === 0 ? (
           <p className="px-6 py-8 text-sm text-slate-400 text-center">
-            {requests.length === 0 ? 'No leave requests yet.' : 'No leave requests match this filter.'}
+            {activeRequests.length === 0 ? 'No leave requests yet.' : 'No leave requests match this filter.'}
           </p>
         ) : (
           <div className="overflow-x-auto">
