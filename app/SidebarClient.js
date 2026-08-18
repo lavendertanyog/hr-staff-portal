@@ -118,7 +118,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
       {/* Logo */}
       <div className="flex items-center justify-center" style={{ padding: '28px 24px 20px' }}>
         {!logoMissing ? (
-          <img src="/nextan-logo.png" alt="Nextan" width={120} height={36}
+          <img src="/nextan-logo.png" alt="Nextan" width={150} height={45}
             className="object-contain"
             onError={() => setLogoMissing(true)} />
         ) : (

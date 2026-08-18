@@ -91,7 +91,7 @@ export default function StaffLoginPage() {
           style={{ background: 'linear-gradient(160deg, #1a56db 0%, #1235a8 60%, #0c2075 100%)' }}>
           <div className="absolute left-10 top-10">
             {!logoMissing ? (
-              <Image src="/nextan-logo.png" alt="Nextan" width={120} height={40}
+              <Image src="/nextan-logo.png" alt="Nextan" width={150} height={50}
                 className="object-contain brightness-0 invert" onError={() => setLogoMissing(true)} />
             ) : (
               <span className="text-xs uppercase tracking-[0.24em] text-white/80">NEXTAN</span>

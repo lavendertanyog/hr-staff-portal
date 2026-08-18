@@ -62,8 +62,8 @@ export default function AppShell({ children }) {
               Menu
             </button>
             {!logoMissing ? (
-              <img src="/nextan-logo.png" alt="Nextan" width={100} height={32}
-                className="h-8 w-auto max-w-[100px] object-contain"
+              <img src="/nextan-logo.png" alt="Nextan" width={130} height={42}
+                className="h-10 w-auto max-w-[130px] object-contain"
                 onError={() => setLogoMissing(true)} />
             ) : (
               <span className="text-sm font-bold text-blue-900 tracking-tight">nextan</span>
