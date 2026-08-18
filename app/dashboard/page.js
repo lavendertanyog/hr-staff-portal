@@ -157,8 +157,17 @@ export default function StaffDashboard() {
       keyFor = (day) => day;
       labelFor = (k) => new Date(k + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' });
     } else {
-      const weekSet = new Set(logRows.map((r) => isoWeekStart(r.day)));
-      keys = Array.from(weekSet).sort();
+      // Every week bucket spanning the fetched range, not just weeks that happen to have
+      // logged hours — otherwise a sparsely-filled month shows only one or two bars.
+      keys = [];
+      let cursor = isoWeekStart(fetchStart);
+      const lastWeekStart = isoWeekStart(fetchEnd);
+      while (cursor <= lastWeekStart) {
+        keys.push(cursor);
+        const d = new Date(cursor + 'T00:00:00');
+        d.setDate(d.getDate() + 7);
+        cursor = toISO(d);
+      }
       keyFor = (day) => isoWeekStart(day);
       labelFor = (k) => formatShort(k);
     }
@@ -173,7 +182,7 @@ export default function StaffDashboard() {
       series[r.project_code].data[i] += Number(r.hours || 0);
     });
     return { labels: keys.map(labelFor), bucketKeys: keys, series };
-  }, [logRows, projectNames, logRange, weekOffset]);
+  }, [logRows, projectNames, logRange, weekOffset, fetchStart, fetchEnd]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -197,7 +206,11 @@ export default function StaffDashboard() {
         plugins: { legend: { display: false } },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8' } },
-          y: { stacked: true, grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8', callback: (v) => `${v}h` } },
+          y: {
+            stacked: true, min: 0, suggestedMax: 8,
+            grid: { color: '#e2e8f0' },
+            ticks: { color: '#94a3b8', stepSize: 1, precision: 0, callback: (v) => `${v}h` },
+          },
         },
         onClick: (evt, elements) => {
           if (!elements.length) return;
