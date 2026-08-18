@@ -41,6 +41,18 @@ function formatShort(dateStr) {
   return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
 }
 
+// Calendar month `offset` months from the current one (0 = this month, negative = earlier).
+// Clamped to the current calendar year and never past today.
+function monthRange(offset) {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const start = new Date(target.getFullYear(), target.getMonth(), 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0);
+  const end = lastDay < now ? lastDay : now;
+  const label = target.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' });
+  return { start: toISO(start), end: toISO(end), label };
+}
+
 // Monday of the ISO week containing dateStr — used to bucket days into weeks for the
 // "Month" view.
 function isoWeekStart(dateStr) {
@@ -63,10 +75,10 @@ export default function StaffDashboard() {
   // Weekly project log
   const [logRange, setLogRange] = useState('week'); // 'week' | 'month'
   const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
   const [logRows, setLogRows] = useState([]);
   const [logLoading, setLogLoading] = useState(true);
   const [hiddenProjects, setHiddenProjects] = useState(() => new Set());
-  const [includeGeneral, setIncludeGeneral] = useState(true);
   const [selectedBucket, setSelectedBucket] = useState(null);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
@@ -113,16 +125,17 @@ export default function StaffDashboard() {
   }, [activeSession, nowTick]);
 
   // Fetch range for the weekly project log whenever the range/offset changes.
-  const { fetchStart, fetchEnd } = useMemo(() => {
+  const { fetchStart, fetchEnd, rangeLabel } = useMemo(() => {
     if (logRange === 'week') {
       const { start, end } = weekRange(weekOffset);
-      return { fetchStart: start, fetchEnd: end };
+      return { fetchStart: start, fetchEnd: end, rangeLabel: `${formatShort(start)} – ${formatShort(end)}` };
     }
-    const end = todayISO();
-    const startDate = new Date();
-    startDate.setDate(1);
-    return { fetchStart: toISO(startDate), fetchEnd: end };
-  }, [logRange, weekOffset]);
+    const { start, end, label } = monthRange(monthOffset);
+    return { fetchStart: start, fetchEnd: end, rangeLabel: label };
+  }, [logRange, weekOffset, monthOffset]);
+
+  // Earliest month navigable is January of the current year.
+  const minMonthOffset = -new Date().getMonth();
 
   useEffect(() => {
     if (!user?.user_id) return;
@@ -184,7 +197,7 @@ export default function StaffDashboard() {
   useEffect(() => {
     if (!chartRef.current) return;
     if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; }
-    const visibleNames = projectNames.filter((n) => (includeGeneral || n !== 'General') && !hiddenProjects.has(n));
+    const visibleNames = projectNames.filter((n) => !hiddenProjects.has(n));
     chartInstance.current = new Chart(chartRef.current, {
       type: 'bar',
       data: {
@@ -216,7 +229,7 @@ export default function StaffDashboard() {
       },
     });
     return () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } };
-  }, [labels, series, projectNames, hiddenProjects, includeGeneral, bucketKeys]);
+  }, [labels, series, projectNames, hiddenProjects, bucketKeys]);
 
   const selectedBucketRows = useMemo(() => {
     if (!selectedBucket) return null;
@@ -285,7 +298,20 @@ export default function StaffDashboard() {
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Weekly Project Log</p>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            <div className="flex items-center gap-1">
+              <button type="button"
+                onClick={() => (logRange === 'week' ? setWeekOffset((o) => o - 1) : setMonthOffset((o) => Math.max(minMonthOffset, o - 1)))}
+                disabled={logRange === 'month' && monthOffset <= minMonthOffset}
+                aria-label={logRange === 'week' ? 'Previous week' : 'Previous month'}
+                className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">‹</button>
+              <span className="text-xs text-slate-500 min-w-[104px] text-center">{rangeLabel}</span>
+              <button type="button"
+                onClick={() => (logRange === 'week' ? setWeekOffset((o) => Math.min(0, o + 1)) : setMonthOffset((o) => Math.min(0, o + 1)))}
+                disabled={logRange === 'week' ? weekOffset >= 0 : monthOffset >= 0}
+                aria-label={logRange === 'week' ? 'Next week' : 'Next month'}
+                className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">›</button>
+            </div>
             <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
               {[{ k: 'week', l: 'Week' }, { k: 'month', l: 'Month' }].map((r) => (
                 <button key={r.k} type="button" onClick={() => setLogRange(r.k)}
@@ -294,21 +320,12 @@ export default function StaffDashboard() {
                 </button>
               ))}
             </div>
-            {logRange === 'week' && (
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={() => setWeekOffset((o) => o - 1)} aria-label="Previous week"
-                  className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center">‹</button>
-                <span className="text-xs text-slate-500 min-w-[104px] text-center">{formatShort(fetchStart)} – {formatShort(fetchEnd)}</span>
-                <button type="button" onClick={() => setWeekOffset((o) => Math.min(0, o + 1))} disabled={weekOffset >= 0} aria-label="Next week"
-                  className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">›</button>
-              </div>
-            )}
           </div>
         </div>
 
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <div className="flex flex-wrap gap-2">
-            {projectNames.filter((n) => n !== 'General').map((name, idx) => {
+            {projectNames.map((name, idx) => {
               const on = !hiddenProjects.has(name);
               return (
                 <button key={name} type="button"
@@ -324,10 +341,6 @@ export default function StaffDashboard() {
               );
             })}
           </div>
-          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 cursor-pointer">
-            <input type="checkbox" checked={includeGeneral} onChange={(e) => setIncludeGeneral(e.target.checked)} />
-            Include general time
-          </label>
         </div>
 
         {logLoading ? (
