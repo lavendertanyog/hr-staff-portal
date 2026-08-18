@@ -42,7 +42,7 @@ function formatShort(dateStr) {
 }
 
 // Monday of the ISO week containing dateStr — used to bucket days into weeks for the
-// "Last 4 weeks" / "Month" views.
+// "Month" view.
 function isoWeekStart(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const dow = (d.getDay() + 6) % 7;
@@ -61,7 +61,7 @@ export default function StaffDashboard() {
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   // Weekly project log
-  const [logRange, setLogRange] = useState('week'); // 'week' | '4weeks' | 'month'
+  const [logRange, setLogRange] = useState('week'); // 'week' | 'month'
   const [weekOffset, setWeekOffset] = useState(0);
   const [logRows, setLogRows] = useState([]);
   const [logLoading, setLogLoading] = useState(true);
@@ -120,10 +120,7 @@ export default function StaffDashboard() {
     }
     const end = todayISO();
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - (logRange === '4weeks' ? 27 : 29));
-    if (logRange === 'month') {
-      startDate.setDate(1);
-    }
+    startDate.setDate(1);
     return { fetchStart: toISO(startDate), fetchEnd: end };
   }, [logRange, weekOffset]);
 
@@ -146,7 +143,7 @@ export default function StaffDashboard() {
   const colorFor = (name, idx) => (name === 'General' ? GENERAL_COLOR : PROJECT_COLORS[idx % PROJECT_COLORS.length]);
 
   // Bucket the raw day-level rows into chart categories: actual days for "week", weekly
-  // totals for "4 weeks"/"month" (too many days to show individually).
+  // totals for "month" (too many days to show individually).
   const { labels, bucketKeys, series } = useMemo(() => {
     let keys, labelFor, keyFor;
     if (logRange === 'week') {
@@ -290,7 +287,7 @@ export default function StaffDashboard() {
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Weekly Project Log</p>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-              {[{ k: 'week', l: 'Week' }, { k: '4weeks', l: 'Last 4 weeks' }, { k: 'month', l: 'Month' }].map((r) => (
+              {[{ k: 'week', l: 'Week' }, { k: 'month', l: 'Month' }].map((r) => (
                 <button key={r.k} type="button" onClick={() => setLogRange(r.k)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${logRange === r.k ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
                   {r.l}
