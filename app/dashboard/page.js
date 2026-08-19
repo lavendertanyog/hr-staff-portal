@@ -153,7 +153,20 @@ export default function StaffDashboard() {
     return names;
   }, [logRows]);
 
-  const colorFor = (name, idx) => (name === 'General' ? GENERAL_COLOR : PROJECT_COLORS[idx % PROJECT_COLORS.length]);
+  // Stable legend of the staff member's assigned projects — shown regardless of whether the
+  // currently selected period has any logged hours, so it doesn't appear/disappear as you page
+  // through weeks/months. 'General' is never toggleable, so it's excluded here.
+  const chipProjectNames = useMemo(() => {
+    const fromProjects = projects.map((p) => p.project_code);
+    const fromLogs = projectNames.filter((n) => n !== 'General');
+    return Array.from(new Set([...fromProjects, ...fromLogs])).sort((a, b) => a.localeCompare(b));
+  }, [projects, projectNames]);
+
+  const colorFor = (name) => {
+    if (name === 'General') return GENERAL_COLOR;
+    const idx = chipProjectNames.indexOf(name);
+    return PROJECT_COLORS[(idx >= 0 ? idx : 0) % PROJECT_COLORS.length];
+  };
 
   // Bucket the raw day-level rows into chart categories: actual days for "week", weekly
   // totals for "month" (too many days to show individually).
@@ -182,8 +195,8 @@ export default function StaffDashboard() {
       labelFor = (k) => formatShort(k);
     }
     const series = {};
-    projectNames.forEach((name, idx) => {
-      series[name] = { color: colorFor(name, idx), data: keys.map(() => 0) };
+    projectNames.forEach((name) => {
+      series[name] = { color: colorFor(name), data: keys.map(() => 0) };
     });
     logRows.forEach((r) => {
       const k = keyFor(r.day);
@@ -325,7 +338,7 @@ export default function StaffDashboard() {
 
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <div className="flex flex-wrap gap-2">
-            {projectNames.map((name, idx) => {
+            {chipProjectNames.map((name) => {
               const on = !hiddenProjects.has(name);
               return (
                 <button key={name} type="button"
@@ -335,7 +348,7 @@ export default function StaffDashboard() {
                     return next;
                   })}
                   className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition ${on ? 'bg-white border border-slate-300 text-slate-700' : 'bg-transparent border border-slate-200 text-slate-400'}`}>
-                  <span className="w-2 h-2 rounded-sm" style={{ background: on ? colorFor(name, idx) : '#cbd5e1' }} />
+                  <span className="w-2 h-2 rounded-sm" style={{ background: on ? colorFor(name) : '#cbd5e1' }} />
                   {name}
                 </button>
               );
