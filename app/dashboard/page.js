@@ -153,14 +153,12 @@ export default function StaffDashboard() {
     return names;
   }, [logRows]);
 
-  // Stable legend of the staff member's assigned projects — shown regardless of whether the
-  // currently selected period has any logged hours, so it doesn't appear/disappear as you page
-  // through weeks/months. 'General' is never toggleable, so it's excluded here.
-  const chipProjectNames = useMemo(() => {
-    const fromProjects = projects.map((p) => p.project_code);
-    const fromLogs = projectNames.filter((n) => n !== 'General');
-    return Array.from(new Set([...fromProjects, ...fromLogs])).sort((a, b) => a.localeCompare(b));
-  }, [projects, projectNames]);
+  // Legend of projects with logged hours in the current period. 'General' is never
+  // toggleable, so it's excluded here.
+  const chipProjectNames = useMemo(
+    () => projectNames.filter((n) => n !== 'General'),
+    [projectNames]
+  );
 
   const colorFor = (name) => {
     if (name === 'General') return GENERAL_COLOR;
