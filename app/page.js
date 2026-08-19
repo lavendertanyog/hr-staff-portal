@@ -62,7 +62,7 @@ export default function StaffLoginPage() {
       }
       if (mode === 'signup') {
         setMode('login'); setPassword(''); setConfirmPassword(''); setLoading(false);
-        setError('Account created. Awaiting Account Manager approval before you can sign in.');
+        setError('Account created. Awaiting admin approval from rebecca.lau@nextan.com.sg to approve before signing in.');
         return;
       }
       const user = { ...payload.data, full_name: deriveNameFromEmail(norm) };
