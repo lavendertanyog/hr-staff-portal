@@ -188,14 +188,6 @@ export default function AttendancePage() {
   const [modalHoursVal, setModalHoursVal] = useState('');
   const notifiedRef = useRef(new Set());
 
-  // Post-clock-out summary — a collapsed "worked Xh" row that expands to the planned-vs-actual
-  // breakdown, instead of a permanent banner sentence. Separate state per tab since either can
-  // be the one that just clocked out.
-  const [clockOutSummary, setClockOutSummary] = useState(null);
-  const [clockOutExpanded, setClockOutExpanded] = useState(false);
-  const [manualClockOutSummary, setManualClockOutSummary] = useState(null);
-  const [manualClockOutExpanded, setManualClockOutExpanded] = useState(false);
-
   // Manual entry state — same active session, allocation setup, and tracker as Clock In/Out,
   // just typed date/times instead of live "now".
   const [manualClockInDate, setManualClockInDate] = useState(() => todayISOStr());
@@ -352,7 +344,7 @@ export default function AttendancePage() {
     if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
-    setLoading(true); setClockOutSummary(null);
+    setLoading(true);
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
@@ -385,23 +377,14 @@ export default function AttendancePage() {
     if (!attendanceId || !user?.user_id) return;
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
+      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId, remark: clockRemark.trim() || undefined,
       });
-      const recon = res.data?.data?.reconciliation;
-      const clockedOutAllocations = res.data?.data?.allocations || [];
       setClockedIn(false); setAttendanceId(null); setClockRemark(''); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
-      setClockOutExpanded(false);
-      setClockOutSummary({
-        worked: recon?.actualWorkedHours ?? 0,
-        planned: recon?.totalAllocatedHours ?? 0,
-        mismatch: !!recon?.mismatch,
-        allocations: clockedOutAllocations,
-      });
-      showToast('Clocked out.', 'success');
+      showToast('Clocked out successfully.', 'success');
     } catch (e) { showMsg(e.response?.data?.error || 'Clock-out failed.', 'error'); }
     finally { setLoading(false); }
   };
@@ -463,7 +446,7 @@ export default function AttendancePage() {
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
     if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
     if (!manualClockInTime) { showToast('Please enter a clock-in time.', 'error'); return; }
-    setManualSubmitting(true); setManualClockOutSummary(null);
+    setManualSubmitting(true);
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
@@ -488,7 +471,7 @@ export default function AttendancePage() {
       sessionStorage.setItem('staff_attendance_id', id);
       sessionStorage.setItem('staff_attendance_project', firstCode);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
-      showToast('Clock-in logged.', 'success');
+      showToast('Clocked in successfully.', 'success');
       setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark('');
     } catch (e) { showToast(e.response?.data?.error || 'Manual clock-in failed.', 'error'); }
     finally { setManualSubmitting(false); }
@@ -501,25 +484,16 @@ export default function AttendancePage() {
     if (!manualClockOutTime) { showToast('Please enter a clock-out time.', 'error'); return; }
     setManualSubmitting(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
+      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId,
         clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
         remark: manualRemark.trim() || undefined,
       });
-      const recon = res.data?.data?.reconciliation;
-      const clockedOutAllocations = res.data?.data?.allocations || [];
       setClockedIn(false); setAttendanceId(null); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
-      setManualClockOutExpanded(false);
-      setManualClockOutSummary({
-        worked: recon?.actualWorkedHours ?? 0,
-        planned: recon?.totalAllocatedHours ?? 0,
-        mismatch: !!recon?.mismatch,
-        allocations: clockedOutAllocations,
-      });
-      showToast('Clocked out.', 'success');
+      showToast('Clocked out successfully.', 'success');
       setManualClockOutDate(todayISOStr()); setManualClockOutTime(nowHHMM()); setManualRemark('');
     } catch (e) { showToast(e.response?.data?.error || 'Manual clock-out failed.', 'error'); }
     finally { setManualSubmitting(false); }
@@ -582,51 +556,6 @@ export default function AttendancePage() {
   })();
 
   const totalAllocatedHours = allocations.reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
-
-  // Collapsed "worked Xh" row shown right after clock-out, expandable to the planned-vs-actual
-  // breakdown — replaces the old permanent banner sentence.
-  const renderClockOutSummary = (summary, expanded, onToggle) => {
-    if (!summary) return null;
-    return (
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 overflow-hidden">
-        <button type="button" onClick={onToggle}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm text-left">
-          <span className="text-slate-600">
-            Clocked out <span className="text-slate-300">·</span> worked {fmtHours(summary.worked)}
-          </span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className={`text-slate-400 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}>
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-        {expanded && (
-          <div className="px-4 pb-4 border-t border-slate-200 pt-3">
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-              <span>Planned</span>
-              <span className="font-semibold text-slate-700">{fmtHours(summary.planned)}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
-              <span>Actually worked</span>
-              <span className="font-semibold text-slate-700">{fmtHours(summary.worked)}</span>
-            </div>
-            {summary.allocations.length > 0 && (
-              <ul className="space-y-1.5 border-t border-slate-200 pt-3">
-                {summary.allocations.map((a) => (
-                  <li key={a.allocation_id} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">{projectLabel(a.project_code, projects)}</span>
-                    <span className="text-slate-600">{fmtHours(a.allocated_hours)} planned</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {summary.mismatch && (
-              <p className="mt-3 text-xs text-amber-600">Planned and actual hours don't match.</p>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const allocationTracker = (
     <div className="mb-6 space-y-3">
@@ -888,8 +817,6 @@ export default function AttendancePage() {
                     {loading ? 'Please wait…' : 'Clock Out'}
                   </button>
                 )}
-
-              {renderClockOutSummary(clockOutSummary, clockOutExpanded, () => setClockOutExpanded((v) => !v))}
             </>
           ) : !clockedIn ? (
             <form onSubmit={handleManualClockIn}>
@@ -917,7 +844,6 @@ export default function AttendancePage() {
                 style={{ background: '#0c3b8f' }}>
                 {manualSubmitting ? 'Please wait…' : 'Clock In'}
               </button>
-              {renderClockOutSummary(manualClockOutSummary, manualClockOutExpanded, () => setManualClockOutExpanded((v) => !v))}
             </form>
           ) : (
             <form onSubmit={handleManualClockOut}>
