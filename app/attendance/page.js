@@ -184,10 +184,13 @@ export default function AttendancePage() {
 
   const todayISO = todayISOStr();
 
-  // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full local datetime string
+  // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full datetime string with an
+  // explicit Singapore offset (+08:00, no DST) — without it, the naive string's timezone is
+  // ambiguous between the browser, the backend's validation check, and Postgres's own cast,
+  // and those can disagree about which instant it actually represents.
   const combineDateTime = (dateStr, timeStr) => {
     if (!dateStr || !timeStr) return null;
-    return `${dateStr}T${timeStr}:00`;
+    return `${dateStr}T${timeStr}:00+08:00`;
   };
 
   // Refresh the manual entry date/time to "now" whenever the fields are still at their
