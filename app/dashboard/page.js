@@ -356,13 +356,14 @@ export default function StaffDashboard() {
 
         {logLoading ? (
           <p className="text-sm text-slate-400 text-center py-10">Loading…</p>
-        ) : logRows.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-10">No clocked hours in this period yet.</p>
         ) : (
           <>
             <div style={{ position: 'relative', width: '100%', height: 220 }}>
               <canvas ref={chartRef} role="img" aria-label="Stacked bar chart of hours worked per project" />
             </div>
+            {logRows.length === 0 && (
+              <p className="mt-2 text-xs text-slate-400 text-center">No clocked hours in this period yet.</p>
+            )}
             {selectedBucket && selectedBucketRows && (
               <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
