@@ -101,9 +101,17 @@ function nowHHMM() {
 
 const STANDARD_WORKDAY_HOURS = 8;
 
+// Splits the workday into values on the same 0.25h grid as the hour input's `step`, so every
+// row is always a value the browser accepts — a plain 8/count division (e.g. 8/3 = 2.67) lands
+// off-grid and trips the input's native step validation. Any leftover quarter-hours from the
+// division go to the first few rows so the total always comes out to exactly 8.
 function evenSplitHours(count) {
-  const each = Math.round((STANDARD_WORKDAY_HOURS / Math.max(count, 1)) * 100) / 100;
-  return Array.from({ length: count }, () => each);
+  const STEP = 0.25;
+  const n = Math.max(count, 1);
+  const totalSteps = Math.round(STANDARD_WORKDAY_HOURS / STEP);
+  const base = Math.floor(totalSteps / n);
+  const remainder = totalSteps - base * n;
+  return Array.from({ length: n }, (_, i) => Math.round((base + (i < remainder ? 1 : 0)) * STEP * 100) / 100);
 }
 
 function fmtHours(h) {
@@ -519,7 +527,7 @@ export default function AttendancePage() {
                   placeholder="Select or search project…"
                   error={rowError}
                 />
-                {rowError && <p className="mt-1 text-xs text-red-500">*Complete this field</p>}
+                {rowError && <p className="mt-1 text-xs text-red-500">* Complete this field</p>}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <input type="number" min="0.25" step="0.25" value={row.hours}

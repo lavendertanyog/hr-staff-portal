@@ -154,11 +154,13 @@ export default function StaffDashboard() {
   }, [logRows]);
 
   // Legend of projects with logged hours in the current period. 'General' is never
-  // toggleable, so it's excluded here.
-  const chipProjectNames = useMemo(
-    () => projectNames.filter((n) => n !== 'General'),
-    [projectNames]
-  );
+  // toggleable, so it's excluded here. When the period has no logged hours at all, fall back
+  // to the staff member's assigned projects so the legend/color key still has something to show
+  // instead of disappearing along with the chart.
+  const chipProjectNames = useMemo(() => {
+    if (projectNames.length > 0) return projectNames.filter((n) => n !== 'General');
+    return projects.map((p) => p.project_code);
+  }, [projectNames, projects]);
 
   const colorFor = (name) => {
     if (name === 'General') return GENERAL_COLOR;
