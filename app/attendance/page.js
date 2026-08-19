@@ -628,16 +628,16 @@ export default function AttendancePage() {
             projects={projects.filter((p) => !allocations.some((a) => a.project_code === p.project_code))}
             placeholder="Search or select a project…" />
           <div className="mt-3 flex gap-2">
-            <button onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
+            <button type="button" onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
               className="flex-1 rounded-xl py-2 text-sm font-bold text-white disabled:opacity-60" style={{ background: '#0c3b8f' }}>
               {addProjectBusy ? 'Adding…' : 'Add Project'}
             </button>
-            <button onClick={() => { setAddProjectOpen(false); setAddProjectCode(''); }}
+            <button type="button" onClick={() => { setAddProjectOpen(false); setAddProjectCode(''); }}
               className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
           </div>
         </div>
       ) : (
-        <button onClick={() => setAddProjectOpen(true)}
+        <button type="button" onClick={() => setAddProjectOpen(true)}
           className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
           + Add Project
         </button>
@@ -696,17 +696,17 @@ export default function AttendancePage() {
                   className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">+</button>
               </div>
 
-              <button onClick={handleSaveEditHours}
+              <button type="button" onClick={handleSaveEditHours}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
                 Save Changes
               </button>
               {isCompletedModal ? (
-                <button onClick={handleReopen}
+                <button type="button" onClick={handleReopen}
                   className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
                   Reopen — I'm still working on this
                 </button>
               ) : (
-                <button onClick={handleModalMarkComplete}
+                <button type="button" onClick={handleModalMarkComplete}
                   className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
                   Mark as Completed
                 </button>
