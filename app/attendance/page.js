@@ -519,7 +519,7 @@ export default function AttendancePage() {
                   placeholder="Select or search project…"
                   error={rowError}
                 />
-                {rowError && <p className="mt-1 text-xs text-red-500">Complete this field</p>}
+                {rowError && <p className="mt-1 text-xs text-red-500">*Complete this field</p>}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <input type="number" min="0.25" step="0.25" value={row.hours}
@@ -710,8 +710,6 @@ export default function AttendancePage() {
     </div>
   );
 
-  const manualProjectSetupDisabled = projectRows.some((r) => !r.code);
-
   return (
     <div className="p-8">
       <div className="mb-10 flex items-start gap-3">
@@ -836,7 +834,7 @@ export default function AttendancePage() {
                   placeholder="Add notes or specific tasks (optional)"
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <button type="submit" disabled={manualSubmitting || !manualClockInTime || manualProjectSetupDisabled}
+              <button type="submit" disabled={manualSubmitting || !manualClockInTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                 style={{ background: '#0c3b8f' }}>
                 {manualSubmitting ? 'Please wait…' : 'Clock In'}
