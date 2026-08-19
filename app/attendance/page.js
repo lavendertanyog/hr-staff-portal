@@ -369,7 +369,7 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
       if (recon?.mismatch) {
-        showMsg(`Clocked out. Note: you planned ${fmtHours(recon.totalAllocatedHours)} across your projects, but actually worked ${fmtHours(recon.actualWorkedHours)}. Recorded hours use your actual clock time.`, 'success');
+        showMsg(`Clocked out. Note: you planned ${fmtHours(recon.totalAllocatedHours)} across your projects, but actually worked ${fmtHours(recon.actualWorkedHours)}.`, 'success');
       } else {
         showMsg('Clocked out. Hours have been recorded.', 'success');
       }
@@ -483,7 +483,7 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
       if (recon?.mismatch) {
-        setManualMessage(`Clock-out logged. Note: you planned ${fmtHours(recon.totalAllocatedHours)} across your projects, but actually worked ${fmtHours(recon.actualWorkedHours)}. Recorded hours use your actual clock time.`);
+        setManualMessage(`Clock-out logged. Note: you planned ${fmtHours(recon.totalAllocatedHours)} across your projects, but actually worked ${fmtHours(recon.actualWorkedHours)}.`);
       } else {
         setManualMessage('Clock-out logged. Hours have been recorded.');
       }
