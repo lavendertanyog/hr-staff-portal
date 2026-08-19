@@ -162,9 +162,16 @@ export default function AttendancePage() {
   const [clockedIn, setClockedIn] = useState(false);
   const [attendanceId, setAttendanceId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
+
+  // Toast notifications — small auto-dismissing pill instead of a persistent banner.
+  const [toast, setToast] = useState(null); // { text, type }
+  const toastTimeoutRef = useRef(null);
+  const showToast = (text, type) => {
+    setToast({ text, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
 
   // Multi-project clock-in setup (before clocking in) — defaults to a single General row;
   // General is just another option in the project picker, not a separate mode.
@@ -197,8 +204,6 @@ export default function AttendancePage() {
   const [manualClockOutTime, setManualClockOutTime] = useState(() => nowHHMM());
   const [manualRemark, setManualRemark] = useState('');
   const [manualSubmitting, setManualSubmitting] = useState(false);
-  const [manualMessage, setManualMessage] = useState('');
-  const [manualMessageType, setManualMessageType] = useState('');
   const [showHelp, setShowHelp] = useState(false);
 
   const todayISO = todayISOStr();
@@ -317,7 +322,7 @@ export default function AttendancePage() {
       .then((r) => setProjects(r.data?.data || [])).catch(() => {});
   }, [user?.user_id]);
 
-  const showMsg = (text, type) => { setMessage(text); setMessageType(type); };
+  const showMsg = (text, type) => showToast(text, type);
 
   // Re-split the standard 8h workday evenly across however many rows exist, keeping any codes
   // already picked. Used whenever a row is added or removed.
@@ -347,7 +352,7 @@ export default function AttendancePage() {
     if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
-    setLoading(true); setMessage(''); setClockOutSummary(null);
+    setLoading(true); setClockOutSummary(null);
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
@@ -378,7 +383,7 @@ export default function AttendancePage() {
 
   const handleClockOut = async () => {
     if (!attendanceId || !user?.user_id) return;
-    setLoading(true); setMessage('');
+    setLoading(true);
     try {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId, remark: clockRemark.trim() || undefined,
@@ -453,11 +458,11 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!user?.user_id) return;
     if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
-    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualMessage('Please enter valid hours for every project.'); setManualMessageType('error'); return; }
+    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
-    if (!manualClockInDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
-    if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
-    setManualSubmitting(true); setManualMessage(''); setManualClockOutSummary(null);
+    if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
+    if (!manualClockInTime) { showToast('Please enter a clock-in time.', 'error'); return; }
+    setManualSubmitting(true); setManualClockOutSummary(null);
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
@@ -482,18 +487,18 @@ export default function AttendancePage() {
       sessionStorage.setItem('staff_attendance_id', id);
       sessionStorage.setItem('staff_attendance_project', firstCode);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
-      setManualMessage('Clock-in logged successfully.'); setManualMessageType('success');
+      showToast('Clock-in logged.', 'success');
       setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark('');
-    } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-in failed.'); setManualMessageType('error'); }
+    } catch (e) { showToast(e.response?.data?.error || 'Manual clock-in failed.', 'error'); }
     finally { setManualSubmitting(false); }
   };
 
   const handleManualClockOut = async (e) => {
     e.preventDefault();
     if (!attendanceId || !user?.user_id) return;
-    if (!manualClockOutDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
-    if (!manualClockOutTime) { setManualMessage('Please enter a clock-out time.'); setManualMessageType('error'); return; }
-    setManualSubmitting(true); setManualMessage('');
+    if (!manualClockOutDate) { showToast('Please select a date.', 'error'); return; }
+    if (!manualClockOutTime) { showToast('Please enter a clock-out time.', 'error'); return; }
+    setManualSubmitting(true);
     try {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId,
@@ -514,7 +519,7 @@ export default function AttendancePage() {
         allocations: clockedOutAllocations,
       });
       setManualClockOutDate(todayISOStr()); setManualClockOutTime(nowHHMM()); setManualRemark('');
-    } catch (e) { setManualMessage(e.response?.data?.error || 'Manual clock-out failed.'); setManualMessageType('error'); }
+    } catch (e) { showToast(e.response?.data?.error || 'Manual clock-out failed.', 'error'); }
     finally { setManualSubmitting(false); }
   };
 
@@ -778,6 +783,15 @@ export default function AttendancePage() {
 
   return (
     <div className="p-8">
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
+          <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
+            toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
+          }`}>
+            {toast.text}
+          </div>
+        </div>
+      )}
       <div className="mb-10 flex items-start gap-3">
         <div>
           <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
@@ -873,11 +887,6 @@ export default function AttendancePage() {
                   </button>
                 )}
 
-              {message && (
-                <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
-                  messageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
-                }`}>{message}</div>
-              )}
               {renderClockOutSummary(clockOutSummary, clockOutExpanded, () => setClockOutExpanded((v) => !v))}
             </>
           ) : !clockedIn ? (
@@ -906,11 +915,6 @@ export default function AttendancePage() {
                 style={{ background: '#0c3b8f' }}>
                 {manualSubmitting ? 'Please wait…' : 'Clock In'}
               </button>
-              {manualMessage && (
-                <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
-                  manualMessageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
-                }`}>{manualMessage}</div>
-              )}
               {renderClockOutSummary(manualClockOutSummary, manualClockOutExpanded, () => setManualClockOutExpanded((v) => !v))}
             </form>
           ) : (
@@ -944,11 +948,6 @@ export default function AttendancePage() {
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
                 {manualSubmitting ? 'Please wait…' : 'Clock Out'}
               </button>
-              {manualMessage && (
-                <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium border ${
-                  manualMessageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
-                }`}>{manualMessage}</div>
-              )}
             </form>
           )}
         </div>
