@@ -401,6 +401,7 @@ export default function AttendancePage() {
         mismatch: !!recon?.mismatch,
         allocations: clockedOutAllocations,
       });
+      showToast('Clocked out.', 'success');
     } catch (e) { showMsg(e.response?.data?.error || 'Clock-out failed.', 'error'); }
     finally { setLoading(false); }
   };
@@ -518,6 +519,7 @@ export default function AttendancePage() {
         mismatch: !!recon?.mismatch,
         allocations: clockedOutAllocations,
       });
+      showToast('Clocked out.', 'success');
       setManualClockOutDate(todayISOStr()); setManualClockOutTime(nowHHMM()); setManualRemark('');
     } catch (e) { showToast(e.response?.data?.error || 'Manual clock-out failed.', 'error'); }
     finally { setManualSubmitting(false); }
