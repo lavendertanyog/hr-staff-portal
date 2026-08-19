@@ -26,7 +26,7 @@ function requestLocationSilently() {
 const GENERAL = 'GENERAL';
 
 // Searchable project picker: type to filter, or just pick from the list — replaces a plain <select>
-function ProjectSearchSelect({ value, onChange, projects, placeholder }) {
+function ProjectSearchSelect({ value, onChange, projects, placeholder, error }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -60,7 +60,9 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder }) {
           onFocus={() => { setOpen(true); setQuery(''); }}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 ${
+            error ? 'border-red-400 focus:ring-red-400' : 'border-slate-300 focus:ring-blue-500'
+          }`}
         />
         {open && (
           <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
@@ -159,6 +161,7 @@ export default function AttendancePage() {
   // Multi-project clock-in setup (before clocking in) — defaults to a single General row;
   // General is just another option in the project picker, not a separate mode.
   const [projectRows, setProjectRows] = useState([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
+  const [projectRowsValidated, setProjectRowsValidated] = useState(false);
 
   // Active session allocation tracking (after clocking in)
   const [allocations, setAllocations] = useState([]);
@@ -308,6 +311,7 @@ export default function AttendancePage() {
   };
 
   const addProjectRow = () => {
+    setProjectRowsValidated(false);
     setProjectRows((prev) => {
       if (prev.length >= 8) return prev;
       return resplitProjectRows([...prev, { code: '', hours: 0 }]);
@@ -323,7 +327,7 @@ export default function AttendancePage() {
 
   const handleClockIn = async () => {
     if (!user?.user_id) return;
-    if (projectRows.some((r) => !r.code)) { showMsg('Please select a project for every row, or remove it.', 'error'); return; }
+    if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
     if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
@@ -429,7 +433,7 @@ export default function AttendancePage() {
   const handleManualClockIn = async (e) => {
     e.preventDefault();
     if (!user?.user_id) return;
-    if (projectRows.some((r) => !r.code)) { setManualMessage('Please select a project for every row, or remove it.'); setManualMessageType('error'); return; }
+    if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
     if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualMessage('Please enter valid hours for every project.'); setManualMessageType('error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
     if (!manualClockInDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
@@ -503,15 +507,19 @@ export default function AttendancePage() {
       <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
         <p className="text-xs text-slate-400 mb-4">Hours auto-split across projects. Adjust as needed.</p>
         <div className="space-y-4">
-          {projectRows.map((row, i) => (
-            <div key={i} className="flex gap-3 items-center">
+          {projectRows.map((row, i) => {
+            const rowError = projectRowsValidated && !row.code;
+            return (
+            <div key={i} className="flex gap-3 items-start">
               <div className="flex-1 min-w-0">
                 <ProjectSearchSelect
                   value={row.code}
-                  onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
+                  onChange={(code) => { setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r))); }}
                   projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
                   placeholder="Select or search project…"
+                  error={rowError}
                 />
+                {rowError && <p className="mt-1 text-xs text-red-500">Complete this field</p>}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <input type="number" min="0.25" step="0.25" value={row.hours}
@@ -529,7 +537,8 @@ export default function AttendancePage() {
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
         <p className={`mt-3 text-xs font-semibold ${overAllocated ? 'text-amber-600' : 'text-slate-400'}`}>
           Total: {totalRowHours.toFixed(2)} / {STANDARD_WORKDAY_HOURS} hrs
