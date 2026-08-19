@@ -156,9 +156,9 @@ export default function AttendancePage() {
   const [messageType, setMessageType] = useState('');
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
 
-  // Multi-project clock-in setup (before clocking in)
-  const [clockMode, setClockMode] = useState('general'); // 'general' | 'projects'
-  const [projectRows, setProjectRows] = useState([{ code: '', hours: STANDARD_WORKDAY_HOURS }]);
+  // Multi-project clock-in setup (before clocking in) — defaults to a single General row;
+  // General is just another option in the project picker, not a separate mode.
+  const [projectRows, setProjectRows] = useState([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
 
   // Active session allocation tracking (after clocking in)
   const [allocations, setAllocations] = useState([]);
@@ -323,14 +323,9 @@ export default function AttendancePage() {
 
   const handleClockIn = async () => {
     if (!user?.user_id) return;
-    let allocationsPayload;
-    if (clockMode === 'general') {
-      allocationsPayload = [{ projectCode: null, allocatedHours: null }];
-    } else {
-      if (projectRows.some((r) => !r.code)) { showMsg('Please select a project for every row, or remove it.', 'error'); return; }
-      if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
-      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
-    }
+    if (projectRows.some((r) => !r.code)) { showMsg('Please select a project for every row, or remove it.', 'error'); return; }
+    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
+    const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
     setLoading(true); setMessage('');
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -434,14 +429,9 @@ export default function AttendancePage() {
   const handleManualClockIn = async (e) => {
     e.preventDefault();
     if (!user?.user_id) return;
-    let allocationsPayload;
-    if (clockMode === 'general') {
-      allocationsPayload = [{ projectCode: null, allocatedHours: null }];
-    } else {
-      if (projectRows.some((r) => !r.code)) { setManualMessage('Please select a project for every row, or remove it.'); setManualMessageType('error'); return; }
-      if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualMessage('Please enter valid hours for every project.'); setManualMessageType('error'); return; }
-      allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
-    }
+    if (projectRows.some((r) => !r.code)) { setManualMessage('Please select a project for every row, or remove it.'); setManualMessageType('error'); return; }
+    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualMessage('Please enter valid hours for every project.'); setManualMessageType('error'); return; }
+    const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
     if (!manualClockInDate) { setManualMessage('Please select a date.'); setManualMessageType('error'); return; }
     if (!manualClockInTime) { setManualMessage('Please enter a clock-in time.'); setManualMessageType('error'); return; }
     setManualSubmitting(true); setManualMessage('');
@@ -505,70 +495,54 @@ export default function AttendancePage() {
 
   // Shared between Clock In/Out and Manual Entry — both hit the same clock-in/out endpoints and
   // the same active session, so the setup form and the live tracker work identically either way.
-  const projectSetupUI = (
-    <>
+  // "General (non-project)" is just the first option in each project picker, not a separate mode.
+  const projectSetupUI = (() => {
+    const totalRowHours = projectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+    const overAllocated = totalRowHours > STANDARD_WORKDAY_HOURS + 0.01;
+    return (
       <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
-        <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
-          <button type="button" onClick={() => setClockMode('general')}
-            className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'general' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-            General (non-project)
-          </button>
-          <button type="button" onClick={() => setClockMode('projects')}
-            className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${clockMode === 'projects' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-            Project(s)
-          </button>
-        </div>
-
-        {clockMode === 'projects' && (() => {
-          const totalRowHours = projectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
-          const overAllocated = totalRowHours > STANDARD_WORKDAY_HOURS + 0.01;
-          return (
-            <div className="mt-5">
-              <p className="text-xs text-slate-400 mb-4">Hours auto-split across projects. Adjust as needed.</p>
-              <div className="space-y-4">
-                {projectRows.map((row, i) => (
-                  <div key={i} className="flex gap-3 items-center">
-                    <div className="flex-1 min-w-0">
-                      <ProjectSearchSelect
-                        value={row.code}
-                        onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
-                        projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
-                        placeholder="Select or search project…"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <input type="number" min="0.25" step="0.25" value={row.hours}
-                        onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
-                        className="w-16 rounded-xl border-2 border-[#D1D5DB] bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                      <span className="text-xs text-slate-400">hrs</span>
-                    </div>
-                    {projectRows.length > 1 && (
-                      <button type="button" onClick={() => removeProjectRow(i)} title="Remove project"
-                        className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                ))}
+        <p className="text-xs text-slate-400 mb-4">Hours auto-split across projects. Adjust as needed.</p>
+        <div className="space-y-4">
+          {projectRows.map((row, i) => (
+            <div key={i} className="flex gap-3 items-center">
+              <div className="flex-1 min-w-0">
+                <ProjectSearchSelect
+                  value={row.code}
+                  onChange={(code) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r)))}
+                  projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
+                  placeholder="Select or search project…"
+                />
               </div>
-              <p className={`mt-3 text-xs font-semibold ${overAllocated ? 'text-amber-600' : 'text-slate-400'}`}>
-                Total: {totalRowHours.toFixed(2)} / {STANDARD_WORKDAY_HOURS} hrs
-              </p>
-              {projectRows.length < 8 && (
-                <button type="button" onClick={addProjectRow}
-                  className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
-                  + Add Project
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <input type="number" min="0.25" step="0.25" value={row.hours}
+                  onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
+                  className="w-16 rounded-xl border-2 border-[#D1D5DB] bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <span className="text-xs text-slate-400">hrs</span>
+              </div>
+              {projectRows.length > 1 && (
+                <button type="button" onClick={() => removeProjectRow(i)} title="Remove project"
+                  className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
                 </button>
               )}
             </div>
-          );
-        })()}
+          ))}
+        </div>
+        <p className={`mt-3 text-xs font-semibold ${overAllocated ? 'text-amber-600' : 'text-slate-400'}`}>
+          Total: {totalRowHours.toFixed(2)} / {STANDARD_WORKDAY_HOURS} hrs
+        </p>
+        {projectRows.length < 8 && (
+          <button type="button" onClick={addProjectRow}
+            className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
+            + Add Project
+          </button>
+        )}
       </div>
-    </>
-  );
+    );
+  })();
 
   const totalAllocatedHours = allocations.reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
 
@@ -727,7 +701,7 @@ export default function AttendancePage() {
     </div>
   );
 
-  const manualProjectSetupDisabled = clockMode === 'projects' && projectRows.some((r) => !r.code);
+  const manualProjectSetupDisabled = projectRows.some((r) => !r.code);
 
   return (
     <div className="p-8">
