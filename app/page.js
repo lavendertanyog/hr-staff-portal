@@ -21,6 +21,7 @@ export default function StaffLoginPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
   const [logoMissing, setLogoMissing] = useState(false);
 
   useEffect(() => {
@@ -29,20 +30,19 @@ export default function StaffLoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError(''); setInfoMessage('');
     const norm = email.trim().toLowerCase();
     if (!norm.endsWith('@nextan.com.sg')) { setError('Only @nextan.com.sg emails are allowed.'); return; }
     if (mode !== 'reset' && (!password || password.length < 6)) { setError('Password must be at least 6 characters.'); return; }
     if (mode === 'signup' && password !== confirmPassword) { setError('Passwords do not match.'); return; }
-    if (mode === 'reset' && (!confirmPassword || confirmPassword.length < 6)) { setError('New password must be at least 6 characters.'); return; }
 
     setLoading(true);
     try {
       const endpoint = mode === 'signup' ? '/api/v1/auth/signup'
-        : mode === 'reset' ? '/api/v1/auth/reset-password'
+        : mode === 'reset' ? '/api/v1/auth/forgot-password'
         : '/api/v1/auth/login';
       const body = mode === 'reset'
-        ? { email: norm, newPassword: confirmPassword }
+        ? { email: norm, portalUrl: window.location.origin }
         : mode === 'signup'
           ? { email: norm, password, userRole: 'staff' }
           : { email: norm, password };
@@ -57,7 +57,7 @@ export default function StaffLoginPage() {
 
       if (mode === 'reset') {
         setMode('login'); setPassword(''); setConfirmPassword(''); setLoading(false);
-        setError('Reset request submitted. An admin will approve it shortly.');
+        setInfoMessage('If an account exists for that email, a reset link has been sent — check your inbox.');
         return;
       }
       if (mode === 'signup') {
@@ -99,7 +99,7 @@ export default function StaffLoginPage() {
           </div>
           <div className="flex flex-col items-center justify-center h-full">
             <h2 className="text-3xl font-bold mb-3">Nextan Staff Portal</h2>
-            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); }}
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfoMessage(''); }}
               className="mt-8 px-5 py-2 rounded-full border border-white/40 text-sm font-medium hover:bg-white/10 transition">
               {mode === 'login' ? 'Create Account' : 'Back to Sign In'}
             </button>
@@ -109,10 +109,10 @@ export default function StaffLoginPage() {
         {/* Right white panel */}
         <div className="flex flex-col justify-center w-full md:w-1/2 bg-white p-10 md:p-12">
           <h1 className="text-4xl font-bold text-slate-900 mb-2">
-            {mode === 'login' ? 'Hello Again!' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+            {mode === 'login' ? 'Hello Again!' : mode === 'signup' ? 'Create Account' : 'Forgot Password'}
           </h1>
           <p className="text-slate-500 text-base mb-8">
-            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Register with your Nextan email' : 'Enter your email and new password'}
+            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Register with your Nextan email' : 'Enter your email and we’ll send you a reset link'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -148,11 +148,9 @@ export default function StaffLoginPage() {
             )}
 
             {/* Confirm password */}
-            {(mode === 'signup' || mode === 'reset') && (
+            {mode === 'signup' && (
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  {mode === 'reset' ? 'New Password' : 'Confirm Password'}
-                </label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Confirm Password</label>
                 <div className="relative">
                   <span className="absolute left-3 top-3.5 text-slate-400" aria-hidden>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -162,7 +160,7 @@ export default function StaffLoginPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
                   </button>
                   <input type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder={mode === 'reset' ? 'Enter your new password' : 'Confirm your password'}
+                    placeholder="Confirm your password"
                     value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full pl-9 pr-4 py-3.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                 </div>
@@ -177,7 +175,7 @@ export default function StaffLoginPage() {
                   Remember Me
                 </label>
                 <button type="button" className="text-cyan-700 hover:underline"
-                  onClick={() => { setMode('reset'); setError(''); }}>Forgot password</button>
+                  onClick={() => { setMode('reset'); setError(''); setInfoMessage(''); }}>Forgot password</button>
               </div>
             )}
 
@@ -186,9 +184,11 @@ export default function StaffLoginPage() {
             <button type="submit" disabled={loading}
               className="w-full py-3.5 rounded-xl font-bold text-white text-base transition"
               style={{ background: '#0c3b8f' }}>
-              {loading ? 'Please wait\u2026' : mode === 'login' ? 'LOGIN' : mode === 'signup' ? 'SIGN UP' : 'RESET PASSWORD'}
+              {loading ? 'Please wait\u2026' : mode === 'login' ? 'LOGIN' : mode === 'signup' ? 'SIGN UP' : 'SEND RESET LINK'}
             </button>
           </form>
+
+          {infoMessage && <p className="text-center text-emerald-700 text-sm mt-4">{infoMessage}</p>}
 
           {mode === 'login' && (
             <p className="text-center text-xs text-slate-400 mt-3">
@@ -199,15 +199,15 @@ export default function StaffLoginPage() {
           <p className="text-center text-base text-slate-700 mt-6">
             {mode === 'login' ? (
               <>No account?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('signup'); setError(''); }}>Sign up</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('signup'); setError(''); setInfoMessage(''); }}>Sign up</button>
               </>
             ) : mode === 'signup' ? (
               <>Already have an account?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); }}>Sign in</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); }}>Sign in</button>
               </>
             ) : (
               <>Remember your password?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); }}>Back to login</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); }}>Back to login</button>
               </>
             )}
           </p>
