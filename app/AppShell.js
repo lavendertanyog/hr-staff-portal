@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import SidebarClient from './SidebarClient';
+import AttendanceReminders from './AttendanceReminders';
 
 const SIDEBAR_PREFIXES = ['/dashboard', '/attendance', '/leave', '/progress', '/inbox'];
 const MOBILE_MEDIA_QUERY = '(max-width: 860px)';
@@ -49,6 +50,7 @@ export default function AppShell({ children }) {
       )}
 
       <main className="flex-1 overflow-y-auto">
+        <AttendanceReminders />
         {isMobile && (
           <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
             <button
