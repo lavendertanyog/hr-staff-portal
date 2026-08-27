@@ -32,10 +32,14 @@ function showBrowserNotification(title, body) {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
-const CONTINUE_PROMPT_HOURS = 4;
+// Warning checkpoints leading up to the hard auto-clockout deadline, both measured from the
+// last confirmation (or clock-in, if never confirmed) — so this whole cycle re-arms every time
+// Continue is pressed and keeps repeating for as long as someone stays clocked in, rather than
+// firing once per day. Each checkpoint beeps/notifies once per cycle.
+const WARNING_CHECKPOINTS_HOURS = [3.5, 3.75];
+const AUTO_CLOCKOUT_HOURS = 4;
 const LUNCH_START_HOUR = 12;
 const LUNCH_END_HOUR = 14;
-const HARD_CUTOFF_HOUR = 17.5; // 5:30pm — no "still working?" reminder ever shows after this, wall-clock SGT.
 
 function sgtNow() {
   // Singapore has no DST, so a fixed +8h offset from UTC is always correct. IMPORTANT: the
@@ -55,20 +59,28 @@ function isWeekday(sgt) {
   const day = sgt.getUTCDay(); // sgt's UTC getters hold the SGT wall-clock value (see sgtNow)
   return day !== 0 && day !== 6;
 }
-// Lunch (12pm-2pm) pauses the reminder, and it never shows again after 5:30pm that day.
+// Weekends pause the whole sequence — no prompts, no auto clock-out. No evening cutoff — with
+// the midnight backstop removed, this cycle is the only thing preventing an overnight session,
+// so it has to keep running for as long as someone is actually clocked in, into the evening.
 function isSuppressedWindow(sgt) {
-  if (!isWeekday(sgt)) return true;
+  return !isWeekday(sgt);
+}
+// Lunch (12pm-2pm) only pauses the hard auto clock-out — people are reasonably away from their
+// desk then. The "still working?" prompt keeps appearing and the countdown keeps running as
+// normal through lunch, so a 9am clock-in still gets its first checkpoint around 12:30pm; it's
+// only the forced clock-out at the 4-hour mark that's held off until lunch ends.
+function isLunchWindow(sgt) {
   const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
-  if (hourDecimal >= LUNCH_START_HOUR && hourDecimal < LUNCH_END_HOUR) return true;
-  if (hourDecimal >= HARD_CUTOFF_HOUR) return true;
-  return false;
+  return hourDecimal >= LUNCH_START_HOUR && hourDecimal < LUNCH_END_HOUR;
 }
 
 export default function AttendanceReminders() {
   const [clockInReminder, setClockInReminder] = useState(false);
-  const [stillWorkingSession, setStillWorkingSession] = useState(null); // { attendanceId, userId, slot }
+  const [stillWorkingSession, setStillWorkingSession] = useState(null); // { attendanceId, userId }
+  const [autoClockedOutNotice, setAutoClockedOutNotice] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const notifiedSlotRef = useRef(new Map()); // attendanceId -> last slot already beeped/notified for
+  const notifiedCheckpointsRef = useRef(new Map()); // attendanceId -> Set of checkpoint hours already beeped for
+  const autoClockingOutRef = useRef(new Set()); // attendanceId currently being auto-clocked-out (guards against double-fire)
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -88,18 +100,28 @@ export default function AttendanceReminders() {
 
         if (!session) {
           setStillWorkingSession(null);
-          // 8:30am clock-in reminder — only if not already dismissed today and no hours logged yet today.
+          // 8:30am clock-in reminder — repeats hourly (8:30, 9:30, 10:30, 11:30) until noon, when
+          // it stops entirely rather than continuing to nag past the point a normal shift would
+          // reasonably start. Dismissing only silences the current hourly slot, same pattern as
+          // the "still working?" checkpoints.
           const today = todaySGTString();
-          const dismissKey = `staff_clockin_reminder_dismissed_${today}`;
-          const alreadyDismissed = sessionStorage.getItem(dismissKey) === '1';
           const sgt = sgtNow();
-          const pastReminderTime = sgt.getUTCHours() > 8 || (sgt.getUTCHours() === 8 && sgt.getUTCMinutes() >= 30);
-          if (pastReminderTime && !alreadyDismissed && isWeekday(sgt)) {
-            try {
-              const logRes = await axios.get(`${API_BASE}/api/v1/attendance/project-log/${user.user_id}?start=${today}&end=${today}`);
-              const hasLoggedToday = (logRes.data?.data || []).length > 0;
-              setClockInReminder(!hasLoggedToday);
-            } catch { setClockInReminder(true); }
+          const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
+          const pastReminderTime = hourDecimal >= 8.5;
+          const beforeNoon = hourDecimal < 12;
+          if (pastReminderTime && beforeNoon && isWeekday(sgt)) {
+            const slot = Math.floor(hourDecimal - 8.5); // 0 = 8:30-9:29, 1 = 9:30-10:29, 2 = 10:30-11:29, 3 = 11:30-11:59
+            const dismissKey = `staff_clockin_dismissed_slot_${today}`;
+            const dismissedSlot = parseInt(sessionStorage.getItem(dismissKey) || '-1', 10);
+            if (slot > dismissedSlot) {
+              try {
+                const logRes = await axios.get(`${API_BASE}/api/v1/attendance/project-log/${user.user_id}?start=${today}&end=${today}`);
+                const hasLoggedToday = (logRes.data?.data || []).length > 0;
+                setClockInReminder(!hasLoggedToday);
+              } catch { setClockInReminder(true); }
+            } else {
+              setClockInReminder(false);
+            }
           } else {
             setClockInReminder(false);
           }
@@ -107,35 +129,53 @@ export default function AttendanceReminders() {
         }
 
         setClockInReminder(false);
-        // Only one check-in is needed per clocked-in session/day — the 4-hour countdown is
-        // always measured from clock-in, and once the user has genuinely pressed Continue at
-        // any point during this session, no further "still working?" prompts show for the rest
-        // of it (confirmed = last_activity_confirmed_at was bumped meaningfully past clock-in;
-        // it's only ever equal to clock-in when nobody has confirmed yet this session).
-        const clockInMs = new Date(session.clock_in_time).getTime();
+        // The 3.5h/3.75h/4h cycle is anchored to last_activity_confirmed_at, which resets every
+        // time Continue is pressed — so it keeps repeating for as long as someone stays clocked
+        // in (covers overtime), rather than firing once and going quiet for the rest of the day.
         const confirmedMs = new Date(session.last_activity_confirmed_at || session.clock_in_time).getTime();
-        const hasConfirmedThisSession = confirmedMs - clockInMs > 1000;
-        const hoursSinceClockIn = (Date.now() - clockInMs) / 3600000;
+        const hoursSinceConfirm = (Date.now() - confirmedMs) / 3600000;
 
-        if (hoursSinceClockIn >= CONTINUE_PROMPT_HOURS && !hasConfirmedThisSession) {
-          // One "slot" per elapsed hour past the 4-hour mark (4, 5, 6, ...). Dismissing only
-          // silences the current slot — it reappears once the next hour's slot begins, unless
-          // that slot falls in the lunch pause or past the hard evening cutoff.
-          const slot = Math.floor(hoursSinceClockIn);
-          const dismissKey = `staff_stillworking_dismissed_slot_${session.attendance_id}`;
-          const dismissedSlot = parseInt(sessionStorage.getItem(dismissKey) || '-1', 10);
-          if (!isSuppressedWindow(sgtNow()) && slot > dismissedSlot) {
-            setStillWorkingSession({ attendanceId: session.attendance_id, userId: user.user_id, slot });
-            // Beep + native notification exactly once per new slot, not on every 60s poll —
-            // otherwise it'd re-fire every minute for as long as the modal stays on screen.
-            const lastNotifiedSlot = notifiedSlotRef.current.get(session.attendance_id) ?? -1;
-            if (slot > lastNotifiedSlot) {
-              notifiedSlotRef.current.set(session.attendance_id, slot);
-              playBeep();
-              showBrowserNotification('Still working?', "You've been clocked in for over 4 hours. Press Continue to resume working.");
+        if (isSuppressedWindow(sgtNow())) {
+          setStillWorkingSession(null);
+          return;
+        }
+
+        const duringLunch = isLunchWindow(sgtNow());
+
+        if (hoursSinceConfirm >= AUTO_CLOCKOUT_HOURS && !duringLunch) {
+          // Hard deadline missed, and it's not lunch — auto clock-out, once.
+          if (!autoClockingOutRef.current.has(session.attendance_id)) {
+            autoClockingOutRef.current.add(session.attendance_id);
+            try {
+              await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, { userId: user.user_id, attendanceId: session.attendance_id });
+              setStillWorkingSession(null);
+              setAutoClockedOutNotice(true);
+              sessionStorage.removeItem('staff_attendance_id');
+              sessionStorage.removeItem('staff_attendance_project');
+              sessionStorage.removeItem('staff_attendance_user_id');
+            } catch {
+              autoClockingOutRef.current.delete(session.attendance_id); // retry on next poll
             }
-          } else {
-            setStillWorkingSession(null);
+          }
+          return;
+        }
+
+        // During lunch, the 4-hour mark (and beyond) is treated as just another checkpoint —
+        // the prompt keeps nagging, but the forced clock-out waits until lunch ends and the
+        // block above fires on the next poll.
+        const checkpoints = duringLunch ? [...WARNING_CHECKPOINTS_HOURS, AUTO_CLOCKOUT_HOURS] : WARNING_CHECKPOINTS_HOURS;
+        const dueCheckpoint = [...checkpoints].reverse().find((h) => hoursSinceConfirm >= h);
+        if (dueCheckpoint != null) {
+          setStillWorkingSession({ attendanceId: session.attendance_id, userId: user.user_id });
+          // Keyed by (attendanceId, confirmedMs) rather than just attendanceId, so each new
+          // confirm cycle gets its own fresh set of checkpoints to notify for.
+          const cycleKey = `${session.attendance_id}:${confirmedMs}`;
+          const notified = notifiedCheckpointsRef.current.get(cycleKey) || new Set();
+          if (!notified.has(dueCheckpoint)) {
+            notified.add(dueCheckpoint);
+            notifiedCheckpointsRef.current.set(cycleKey, notified);
+            playBeep();
+            showBrowserNotification('Still working?', "It's been 3.5 hours since your last check-in. Press Continue to keep working — you'll be automatically clocked out at 4 hours.");
           }
         } else {
           setStillWorkingSession(null);
@@ -149,14 +189,15 @@ export default function AttendanceReminders() {
   }, []);
 
   const dismissClockInReminder = () => {
-    sessionStorage.setItem(`staff_clockin_reminder_dismissed_${todaySGTString()}`, '1');
+    const sgt = sgtNow();
+    const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
+    const slot = Math.floor(hourDecimal - 8.5);
+    sessionStorage.setItem(`staff_clockin_dismissed_slot_${todaySGTString()}`, String(slot));
     setClockInReminder(false);
   };
 
   const dismissStillWorking = () => {
-    if (!stillWorkingSession) return;
-    sessionStorage.setItem(`staff_stillworking_dismissed_slot_${stillWorkingSession.attendanceId}`, String(stillWorkingSession.slot));
-    setStillWorkingSession(null);
+    setStillWorkingSession(null); // reappears on the next 60s poll if still due — just hides it for now
   };
 
   const confirmStillWorking = async () => {
@@ -164,7 +205,6 @@ export default function AttendanceReminders() {
     setConfirming(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/${stillWorkingSession.attendanceId}/confirm-continue`, { userId: stillWorkingSession.userId });
-      sessionStorage.removeItem(`staff_stillworking_dismissed_slot_${stillWorkingSession.attendanceId}`);
       setStillWorkingSession(null);
     } catch { /* leave the prompt up, will retry next poll too */ }
     finally { setConfirming(false); }
@@ -203,13 +243,24 @@ export default function AttendanceReminders() {
             </div>
             <h2 className="text-lg font-semibold text-slate-900 mb-2">Still working?</h2>
             <p className="text-sm text-slate-500 mb-6">
-              You've been clocked in for over {CONTINUE_PROMPT_HOURS} hours.<br />Press Continue to resume working.
+              It's been 3.5 hours since your last check-in.<br />Press Continue to keep working — you'll be
+              automatically clocked out at 4 hours if you don't. This checks in again every few hours if you're
+              still working.
             </p>
             <button type="button" onClick={confirmStillWorking} disabled={confirming}
               className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
               style={{ background: '#0c3b8f' }}>
               {confirming ? 'Please wait…' : 'Continue'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {autoClockedOutNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
+          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white flex items-center gap-3">
+            You were automatically clocked out after 4 hours of inactivity.
+            <button type="button" onClick={() => setAutoClockedOutNotice(false)} className="text-slate-300 hover:text-white" aria-label="Dismiss">×</button>
           </div>
         </div>
       )}

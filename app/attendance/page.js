@@ -198,6 +198,19 @@ export default function AttendancePage() {
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
+  // One-time announcement for the new clock-in reminder / "still working?" feature — dismissal
+  // is remembered per device (localStorage, not sessionStorage) so it doesn't reappear every login.
+  const [showLivenessAnnouncement, setShowLivenessAnnouncement] = useState(false);
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('staff_seen_liveness_announcement_v1')) setShowLivenessAnnouncement(true);
+    } catch {}
+  }, []);
+  const dismissLivenessAnnouncement = () => {
+    try { localStorage.setItem('staff_seen_liveness_announcement_v1', '1'); } catch {}
+    setShowLivenessAnnouncement(false);
+  };
+
   const todayISO = todayISOStr();
 
   // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full datetime string with an
@@ -723,6 +736,27 @@ export default function AttendancePage() {
           </div>
         </div>
       )}
+      {showLivenessAnnouncement && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4">
+          <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-[#0c3b8f] text-sm font-bold mt-0.5">i</div>
+          <div className="flex-1 text-sm text-blue-900">
+            <p className="font-semibold">New: clock-in reminders and "still working?" check-ins</p>
+            <p className="mt-1 text-blue-800">
+              If you haven't clocked in by 8:30am, you'll get an hourly reminder until noon. Once clocked in, you'll
+              be asked "Still working?" partway through the day, and again as the day goes on if you keep working —
+              press Continue to stay clocked in. If you don't respond, you'll be automatically clocked out after 4
+              hours since your last check-in (this pauses over lunch, 12–2pm, and on weekends).
+            </p>
+          </div>
+          <button type="button" onClick={dismissLivenessAnnouncement} aria-label="Dismiss"
+            className="flex-shrink-0 text-blue-400 hover:text-blue-700">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <div className="mb-10 flex items-start gap-3">
         <div>
           <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
@@ -746,6 +780,7 @@ export default function AttendancePage() {
                 { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
                 { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
                 { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
+                { n: '5', t: 'Clock-in & "still working?" reminders', d: 'A reminder appears hourly if you haven\'t clocked in by 8:30am. Once clocked in, you\'ll be asked to confirm you\'re still working periodically — if you miss it, you\'re auto clocked-out after 4 hours since your last check-in. This pauses over lunch (12–2pm) and on weekends.' },
               ].map((s) => (
                 <li key={s.n} className="flex gap-4">
                   <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
