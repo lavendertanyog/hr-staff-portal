@@ -124,7 +124,7 @@ export default function InboxPage() {
                   <p className="text-xs text-slate-500 mt-0.5 truncate">{item.subtitle}</p>
                   {item.created_at && (
                     <p className="text-xs text-slate-400 mt-1 truncate">
-                      {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })}
+                      {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
                     </p>
                   )}
                 </div>
@@ -158,7 +158,7 @@ export default function InboxPage() {
               <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{selectedItem.subtitle}</p>
               {selectedItem.created_at && (
                 <p className="mt-4 text-xs text-slate-400">
-                  {new Date(selectedItem.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })}
+                  {new Date(selectedItem.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
                 </p>
               )}
             </div>
