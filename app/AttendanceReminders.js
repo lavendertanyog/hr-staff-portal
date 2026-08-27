@@ -49,8 +49,15 @@ function sgtNow() {
 function todaySGTString() {
   return sgtNow().toISOString().slice(0, 10);
 }
+// Weekdays only for now — no public holiday calendar wired up yet, so a holiday that falls on
+// a weekday will still show reminders until that's scoped separately.
+function isWeekday(sgt) {
+  const day = sgt.getUTCDay(); // sgt's UTC getters hold the SGT wall-clock value (see sgtNow)
+  return day !== 0 && day !== 6;
+}
 // Lunch (12pm-2pm) pauses the reminder, and it never shows again after 5:30pm that day.
 function isSuppressedWindow(sgt) {
+  if (!isWeekday(sgt)) return true;
   const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
   if (hourDecimal >= LUNCH_START_HOUR && hourDecimal < LUNCH_END_HOUR) return true;
   if (hourDecimal >= HARD_CUTOFF_HOUR) return true;
@@ -87,7 +94,7 @@ export default function AttendanceReminders() {
           const alreadyDismissed = sessionStorage.getItem(dismissKey) === '1';
           const sgt = sgtNow();
           const pastReminderTime = sgt.getUTCHours() > 8 || (sgt.getUTCHours() === 8 && sgt.getUTCMinutes() >= 30);
-          if (pastReminderTime && !alreadyDismissed) {
+          if (pastReminderTime && !alreadyDismissed && isWeekday(sgt)) {
             try {
               const logRes = await axios.get(`${API_BASE}/api/v1/attendance/project-log/${user.user_id}?start=${today}&end=${today}`);
               const hasLoggedToday = (logRes.data?.data || []).length > 0;
