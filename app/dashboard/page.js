@@ -41,14 +41,6 @@ function formatShort(dateStr) {
   return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
 }
 
-// Labels the Week view's 0-24 hour axis as a clock instead of a duration, so "0" reads as
-// "12 AM" rather than "0h" (24 wraps back to 12 AM, matching the end of the day).
-function clockHourLabel(hour) {
-  const h = ((hour % 24) + 24) % 24;
-  const period = h < 12 ? 'AM' : 'PM';
-  const displayHour = h % 12 === 0 ? 12 : h % 12;
-  return `${displayHour} ${period}`;
-}
 
 // Calendar month `offset` months from the current one (0 = this month, negative = earlier).
 // Clamped to the current calendar year and never past today.
@@ -242,7 +234,7 @@ export default function StaffDashboard() {
                 // auto-scaling to whatever hours happen to be logged.
                 stacked: true, min: 0, max: 24,
                 grid: { color: '#e2e8f0' },
-                ticks: { color: '#94a3b8', stepSize: 4, precision: 0, callback: (v) => clockHourLabel(v) },
+                ticks: { color: '#94a3b8', stepSize: 4, precision: 0, callback: (v) => `${v}h` },
               }
             : {
                 // A week's total can exceed 24h, so let it auto-scale instead of clipping.
