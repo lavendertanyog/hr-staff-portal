@@ -8,9 +8,6 @@ import Chart from 'chart.js/auto';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
-const PROJECT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
-const GENERAL_COLOR = '#898781';
-
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ');
@@ -54,15 +51,6 @@ function monthRange(offset) {
   return { start: toISO(start), end: toISO(end), label };
 }
 
-// Monday of the ISO week containing dateStr — used to bucket days into weeks for the
-// "Month" view.
-function isoWeekStart(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  const dow = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - dow);
-  return toISO(d);
-}
-
 // SGT is a fixed UTC+8 offset (no DST), so shifting the raw instant by +8h and reading its UTC
 // parts gives the exact SGT calendar date and time-of-day, regardless of the browser's own
 // timezone — matches fmtTimeSGT's timeZone-based conversion without needing Intl for math.
@@ -101,12 +89,10 @@ export default function StaffDashboard() {
   const [logRange, setLogRange] = useState('week'); // 'week' | 'month'
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
-  const [logRows, setLogRows] = useState([]);
   const [logLoading, setLogLoading] = useState(true);
-  const [hiddenProjects, setHiddenProjects] = useState(() => new Set());
-  const [selectedBucket, setSelectedBucket] = useState(null);
-  // Week view only: real per-session clock-in/out times, used to draw the timeline as a Gantt
-  // chart (a bar positioned at its actual time of day) instead of a plain accumulated total.
+  // Real per-session clock-in/out times, used to draw the timeline as a Gantt chart (a bar
+  // positioned at its actual time of day) instead of a plain accumulated total — for both Week
+  // (7 day-rows) and Month (one row per day in the month) views.
   const [sessionRows, setSessionRows] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const chartRef = useRef(null);
@@ -169,84 +155,35 @@ export default function StaffDashboard() {
   useEffect(() => {
     if (!user?.user_id) return;
     setLogLoading(true);
-    setSelectedBucket(null);
     setSelectedSessionId(null);
-    if (logRange === 'week') {
-      axios.get(`${API_BASE}/api/v1/attendance/sessions/${user.user_id}?start=${fetchStart}&end=${fetchEnd}`)
-        .then((r) => setSessionRows(r.data?.data || []))
-        .catch(() => setSessionRows([]))
-        .finally(() => setLogLoading(false));
-    } else {
-      axios.get(`${API_BASE}/api/v1/attendance/project-log/${user.user_id}?start=${fetchStart}&end=${fetchEnd}`)
-        .then((r) => setLogRows(r.data?.data || []))
-        .catch(() => setLogRows([]))
-        .finally(() => setLogLoading(false));
-    }
+    axios.get(`${API_BASE}/api/v1/attendance/sessions/${user.user_id}?start=${fetchStart}&end=${fetchEnd}`)
+      .then((r) => setSessionRows(r.data?.data || []))
+      .catch(() => setSessionRows([]))
+      .finally(() => setLogLoading(false));
   }, [user?.user_id, fetchStart, fetchEnd, logRange]);
-
-  const projectNames = useMemo(() => {
-    const names = Array.from(new Set(logRows.map((r) => r.project_code)));
-    names.sort((a, b) => (a === 'General' ? 1 : b === 'General' ? -1 : a.localeCompare(b)));
-    return names;
-  }, [logRows]);
-
-  // Legend of projects with logged hours in the current period. 'General' is never
-  // toggleable, so it's excluded here.
-  const chipProjectNames = useMemo(
-    () => projectNames.filter((n) => n !== 'General'),
-    [projectNames]
-  );
-
-  const colorFor = (name) => {
-    if (name === 'General') return GENERAL_COLOR;
-    const idx = chipProjectNames.indexOf(name);
-    return PROJECT_COLORS[(idx >= 0 ? idx : 0) % PROJECT_COLORS.length];
-  };
-
-  // Bucket the raw day-level rows into weekly totals for "month" view (too many days to show
-  // individually). Week view no longer uses this — it renders a real timeline instead (below).
-  const { labels, bucketKeys, series } = useMemo(() => {
-    if (logRange === 'week') return { labels: [], bucketKeys: [], series: {} };
-    // Every week bucket spanning the fetched range, not just weeks that happen to have logged
-    // hours — otherwise a sparsely-filled month shows only one or two bars.
-    const keys = [];
-    let cursor = isoWeekStart(fetchStart);
-    const lastWeekStart = isoWeekStart(fetchEnd);
-    while (cursor <= lastWeekStart) {
-      keys.push(cursor);
-      const d = new Date(cursor + 'T00:00:00');
-      d.setDate(d.getDate() + 7);
-      cursor = toISO(d);
-    }
-    const keyFor = (day) => isoWeekStart(day);
-    const labelFor = (k) => formatShort(k);
-    const series = {};
-    projectNames.forEach((name) => {
-      series[name] = { color: colorFor(name), data: keys.map(() => 0) };
-    });
-    logRows.forEach((r) => {
-      const k = keyFor(r.day);
-      const i = keys.indexOf(k);
-      if (i === -1 || !series[r.project_code]) return;
-      series[r.project_code].data[i] += Number(r.hours || 0);
-    });
-    return { labels: keys.map(labelFor), bucketKeys: keys, series };
-  }, [logRows, projectNames, logRange, weekOffset, fetchStart, fetchEnd]);
 
   const TIMELINE_BAR_COLOR = '#0c3b8f';
 
-  // Week view: one floating bar per attendance session, positioned at its real SGT clock-in →
-  // clock-out time — a Gantt-style timeline instead of a stacked accumulated-hours total.
-  // Sessions can no longer overlap in time (the backend blocks that), but a day can still have
-  // more than one non-overlapping session, so each "slot" is its own dataset — slot 0 is always
+  // One floating bar per attendance session, positioned at its real SGT clock-in → clock-out
+  // time — a Gantt-style timeline instead of a stacked accumulated-hours total. Week shows 7
+  // day-rows (Mon-Sun); Month shows one row per day in the fetched range. Sessions can no longer
+  // overlap in time (the backend blocks that), but a day can still have more than one
+  // non-overlapping session, so each "slot" is its own dataset — slot 0 is always
   // that day's earliest session, slot 1 its second, and so on.
   const { ganttLabels, ganttSlots } = useMemo(() => {
-    if (logRange !== 'week') return { ganttLabels: [], ganttSlots: [] };
-    const { monday } = weekRange(weekOffset);
-    const dayKeys = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday); d.setDate(monday.getDate() + i); return toISO(d);
-    });
-    const labelsForDays = dayKeys.map((k) => new Date(k + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' }));
+    // Every calendar day from fetchStart to fetchEnd inclusive — 7 days for Week (which is
+    // exactly that range's Monday..Sunday), up to a whole month's worth for Month.
+    const dayKeys = [];
+    let cursor = fetchStart;
+    while (cursor <= fetchEnd) {
+      dayKeys.push(cursor);
+      const d = new Date(cursor + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      cursor = toISO(d);
+    }
+    const labelsForDays = dayKeys.map((k) => logRange === 'week'
+      ? new Date(k + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' })
+      : formatShort(k));
 
     const byDay = {};
     dayKeys.forEach((k) => { byDay[k] = []; });
@@ -270,63 +207,20 @@ export default function StaffDashboard() {
     }));
 
     return { ganttLabels: labelsForDays, ganttSlots: slots };
-  }, [logRange, weekOffset, sessionRows]);
+  }, [logRange, fetchStart, fetchEnd, sessionRows]);
 
   useEffect(() => {
     if (!chartRef.current) return;
     if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; }
 
-    if (logRange === 'week') {
-      chartInstance.current = new Chart(chartRef.current, {
-        type: 'bar',
-        data: {
-          labels: ganttLabels,
-          datasets: ganttSlots.map((slot, i) => ({
-            label: `Session ${i + 1}`,
-            data: slot.data,
-            backgroundColor: TIMELINE_BAR_COLOR,
-            borderRadius: 4,
-            borderSkipped: false,
-          })),
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { enabled: false } },
-          scales: {
-            x: {
-              // A single day tops out at 24h, so the axis is fixed 0–24 rather than
-              // auto-scaling to whatever hours happen to be logged. Not stacked — each
-              // dataset is its own session slot with its own real [start, end] pair, and
-              // Chart.js's stacking would otherwise shift later slots by earlier ones'
-              // cumulative width instead of preserving their actual times.
-              min: 0, max: 24,
-              grid: { color: '#e2e8f0' },
-              ticks: { color: '#94a3b8', stepSize: 2, precision: 0, callback: (v) => clockHourLabel(v) },
-            },
-            y: { grid: { display: false }, ticks: { color: '#94a3b8' } },
-          },
-          onClick: (evt, elements) => {
-            if (!elements.length) return;
-            const { datasetIndex, index } = elements[0];
-            const sessionId = ganttSlots[datasetIndex]?.sessionIds[index];
-            if (sessionId) setSelectedSessionId(sessionId);
-          },
-        },
-      });
-      return () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } };
-    }
-
-    const visibleNames = projectNames.filter((n) => !hiddenProjects.has(n));
     chartInstance.current = new Chart(chartRef.current, {
       type: 'bar',
       data: {
-        labels,
-        datasets: visibleNames.map((name) => ({
-          label: name,
-          data: series[name]?.data || [],
-          backgroundColor: series[name]?.color,
+        labels: ganttLabels,
+        datasets: ganttSlots.map((slot, i) => ({
+          label: `Session ${i + 1}`,
+          data: slot.data,
+          backgroundColor: TIMELINE_BAR_COLOR,
           borderRadius: 4,
           borderSkipped: false,
         })),
@@ -335,29 +229,30 @@ export default function StaffDashboard() {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
         scales: {
           x: {
-            // A week's total can exceed 24h, so let it auto-scale instead of clipping.
-            stacked: true, min: 0, suggestedMax: 24,
+            // A single day tops out at 24h, so the axis is fixed 0–24 rather than
+            // auto-scaling to whatever hours happen to be logged. Not stacked — each
+            // dataset is its own session slot with its own real [start, end] pair, and
+            // Chart.js's stacking would otherwise shift later slots by earlier ones'
+            // cumulative width instead of preserving their actual times.
+            min: 0, max: 24,
             grid: { color: '#e2e8f0' },
-            ticks: { color: '#94a3b8', precision: 0, callback: (v) => `${v}h` },
+            ticks: { color: '#94a3b8', stepSize: 2, precision: 0, callback: (v) => clockHourLabel(v) },
           },
-          y: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8' } },
+          y: { grid: { display: false }, ticks: { color: '#94a3b8' } },
         },
         onClick: (evt, elements) => {
           if (!elements.length) return;
-          setSelectedBucket(bucketKeys[elements[0].index]);
+          const { datasetIndex, index } = elements[0];
+          const sessionId = ganttSlots[datasetIndex]?.sessionIds[index];
+          if (sessionId) setSelectedSessionId(sessionId);
         },
       },
     });
     return () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } };
-  }, [labels, series, projectNames, hiddenProjects, bucketKeys, logRange, ganttLabels, ganttSlots]);
-
-  const selectedBucketRows = useMemo(() => {
-    if (!selectedBucket) return null;
-    return logRows.filter((r) => isoWeekStart(r.day) === selectedBucket);
-  }, [selectedBucket, logRows]);
+  }, [ganttLabels, ganttSlots]);
 
   const selectedSession = useMemo(() => {
     if (!selectedSessionId) return null;
@@ -450,42 +345,19 @@ export default function StaffDashboard() {
           </div>
         </div>
 
-        {logRange === 'month' && (
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-            <div className="flex flex-wrap gap-2">
-              {chipProjectNames.map((name) => {
-                const on = !hiddenProjects.has(name);
-                return (
-                  <button key={name} type="button"
-                    onClick={() => setHiddenProjects((prev) => {
-                      const next = new Set(prev);
-                      if (on) next.add(name); else next.delete(name);
-                      return next;
-                    })}
-                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition ${on ? 'bg-white border border-slate-300 text-slate-700' : 'bg-transparent border border-slate-200 text-slate-400'}`}>
-                    <span className="w-2 h-2 rounded-sm" style={{ background: on ? colorFor(name) : '#cbd5e1' }} />
-                    {name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {logLoading ? (
           <p className="text-sm text-slate-400 text-center py-10">Loading…</p>
         ) : (
           <>
-            <div style={{ position: 'relative', width: '100%', height: 280 }}>
-              <canvas ref={chartRef} role="img" aria-label={logRange === 'week' ? 'Timeline of attendance sessions, one row per day' : 'Horizontal stacked bar chart of hours worked per project'} />
+            <div style={logRange === 'month' ? { maxHeight: 480, overflowY: 'auto' } : undefined}>
+              <div style={{ position: 'relative', width: '100%', height: logRange === 'week' ? 280 : Math.max(280, ganttLabels.length * 32) }}>
+                <canvas ref={chartRef} role="img" aria-label="Timeline of attendance sessions, one row per day" />
+              </div>
             </div>
-            {logRange === 'week' && sessionRows.length === 0 && (
+            {sessionRows.length === 0 && (
               <p className="mt-2 text-xs text-slate-400 text-center">No attendance logged in this period yet.</p>
             )}
-            {logRange === 'month' && logRows.length === 0 && (
-              <p className="mt-2 text-xs text-slate-400 text-center">No clocked hours in this period yet.</p>
-            )}
-            {logRange === 'week' && selectedSession && (
+            {selectedSession && (
               <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -501,28 +373,6 @@ export default function StaffDashboard() {
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            {logRange === 'month' && selectedBucket && selectedBucketRows && (
-              <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Week of {formatShort(selectedBucket)}
-                  </p>
-                  <button type="button" onClick={() => setSelectedBucket(null)} className="text-xs text-slate-400 hover:text-slate-600">Close</button>
-                </div>
-                {selectedBucketRows.length === 0 ? (
-                  <p className="text-sm text-slate-400">No hours logged.</p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {selectedBucketRows.map((r) => (
-                      <li key={r.project_code} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-700">{r.project_code}</span>
-                        <span className="font-semibold text-slate-900 tabular-nums">{Number(r.hours).toFixed(2)}h</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
             )}
           </>
