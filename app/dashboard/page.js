@@ -78,6 +78,15 @@ function fmtTimeSGT(iso) {
   return new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
+// Labels the timeline's 0-24 hour axis as a clock (12 AM, 2 AM, ...) since the axis now
+// represents real clock-in/out times, not a plain duration. 24 wraps back to 12 AM.
+function clockHourLabel(hour) {
+  const h = ((hour % 24) + 24) % 24;
+  const period = h < 12 ? 'AM' : 'PM';
+  const displayHour = h % 12 === 0 ? 12 : h % 12;
+  return `${displayHour} ${period}`;
+}
+
 export default function StaffDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -294,7 +303,7 @@ export default function StaffDashboard() {
               // cumulative width instead of preserving their actual times.
               min: 0, max: 24,
               grid: { color: '#e2e8f0' },
-              ticks: { color: '#94a3b8', stepSize: 4, precision: 0, callback: (v) => `${v}h` },
+              ticks: { color: '#94a3b8', stepSize: 2, precision: 0, callback: (v) => clockHourLabel(v) },
             },
             y: { grid: { display: false }, ticks: { color: '#94a3b8' } },
           },
