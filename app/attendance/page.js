@@ -188,15 +188,22 @@ export default function AttendancePage() {
   const [modalHoursVal, setModalHoursVal] = useState('');
   const notifiedRef = useRef(new Set());
 
-  // Manual entry state — same active session, allocation setup, and tracker as Clock In/Out,
-  // just typed date/times instead of live "now".
+  // Manual entry state — a single-shot, already-finished block of work. Submitting never opens
+  // a live session: the end time is derived as the entered start time plus however many hours
+  // are allocated across the chosen projects, and the whole thing is recorded as done at once.
   const [manualClockInDate, setManualClockInDate] = useState(() => todayISOStr());
   const [manualClockInTime, setManualClockInTime] = useState(() => nowHHMM());
-  const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
-  const [manualClockOutTime, setManualClockOutTime] = useState(() => nowHHMM());
   const [manualRemark, setManualRemark] = useState('');
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+
+  // Edit-allocation modal: 'allocated' edits the plan (not-yet-completed blocks); 'corrected'
+  // records a staff correction to a completed block's actual hours, kept separate from the
+  // original system-recorded value rather than overwriting it.
+  const [modalMode, setModalMode] = useState('allocated');
+  // Which allocation list the open modal is editing — the live Clock In/Out session's, or a
+  // Manual Entry's — since each keeps its own state and the modal needs to update the right one.
+  const [modalSource, setModalSource] = useState('live');
 
   const todayISO = todayISOStr();
 
@@ -214,10 +221,10 @@ export default function AttendancePage() {
   // without clobbering a date/time the user already deliberately picked.
   const openManualTab = () => {
     setLogTab('manual');
+    setManualStep('start');
     setManualClockInDate((d) => d || todayISOStr());
     setManualClockInTime((t) => t || nowHHMM());
-    setManualClockOutDate((d) => d || todayISOStr());
-    setManualClockOutTime((t) => t || nowHHMM());
+    setManualClockInTouched(false);
   };
 
   useEffect(() => {
@@ -430,94 +437,210 @@ export default function AttendancePage() {
   const handleSaveEditHours = async () => {
     const hrs = parseFloat(modalHoursVal);
     if (!user?.user_id || !modalAllocId || !hrs || hrs <= 0) { setModalAllocId(null); return; }
+    const setTarget = modalSource === 'manual' ? setManualAllocations : setAllocations;
+    const payload = modalMode === 'corrected'
+      ? { userId: user.user_id, correctedHours: hrs }
+      : { userId: user.user_id, allocatedHours: hrs };
     try {
-      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, { userId: user.user_id, allocatedHours: hrs });
-      setAllocations((prev) => prev.map((a) => (a.allocation_id === modalAllocId ? res.data?.data : a)));
+      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, payload);
+      setTarget((prev) => prev.map((a) => (a.allocation_id === modalAllocId ? res.data?.data : a)));
       notifiedRef.current.delete(modalAllocId);
     } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
     finally { setModalAllocId(null); }
   };
 
-  const handleManualClockIn = async (e) => {
-    e.preventDefault();
+  const handleDeleteAllocation = async (allocationId, source, currentList) => {
     if (!user?.user_id) return;
-    if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
-    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
-    const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
-    if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
-    if (!manualClockInTime) { showToast('Please enter a clock-in time.', 'error'); return; }
-    setManualSubmitting(true);
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-    // Silently attempt location capture in the background, same as live Clock In
-    const coords = await requestLocationSilently();
+    if (currentList.length <= 1) { showMsg("Can't delete the only project on this entry.", 'error'); return; }
+    if (!window.confirm('Delete this project from the entry? Its hours will be re-split across the remaining projects.')) return;
+    const setTarget = source === 'manual' ? setManualAllocations : setAllocations;
     try {
-      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-in`, {
+      const res = await axios.delete(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, { data: { userId: user.user_id } });
+      setTarget(res.data?.data?.allocations || []);
+      notifiedRef.current.delete(allocationId);
+      showMsg('Project removed.', 'success');
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to delete project.', 'error'); }
+  };
+
+  // Manual Entry: a single-shot, already-finished block of work. The end time defaults to the
+  // start time plus the total of the requested allocations' hours, but staff can override it
+  // directly — e.g. clocked in 8:30am, the project only took 8 hours, but didn't actually clock
+  // off until 6pm. Every allocation still records COMPLETED with its full planned hours either
+  // way; nothing here ever goes "live."
+  const [manualProjectRows, setManualProjectRows] = useState([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
+  const [manualProjectRowsValidated, setManualProjectRowsValidated] = useState(false);
+  const [manualClockInTouched, setManualClockInTouched] = useState(false); // true once staff edits Start Time directly
+  const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
+  const [manualClockOutTime, setManualClockOutTime] = useState(() => nowHHMM());
+  const [manualClockOutTouched, setManualClockOutTouched] = useState(false); // true once staff edits End Time directly
+  // The just-submitted entry's own allocations — kept so a correction/delete could reuse the
+  // same tracker component again later, even though nothing currently renders it.
+  const [manualAllocations, setManualAllocations] = useState([]);
+  // Set when the selected date already has something logged — shows a confirmation before
+  // creating what might be a duplicate entry, naming the period(s) already on record.
+  const [dayConflictEntries, setDayConflictEntries] = useState(null);
+
+  // Pure wall-clock arithmetic (no Date-object timezone conversion) so this matches exactly what
+  // combineDateTime later sends as the SGT instant, regardless of the browser's own timezone.
+  const addHoursToClock = (dateStr, timeStr, hoursToAdd) => {
+    const [h, m] = (timeStr || '00:00').split(':').map(Number);
+    let totalMinutes = h * 60 + m + Math.round(hoursToAdd * 60);
+    const dayOffset = Math.floor(totalMinutes / 1440);
+    totalMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+    const newTime = `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+    let newDate = dateStr;
+    if (dayOffset !== 0) {
+      // Built from explicit Y/M/D numbers (not a parsed "...T00:00:00" string) so this Date is
+      // unambiguously local-time midnight, and read back with the matching local getters — never
+      // toISOString(), which converts through UTC and would shift the date backward by a day in
+      // any UTC+ browser (e.g. local midnight Aug 30 in SGT is still Aug 29 in UTC).
+      const [Y, M, D] = dateStr.split('-').map(Number);
+      const d = new Date(Y, M - 1, D);
+      d.setDate(d.getDate() + dayOffset);
+      newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return { date: newDate, time: newTime };
+  };
+
+  // Backdating a past day means the whole shift is already over, so default to a normal
+  // workday (8:30am–6pm) rather than "right now" — staff can still edit either field freely.
+  // Today keeps defaulting Start to the current time, since the shift may still be in progress.
+  useEffect(() => {
+    if (manualClockInTouched) return;
+    const isPast = manualClockInDate && manualClockInDate < todayISOStr();
+    setManualClockInTime(isPast ? '08:30' : nowHHMM());
+  }, [manualClockInDate, manualClockInTouched]);
+
+  // Keep the suggested End Time in sync, unless staff has already edited it directly — same
+  // "don't clobber a deliberate edit" pattern used elsewhere. For a past day, default straight
+  // to 6pm (a normal end of day); for today, suggest Start + total project hours instead, since
+  // that's the best guess available before the actual end of day is known.
+  useEffect(() => {
+    if (manualClockOutTouched) return;
+    const isPast = manualClockInDate && manualClockInDate < todayISOStr();
+    if (isPast) {
+      setManualClockOutDate(manualClockInDate);
+      setManualClockOutTime('18:00');
+    } else {
+      const totalHours = manualProjectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+      const { date, time } = addHoursToClock(manualClockInDate || todayISOStr(), manualClockInTime || '00:00', totalHours);
+      setManualClockOutDate(date);
+      setManualClockOutTime(time);
+    }
+  }, [manualClockInDate, manualClockInTime, manualProjectRows, manualClockOutTouched]);
+
+  // Two-phase form: Step 1 collects the start + what was worked on, Step 2 (only reachable after
+  // Step 1) collects when it actually ended. Nothing is sent to the backend until Step 2 submits
+  // — Step 1's "Clock In" just advances the form, it doesn't create anything yet.
+  const [manualStep, setManualStep] = useState('start'); // 'start' | 'end'
+
+  const submitManualEntry = async () => {
+    const allocationsPayload = manualProjectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
+    setManualSubmitting(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/manual-entry`, {
         userId: user.user_id,
-        isManualLocation: !coords.latitude,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
         clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
+        clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
         remark: manualRemark.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
-      const id = data?.attendance_id;
-      const firstCode = data?.allocations?.[0]?.project_code || GENERAL;
-      setAttendanceId(id); setClockedIn(true); setSelectedProject(firstCode);
-      setAllocations(data?.allocations || []);
-      notifiedRef.current = new Set();
-      sessionStorage.setItem('staff_attendance_id', id);
-      sessionStorage.setItem('staff_attendance_project', firstCode);
-      sessionStorage.setItem('staff_attendance_user_id', user.user_id);
-      showToast('Clocked in successfully.', 'success');
+      const totalHours = (data?.allocations || []).reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
+      setManualAllocations(data?.allocations || []);
+      showToast(`Entry logged — ${fmtHours(totalHours)} recorded.`, 'success');
       setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark('');
-    } catch (e) { showToast(e.response?.data?.error || 'Manual clock-in failed.', 'error'); }
+      setManualProjectRows([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
+      setManualProjectRowsValidated(false);
+      setManualClockInTouched(false);
+      setManualClockOutTouched(false);
+      setManualStep('start');
+    } catch (e) { showToast(e.response?.data?.error || 'Manual entry failed.', 'error'); }
     finally { setManualSubmitting(false); }
   };
 
-  const handleManualClockOut = async (e) => {
+  // A backdated entry (any date before today) has its whole day already over, so there's no
+  // reason to ask separately "when did you finish" afterward — both times are already known,
+  // so collect them together in one step. Only "today" keeps the two-step Clock In / Clock Out
+  // flow, since the end time genuinely might not be known yet.
+  const isPastManualEntry = manualClockInDate && manualClockInDate < todayISOStr();
+  // A shift can legitimately cross midnight (e.g. clocked in 8pm, out 4am), so End Date is
+  // allowed up to one day past Start Date — never further.
+  const manualEndDateMax = addHoursToClock(manualClockInDate || todayISOStr(), '00:00', 24).date;
+
+  const handleManualClockInStep = async (e) => {
     e.preventDefault();
-    if (!attendanceId || !user?.user_id) return;
-    if (!manualClockOutDate) { showToast('Please select a date.', 'error'); return; }
-    if (!manualClockOutTime) { showToast('Please enter a clock-out time.', 'error'); return; }
-    setManualSubmitting(true);
+    if (!user?.user_id) return;
+    if (manualProjectRows.some((r) => !r.code)) { setManualProjectRowsValidated(true); return; }
+    if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
+    if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
+    if (!manualClockInTime) { showToast('Please enter a start time.', 'error'); return; }
+    if (isPastManualEntry) {
+      if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
+      if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
+        showToast('End time must be after the start time.', 'error'); return;
+      }
+    }
+
     try {
-      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
-        userId: user.user_id, attendanceId,
-        clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
-        remark: manualRemark.trim() || undefined,
-      });
-      setClockedIn(false); setAttendanceId(null); setAllocations([]);
-      sessionStorage.removeItem('staff_attendance_id');
-      sessionStorage.removeItem('staff_attendance_project');
-      sessionStorage.removeItem('staff_attendance_user_id');
-      showToast('Clocked out successfully.', 'success');
-      setManualClockOutDate(todayISOStr()); setManualClockOutTime(nowHHMM()); setManualRemark('');
-    } catch (e) { showToast(e.response?.data?.error || 'Manual clock-out failed.', 'error'); }
-    finally { setManualSubmitting(false); }
+      const res = await axios.get(`${API_BASE}/api/v1/attendance/day-entries/${user.user_id}`, { params: { date: manualClockInDate } });
+      const existing = res.data?.data || [];
+      if (existing.length > 0) { setDayConflictEntries(existing); return; }
+    } catch { /* if the check itself fails, fall through and let the flow proceed */ }
+
+    if (isPastManualEntry) submitManualEntry(); else setManualStep('end');
   };
 
-  // Shared between Clock In/Out and Manual Entry — both hit the same clock-in/out endpoints and
-  // the same active session, so the setup form and the live tracker work identically either way.
-  // "General (non-project)" is just the first option in each project picker, not a separate mode.
-  const projectSetupUI = (() => {
-    const totalRowHours = projectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+  const handleManualClockOutStep = (e) => {
+    e.preventDefault();
+    if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
+    if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
+      showToast('End time must be after the start time.', 'error'); return;
+    }
+    submitManualEntry();
+  };
+
+  const fmtTimeSGT = (iso) => new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+
+  // "28/8/2026" — used for the day-conflict warning. Only needs to represent whole SGT calendar
+  // days, so a straight day/month/year split on the "YYYY-MM-DD" string is exact — no timezone
+  // conversion involved.
+  const fmtSlashDate = (dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return `${d}/${m}/${y}`;
+  };
+
+  // Shared between Clock In/Out and Manual Entry — each keeps its own row state (so setting up
+  // a manual entry never disturbs an in-progress live clock-in setup, and vice versa), but the
+  // form itself is identical either way. "General (non-project)" is just the first option in
+  // each project picker, not a separate mode.
+  const renderProjectSetupUI = (rows, setRows, validated, setValidated) => {
+    const totalRowHours = rows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
     const overAllocated = totalRowHours > STANDARD_WORKDAY_HOURS + 0.01;
+    const resplit = (nextRows) => {
+      const hours = evenSplitHours(nextRows.length);
+      return nextRows.map((r, i) => ({ ...r, hours: hours[i] }));
+    };
+    const addRow = () => {
+      setValidated(false);
+      setRows((prev) => (prev.length >= 8 ? prev : resplit([...prev, { code: '', hours: 0 }])));
+    };
+    const removeRow = (index) => {
+      setRows((prev) => (prev.length <= 1 ? prev : resplit(prev.filter((_, i) => i !== index))));
+    };
     return (
       <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
         <p className="text-xs text-slate-400 mb-4">Hours auto-split across projects. Adjust as needed.</p>
         <div className="space-y-4">
-          {projectRows.map((row, i) => {
-            const rowError = projectRowsValidated && !row.code;
+          {rows.map((row, i) => {
+            const rowError = validated && !row.code;
             return (
             <div key={i} className="flex gap-3 items-start">
               <div className="flex-1 min-w-0">
                 <ProjectSearchSelect
                   value={row.code}
-                  onChange={(code) => { setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r))); }}
-                  projects={projects.filter((p) => !projectRows.some((r, idx) => idx !== i && r.code === p.project_code))}
+                  onChange={(code) => { setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r))); }}
+                  projects={projects.filter((p) => !rows.some((r, idx) => idx !== i && r.code === p.project_code))}
                   placeholder="Select or search project…"
                   error={rowError}
                 />
@@ -525,12 +648,12 @@ export default function AttendancePage() {
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <input type="number" min="0.25" step="0.25" value={row.hours}
-                  onChange={(e) => setProjectRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
+                  onChange={(e) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
                   className="w-16 rounded-xl border-2 border-[#D1D5DB] bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                 <span className="text-xs text-slate-400">hrs</span>
               </div>
-              {projectRows.length > 1 && (
-                <button type="button" onClick={() => removeProjectRow(i)} title="Remove project"
+              {rows.length > 1 && (
+                <button type="button" onClick={() => removeRow(i)} title="Remove project"
                   className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" />
@@ -545,21 +668,27 @@ export default function AttendancePage() {
         <p className={`mt-3 text-xs font-semibold ${overAllocated ? 'text-amber-600' : 'text-slate-400'}`}>
           Total: {totalRowHours.toFixed(2)} / {STANDARD_WORKDAY_HOURS} hrs
         </p>
-        {projectRows.length < 8 && (
-          <button type="button" onClick={addProjectRow}
+        {rows.length < 8 && (
+          <button type="button" onClick={addRow}
             className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
             + Add Project
           </button>
         )}
       </div>
     );
-  })();
+  };
+  const projectSetupUI = renderProjectSetupUI(projectRows, setProjectRows, projectRowsValidated, setProjectRowsValidated);
+  const manualProjectSetupUI = renderProjectSetupUI(manualProjectRows, setManualProjectRows, manualProjectRowsValidated, setManualProjectRowsValidated);
 
-  const totalAllocatedHours = allocations.reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
-
-  const allocationTracker = (
+  // Shared between the live Clock In/Out session and a just-submitted Manual Entry — each keeps
+  // its own allocation list, but the card layout, edit/delete/correct controls, and the modal
+  // work identically either way. `allowAdd` hides "+ Add Project" for Manual Entry, since you
+  // can't add a project to an already-closed entry.
+  const renderAllocationTracker = (allocs, setAllocs, source, allowAdd) => {
+    const totalAllocatedHours = allocs.reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
+    return (
     <div className="mb-6 space-y-3">
-      {allocations.length > 0 && (
+      {allocs.length > 0 && (
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Allocated</span>
           <span className={`text-xs font-bold ${totalAllocatedHours > STANDARD_WORKDAY_HOURS ? 'text-amber-600' : 'text-slate-600'}`}>
@@ -567,7 +696,7 @@ export default function AttendancePage() {
           </span>
         </div>
       )}
-      {allocations.map((a) => {
+      {allocs.map((a) => {
         const isActive = a.status === 'ACTIVE';
         const isCompleted = a.status === 'COMPLETED';
         const accumulated = Number(a.accumulated_hours || 0);
@@ -590,14 +719,33 @@ export default function AttendancePage() {
                 }`}>
                   {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : isPaused ? 'Paused' : 'Pending'}
                 </span>
-                <button type="button" title="Edit"
-                  onClick={() => { setModalAllocId(a.allocation_id); setModalHoursVal(String(a.allocated_hours)); }}
+                <button type="button" title={isCompleted ? 'Correct actual hours' : 'Edit'}
+                  onClick={() => {
+                    setModalAllocId(a.allocation_id);
+                    setModalSource(source);
+                    if (isCompleted) {
+                      setModalMode('corrected');
+                      setModalHoursVal(String(a.corrected_hours ?? a.accumulated_hours ?? a.allocated_hours));
+                    } else {
+                      setModalMode('allocated');
+                      setModalHoursVal(String(a.allocated_hours));
+                    }
+                  }}
                   className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 20h9" />
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
                   </svg>
                 </button>
+                {allocs.length > 1 && (
+                  <button type="button" title="Delete project" onClick={() => handleDeleteAllocation(a.allocation_id, source, allocs)}
+                    className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 transition">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -608,18 +756,21 @@ export default function AttendancePage() {
             )}
 
             <span className="text-xs text-slate-500">
-              {(isActive || isPaused) ? `${fmtHours(trackedHrs)} tracked of ` : ''}{fmtHours(a.allocated_hours)} planned
-              {isPaused && ' (paused)'}
-              {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· edited after completion</span>}
+              {isCompleted
+                ? (a.corrected_hours != null
+                  ? <>{fmtHours(a.corrected_hours)} actual <span className="text-slate-400">(system recorded {fmtHours(a.accumulated_hours)})</span></>
+                  : `${fmtHours(a.accumulated_hours)} actual`)
+                : <>{(isActive || isPaused) ? `${fmtHours(trackedHrs)} tracked of ` : ''}{fmtHours(a.allocated_hours)} planned{isPaused && ' (paused)'}</>}
+              {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· plan edited after completion</span>}
             </span>
           </div>
         );
       })}
 
-      {addProjectOpen ? (
+      {!allowAdd ? null : addProjectOpen ? (
         <div className="rounded-2xl border border-dashed border-slate-300 p-4">
           <ProjectSearchSelect value={addProjectCode} onChange={setAddProjectCode}
-            projects={projects.filter((p) => !allocations.some((a) => a.project_code === p.project_code))}
+            projects={projects.filter((p) => !allocs.some((a) => a.project_code === p.project_code))}
             placeholder="Search or select a project…" />
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
@@ -637,8 +788,8 @@ export default function AttendancePage() {
         </button>
       )}
 
-      {modalAllocId && (() => {
-        const modalAlloc = allocations.find((a) => a.allocation_id === modalAllocId);
+      {modalAllocId && modalSource === source && (() => {
+        const modalAlloc = allocs.find((a) => a.allocation_id === modalAllocId);
         if (!modalAlloc) return null;
         const isActive = modalAlloc.status === 'ACTIVE';
         const isCompletedModal = modalAlloc.status === 'COMPLETED';
@@ -663,7 +814,7 @@ export default function AttendancePage() {
 
               {/* Header — surfaces the same status/progress context the card behind shows, since the modal covers it */}
               <div className="flex items-center gap-2 mb-1.5 pr-8">
-                <p className="text-lg font-semibold text-slate-900">Edit Allocation</p>
+                <p className="text-lg font-semibold text-slate-900">{isCompletedModal ? 'Correct Actual Hours' : 'Edit Allocation'}</p>
                 <span className={`flex-shrink-0 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
                   isActive ? 'bg-blue-100 text-blue-700' : isCompletedModal ? 'bg-slate-200 text-slate-500' : modalIsPaused ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
                 }`}>
@@ -671,7 +822,12 @@ export default function AttendancePage() {
                 </span>
               </div>
               <p className="text-sm font-medium text-slate-700">{projectLabel(modalAlloc.project_code, projects)}</p>
-              {(isActive || modalIsPaused) ? (
+              {isCompletedModal ? (
+                <p className="text-[11px] text-slate-400 mt-1 mb-8">
+                  System recorded {fmtHours(modalAlloc.accumulated_hours)}
+                  {modalAlloc.corrected_hours != null && <> · corrected to {fmtHours(modalAlloc.corrected_hours)}</>}
+                </p>
+              ) : (isActive || modalIsPaused) ? (
                 <p className="text-[11px] text-slate-400 mt-1 mb-8">
                   {fmtHours(modalTrackedHrs)} tracked so far of {fmtHours(modalAlloc.allocated_hours)} planned{modalIsPaused ? ' (paused)' : ''}
                 </p>
@@ -679,7 +835,9 @@ export default function AttendancePage() {
                 <div className="mb-8" />
               )}
 
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Allocated Hours</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {isCompletedModal ? 'Actual Hours Worked' : 'Allocated Hours'}
+              </label>
               <div className="flex items-center gap-2 mb-6">
                 <button type="button" onClick={() => stepHours(-0.25)}
                   className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">−</button>
@@ -695,10 +853,12 @@ export default function AttendancePage() {
                 Save Changes
               </button>
               {isCompletedModal ? (
-                <button type="button" onClick={handleReopen}
-                  className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
-                  Reopen — I'm still working on this
-                </button>
+                source === 'live' && (
+                  <button type="button" onClick={handleReopen}
+                    className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
+                    Reopen — I'm still working on this
+                  </button>
+                )
               ) : (
                 <button type="button" onClick={handleModalMarkComplete}
                   className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
@@ -710,7 +870,12 @@ export default function AttendancePage() {
         );
       })()}
     </div>
-  );
+    );
+  };
+  const allocationTracker = renderAllocationTracker(allocations, setAllocations, 'live', true);
+  const manualAllocationTracker = manualAllocations.length > 0
+    ? renderAllocationTracker(manualAllocations, setManualAllocations, 'manual', false)
+    : null;
 
   return (
     <div className="p-8">
@@ -820,64 +985,117 @@ export default function AttendancePage() {
                   </button>
                 )}
             </>
-          ) : !clockedIn ? (
-            <form onSubmit={handleManualClockIn}>
-              {projectSetupUI}
-              <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                  <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => setManualClockInDate(e.target.value)}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
-                  <input type="time" value={manualClockInTime} onChange={(e) => setManualClockInTime(e.target.value)}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
-                  placeholder="Add notes or specific tasks (optional)"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <button type="submit" disabled={manualSubmitting || !manualClockInTime}
-                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
-                style={{ background: '#0c3b8f' }}>
-                {manualSubmitting ? 'Please wait…' : 'Clock In'}
-              </button>
-            </form>
           ) : (
-            <form onSubmit={handleManualClockOut}>
-              <div className="mb-5 flex items-center gap-3">
-                <div className="h-3 w-3 rounded-full bg-green-500" />
-                <span className="text-sm font-semibold text-green-700">Active session</span>
-              </div>
+            <form onSubmit={manualStep === 'start' ? handleManualClockInStep : handleManualClockOutStep}>
+              {manualStep === 'start' ? (
+                <>
+                  {manualProjectSetupUI}
+                  <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                      <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => setManualClockInDate(e.target.value)}
+                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
+                      <input type="time" value={manualClockInTime} onChange={(e) => { setManualClockInTime(e.target.value); setManualClockInTouched(true); }}
+                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                  {isPastManualEntry && (
+                    <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="min-w-0">
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                        <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
+                          className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
+                        <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
+                          className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+                  )}
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+                    <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
+                      placeholder="Add notes or specific tasks (optional)"
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <button type="submit" disabled={manualSubmitting || !manualClockInTime}
+                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
+                    style={{ background: '#0c3b8f' }}>
+                    {manualSubmitting ? 'Please wait…' : (isPastManualEntry ? 'Submit' : 'Clock In')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 flex items-center justify-between gap-3">
+                    <p className="text-sm text-blue-800">
+                      Clocked in {new Date(`${manualClockInDate}T${manualClockInTime}:00`).toLocaleDateString('en-SG', { day: '2-digit', month: '2-digit', year: 'numeric' })} at {fmtTimeSGT(combineDateTime(manualClockInDate, manualClockInTime))}
+                    </p>
+                    <button type="button" onClick={() => setManualStep('start')} className="flex-shrink-0 text-xs font-semibold text-blue-700 hover:underline">
+                      Edit
+                    </button>
+                  </div>
+                  <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                      <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
+                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        End Time <span className="font-normal text-slate-400">(when you actually clocked off)</span>
+                      </label>
+                      <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
+                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
+                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                    {manualSubmitting ? 'Please wait…' : 'Clock Out'}
+                  </button>
+                </>
+              )}
 
-              {allocationTracker}
-
-              <div className="mb-5 grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => setManualClockOutDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {dayConflictEntries && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setDayConflictEntries(null)}>
+                  <div className="relative inline-block max-w-[90vw] rounded-3xl bg-white px-8 pt-6 pb-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end mb-2 -mr-4">
+                      <button type="button" onClick={() => setDayConflictEntries(null)} aria-label="Close"
+                        className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">
+                      You've already {manualClockInDate === todayISOStr() ? 'clocked in today' : 'clocked in on this date'}
+                    </p>
+                    <div className="mb-5 space-y-4">
+                      {dayConflictEntries.map((entry) => (
+                        <ul key={entry.attendance_id} className="text-sm text-slate-600 list-disc list-inside space-y-1">
+                          <li>Time : {fmtTimeSGT(entry.clock_in_time)} – {entry.clock_out_time ? fmtTimeSGT(entry.clock_out_time) : 'still active'}</li>
+                          <li>Date : {fmtSlashDate(manualClockInDate)}</li>
+                        </ul>
+                      ))}
+                    </div>
+                    <p className="text-sm text-slate-500 mb-6 text-left">Do you want to log in again?</p>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => setDayConflictEntries(null)}
+                        className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={() => { setDayConflictEntries(null); if (isPastManualEntry) submitManualEntry(); else setManualStep('end'); }} disabled={manualSubmitting}
+                        className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
+                        {manualSubmitting ? 'Please wait…' : 'Confirm'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Time</label>
-                  <input type="time" value={manualClockOutTime} onChange={(e) => setManualClockOutTime(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
-                  placeholder="What did you work on?"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
-                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {manualSubmitting ? 'Please wait…' : 'Clock Out'}
-              </button>
+              )}
             </form>
           )}
         </div>
