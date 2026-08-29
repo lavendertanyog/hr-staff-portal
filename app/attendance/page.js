@@ -161,6 +161,9 @@ export default function AttendancePage() {
   const [clockRemark, setClockRemark] = useState('');
   const [clockedIn, setClockedIn] = useState(false);
   const [attendanceId, setAttendanceId] = useState(null);
+  // The live session's own clock-in time, kept alongside attendanceId so Manual Entry can close
+  // that exact session (via an edited End Time) without a separate lookup.
+  const [activeSessionClockInTime, setActiveSessionClockInTime] = useState(null);
   const [loading, setLoading] = useState(false);
   const [logTab, setLogTab] = useState('clock'); // 'clock' | 'manual'
 
@@ -222,6 +225,13 @@ export default function AttendancePage() {
   const openManualTab = () => {
     setLogTab('manual');
     setManualStep('start');
+    if (clockedIn) {
+      // Nothing to set up — Manual Entry will render straight into closing the live session,
+      // so seed a sensible "right now" End Time for it to edit.
+      setManualClockOutDate(todayISOStr());
+      setManualClockOutTime(nowHHMM());
+      setManualClockOutTouched(true);
+    }
     setManualClockInDate((d) => d || todayISOStr());
     setManualClockInTime((t) => t || nowHHMM());
     setManualClockInTouched(false);
@@ -261,6 +271,7 @@ export default function AttendancePage() {
         const active = res.data?.data;
         if (active) {
           setAttendanceId(active.attendance_id);
+          setActiveSessionClockInTime(active.clock_in_time);
           setSelectedProject(active.project_code || GENERAL);
           setClockedIn(true);
           setAllocations(active.allocations || []);
@@ -287,6 +298,7 @@ export default function AttendancePage() {
         } else {
           setClockedIn(false);
           setAttendanceId(null);
+          setActiveSessionClockInTime(null);
           setAllocations([]);
           notifiedRef.current = new Set();
           sessionStorage.removeItem('staff_attendance_id');
@@ -533,6 +545,14 @@ export default function AttendancePage() {
   // Step 1) collects when it actually ended. Nothing is sent to the backend until Step 2 submits
   // — Step 1's "Clock In" just advances the form, it doesn't create anything yet.
   const [manualStep, setManualStep] = useState('start'); // 'start' | 'end'
+  // Whenever the staff member already has a real live session open (via Clock In/Out), Manual
+  // Entry has nothing to "clock in" for — it goes straight to closing that exact session (via the
+  // same clock-out endpoint the live tab uses) instead of offering to start a second, duplicate
+  // attendance_logs row for the day. Derived straight from the live-session state so it's always
+  // in sync, never a separately-set flag.
+  const closingActiveEntry = (clockedIn && attendanceId)
+    ? { attendance_id: attendanceId, clock_in_time: activeSessionClockInTime }
+    : null;
 
   const submitManualEntry = async () => {
     const allocationsPayload = manualProjectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
@@ -600,6 +620,35 @@ export default function AttendancePage() {
     submitManualEntry();
   };
 
+  // Closes the staff member's real live session (started via Clock In/Out) using the End Time
+  // they edit here, instead of creating a second manual-entry record for the same day. Reuses the
+  // same /clock-out endpoint and mirrors the top-level clockedIn/attendanceId state the live tab
+  // reads, so the Clock In/Out tab immediately reflects the session as closed too.
+  const submitActiveSessionClockOut = async (e) => {
+    e.preventDefault();
+    if (!closingActiveEntry || !user?.user_id) return;
+    if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
+    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) <= new Date(closingActiveEntry.clock_in_time)) {
+      showToast('End time must be after the start time.', 'error'); return;
+    }
+    setManualSubmitting(true);
+    try {
+      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
+        userId: user.user_id,
+        attendanceId: closingActiveEntry.attendance_id,
+        clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
+      });
+      setClockedIn(false); setAttendanceId(null); setAllocations([]);
+      sessionStorage.removeItem('staff_attendance_id');
+      sessionStorage.removeItem('staff_attendance_project');
+      sessionStorage.removeItem('staff_attendance_user_id');
+      showToast('Active session clocked out successfully.', 'success');
+      setManualClockOutTouched(false);
+      setManualStep('start');
+    } catch (e2) { showToast(e2.response?.data?.error || 'Clock-out failed.', 'error'); }
+    finally { setManualSubmitting(false); }
+  };
+
   const fmtTimeSGT = (iso) => new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
 
   // "28/8/2026" — used for the day-conflict warning. Only needs to represent whole SGT calendar
@@ -647,7 +696,7 @@ export default function AttendancePage() {
                 {rowError && <p className="mt-1 text-xs text-red-500">* Complete this field</p>}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <input type="number" min="0.25" step="0.25" value={row.hours}
+                <input type="number" min="0.1" step="0.1" value={row.hours}
                   onChange={(e) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
                   className="w-16 rounded-xl border-2 border-[#D1D5DB] bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                 <span className="text-xs text-slate-400">hrs</span>
@@ -799,7 +848,7 @@ export default function AttendancePage() {
         const modalTrackedHrs = modalAccumulated + modalLiveElapsedHrs;
         const stepHours = (delta) => {
           const current = parseFloat(modalHoursVal) || 0;
-          setModalHoursVal(String(Math.max(0.25, Math.round((current + delta) * 100) / 100)));
+          setModalHoursVal(String(Math.max(0.1, Math.round((current + delta) * 100) / 100)));
         };
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setModalAllocId(null)}>
@@ -839,18 +888,18 @@ export default function AttendancePage() {
                 {isCompletedModal ? 'Actual Hours Worked' : 'Allocated Hours'}
               </label>
               <div className="flex items-center gap-2 mb-6">
-                <button type="button" onClick={() => stepHours(-0.25)}
+                <button type="button" onClick={() => stepHours(-0.1)}
                   className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">−</button>
-                <input type="number" min="0.25" step="0.25" autoFocus value={modalHoursVal} placeholder="e.g. 2.5"
+                <input type="number" min="0.1" step="0.1" autoFocus value={modalHoursVal} placeholder="e.g. 2.5"
                   onChange={(e) => setModalHoursVal(e.target.value)}
                   className="w-full min-w-0 rounded-xl border-2 border-[#D1D5DB] px-4 py-3 text-sm text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                <button type="button" onClick={() => stepHours(0.25)}
+                <button type="button" onClick={() => stepHours(0.1)}
                   className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">+</button>
               </div>
 
               <button type="button" onClick={handleSaveEditHours}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
-                Save Changes
+                Confirm
               </button>
               {isCompletedModal ? (
                 source === 'live' && (
@@ -985,6 +1034,35 @@ export default function AttendancePage() {
                   </button>
                 )}
             </>
+          ) : closingActiveEntry ? (
+            // Already has a real live session open — Manual Entry has nothing left to "clock in"
+            // for, so it goes straight to closing that session with an editable End Time instead
+            // of offering to start a second, duplicate entry for the day.
+            <form onSubmit={submitActiveSessionClockOut}>
+              <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+                <p className="text-sm text-blue-800">
+                  Active session — clocked in {fmtSlashDate(new Date(closingActiveEntry.clock_in_time).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' }))} at {fmtTimeSGT(closingActiveEntry.clock_in_time)}
+                </p>
+              </div>
+              <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="min-w-0">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    End Time <span className="font-normal text-slate-400">(when you actually clocked off)</span>
+                  </label>
+                  <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
+                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                {manualSubmitting ? 'Please wait…' : 'Clock Out'}
+              </button>
+            </form>
           ) : (
             <form onSubmit={manualStep === 'start' ? handleManualClockInStep : handleManualClockOutStep}>
               {manualStep === 'start' ? (
@@ -1059,7 +1137,9 @@ export default function AttendancePage() {
                 </>
               )}
 
-              {dayConflictEntries && (
+              {dayConflictEntries && (() => {
+                const isToday = manualClockInDate === todayISOStr();
+                return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setDayConflictEntries(null)}>
                   <div className="relative inline-block max-w-[90vw] rounded-3xl bg-white px-8 pt-6 pb-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end mb-2 -mr-4">
@@ -1072,7 +1152,7 @@ export default function AttendancePage() {
                       </button>
                     </div>
                     <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">
-                      You've already {manualClockInDate === todayISOStr() ? 'clocked in today' : 'clocked in on this date'}
+                      You've already {isToday ? 'clocked in today' : 'clocked in on this date'}
                     </p>
                     <div className="mb-5 space-y-4">
                       {dayConflictEntries.map((entry) => (
@@ -1088,14 +1168,18 @@ export default function AttendancePage() {
                         className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
                         Cancel
                       </button>
-                      <button type="button" onClick={() => { setDayConflictEntries(null); if (isPastManualEntry) submitManualEntry(); else setManualStep('end'); }} disabled={manualSubmitting}
+                      <button type="button" onClick={() => {
+                        setDayConflictEntries(null);
+                        if (isPastManualEntry) submitManualEntry(); else setManualStep('end');
+                      }} disabled={manualSubmitting}
                         className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
                         {manualSubmitting ? 'Please wait…' : 'Confirm'}
                       </button>
                     </div>
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </form>
           )}
         </div>
