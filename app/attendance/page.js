@@ -198,19 +198,6 @@ export default function AttendancePage() {
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
-  // One-time announcement for the new clock-in reminder / "still working?" feature — dismissal
-  // is remembered per device (localStorage, not sessionStorage) so it doesn't reappear every login.
-  const [showLivenessAnnouncement, setShowLivenessAnnouncement] = useState(false);
-  useEffect(() => {
-    try {
-      if (!localStorage.getItem('staff_seen_liveness_announcement_v1')) setShowLivenessAnnouncement(true);
-    } catch {}
-  }, []);
-  const dismissLivenessAnnouncement = () => {
-    try { localStorage.setItem('staff_seen_liveness_announcement_v1', '1'); } catch {}
-    setShowLivenessAnnouncement(false);
-  };
-
   const todayISO = todayISOStr();
 
   // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full datetime string with an
@@ -734,26 +721,6 @@ export default function AttendancePage() {
           }`}>
             {toast.text}
           </div>
-        </div>
-      )}
-      {showLivenessAnnouncement && (
-        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4">
-          <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-[#0c3b8f] text-sm font-bold mt-0.5">i</div>
-          <div className="flex-1 text-sm text-blue-900">
-            <p className="font-semibold">New: clock-in reminders and "still working?" check-ins</p>
-            <p className="mt-1 text-blue-800">
-              If you haven't clocked in by 8:30am, you'll get an hourly reminder until noon. Once clocked in, you'll
-              be asked "Still working?" partway through the day, and again as the day goes on if you keep working —
-              press Continue to stay clocked in. If you don't respond, you'll be automatically clocked out after 4
-              hours since your last check-in (this pauses over lunch, 12–2pm, and on weekends).
-            </p>
-          </div>
-          <button type="button" onClick={dismissLivenessAnnouncement} aria-label="Dismiss"
-            className="flex-shrink-0 text-blue-400 hover:text-blue-700">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
         </div>
       )}
 
