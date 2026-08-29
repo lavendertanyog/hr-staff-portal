@@ -8,6 +8,9 @@ import Chart from 'chart.js/auto';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
+const PROJECT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+const GENERAL_COLOR = '#898781';
+
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ');
@@ -162,15 +165,50 @@ export default function StaffDashboard() {
       .finally(() => setLogLoading(false));
   }, [user?.user_id, fetchStart, fetchEnd, logRange]);
 
-  const TIMELINE_BAR_COLOR = '#0c3b8f';
+  // Stable color per project across the whole loaded period, so the chart and legend always
+  // agree regardless of which slot/segment a project happens to land in. Assigned in first-seen
+  // order; "General" (untracked/non-project time) always gets the same neutral gray.
+  const projectColorIndex = useMemo(() => {
+    const index = new Map();
+    sessionRows.forEach((s) => {
+      (s.allocations || []).forEach((a) => {
+        const code = a.project_code || 'General';
+        if (code !== 'General' && !index.has(code)) index.set(code, index.size);
+      });
+    });
+    return index;
+  }, [sessionRows]);
 
-  // One floating bar per attendance session, positioned at its real SGT clock-in → clock-out
-  // time — a Gantt-style timeline instead of a stacked accumulated-hours total. Week shows 7
-  // day-rows (Mon-Sun); Month shows one row per day in the fetched range. Sessions can no longer
-  // overlap in time (the backend blocks that), but a day can still have more than one
-  // non-overlapping session, so each "slot" is its own dataset — slot 0 is always
-  // that day's earliest session, slot 1 its second, and so on.
-  const { ganttLabels, ganttSlots } = useMemo(() => {
+  const colorForProject = (code) => {
+    if (!code || code === 'General') return GENERAL_COLOR;
+    const idx = projectColorIndex.get(code);
+    return PROJECT_COLORS[(idx ?? 0) % PROJECT_COLORS.length];
+  };
+
+  const legendItems = useMemo(() => {
+    const seen = new Map();
+    let hasGeneral = false;
+    sessionRows.forEach((s) => {
+      (s.allocations || []).forEach((a) => {
+        const code = a.project_code || 'General';
+        if (code === 'General') { hasGeneral = true; return; }
+        if (!seen.has(code)) seen.set(code, colorForProject(code));
+      });
+    });
+    const items = Array.from(seen.entries()).map(([code, color]) => ({ code, color }));
+    if (hasGeneral) items.push({ code: 'General', color: GENERAL_COLOR });
+    return items;
+  }, [sessionRows, projectColorIndex]);
+
+  // One stacked bar per attendance session, positioned at its real SGT clock-in → clock-out
+  // time and segmented by project — a Gantt-style timeline instead of a plain accumulated
+  // total. Each segment's width is its project's actual hours; any time left over (staff
+  // extended the end time past what was allocated to a project) shows as untracked "General".
+  // Week shows 7 day-rows (Mon-Sun); Month shows one row per day in the fetched range. Sessions
+  // can no longer overlap in time (the backend blocks that), but a day can still have more than
+  // one non-overlapping session — each gets its own independent stack group ("slot"), with a
+  // transparent leading segment that pushes the visible bar out to its real start time.
+  const { ganttLabels, ganttDatasets } = useMemo(() => {
     // Every calendar day from fetchStart to fetchEnd inclusive — 7 days for Week (which is
     // exactly that range's Monday..Sunday), up to a whole month's worth for Month.
     const dayKeys = [];
@@ -190,24 +228,55 @@ export default function StaffDashboard() {
     sessionRows.forEach((s) => { if (byDay[s.day]) byDay[s.day].push(s); });
     Object.values(byDay).forEach((list) => list.sort((a, b) => new Date(a.clock_in_time) - new Date(b.clock_in_time)));
 
-    const maxSlots = Math.max(1, ...Object.values(byDay).map((list) => list.length));
-    const slots = Array.from({ length: maxSlots }, (_, slotIdx) => ({
-      data: dayKeys.map((k) => {
-        const s = byDay[k][slotIdx];
-        if (!s) return null;
-        const startParts = sgtParts(s.clock_in_time);
-        const endParts = s.clock_out_time ? sgtParts(s.clock_out_time) : null;
-        // Still-open, or ended on a later SGT calendar day than it started — clip to midnight
-        // for this day's bar rather than showing an end time that isn't really "today."
-        const endHour = endParts && endParts.dateStr === startParts.dateStr && endParts.hour > startParts.hour
-          ? endParts.hour : 24;
-        return [startParts.hour, endHour];
-      }),
-      sessionIds: dayKeys.map((k) => byDay[k][slotIdx]?.attendance_id || null),
-    }));
+    // Per day, work out this session's start hour and its ordered list of segments (each
+    // project's real hours, plus a trailing "General" segment for any untracked leftover time).
+    const sessionInfo = (s) => {
+      const startParts = sgtParts(s.clock_in_time);
+      const endParts = s.clock_out_time ? sgtParts(s.clock_out_time) : null;
+      const endHour = endParts && endParts.dateStr === startParts.dateStr && endParts.hour > startParts.hour
+        ? endParts.hour : 24;
+      const allocations = s.allocations || [];
+      const allocatedTotal = allocations.reduce((sum, a) => sum + Number(a.hours || 0), 0);
+      const leftover = Math.max(0, (endHour - startParts.hour) - allocatedTotal);
+      const segments = allocations.map((a) => ({ project_code: a.project_code || 'General', hours: Number(a.hours || 0) }));
+      if (leftover > 0.01) segments.push({ project_code: 'General', hours: leftover });
+      return { startHour: startParts.hour, segments };
+    };
 
-    return { ganttLabels: labelsForDays, ganttSlots: slots };
-  }, [logRange, fetchStart, fetchEnd, sessionRows]);
+    const maxSlots = Math.max(1, ...Object.values(byDay).map((list) => list.length));
+    const datasets = [];
+    for (let slotIdx = 0; slotIdx < maxSlots; slotIdx++) {
+      const stack = `slot${slotIdx}`;
+      const perDayInfo = dayKeys.map((k) => {
+        const s = byDay[k][slotIdx];
+        return s ? { sessionId: s.attendance_id, ...sessionInfo(s) } : null;
+      });
+      const maxSegments = Math.max(0, ...perDayInfo.map((info) => info?.segments.length || 0));
+
+      // Transparent leading segment shifts this slot's visible bar out to its real start hour.
+      datasets.push({
+        label: `slot-${slotIdx}-offset`,
+        data: perDayInfo.map((info) => info?.startHour || 0),
+        backgroundColor: 'transparent',
+        hoverBackgroundColor: 'transparent',
+        stack,
+        _sessionIds: perDayInfo.map((info) => info?.sessionId || null),
+      });
+      for (let segIdx = 0; segIdx < maxSegments; segIdx++) {
+        datasets.push({
+          label: `slot-${slotIdx}-segment-${segIdx}`,
+          data: perDayInfo.map((info) => info?.segments[segIdx]?.hours || 0),
+          backgroundColor: perDayInfo.map((info) => info?.segments[segIdx] ? colorForProject(info.segments[segIdx].project_code) : 'transparent'),
+          borderRadius: 3,
+          borderSkipped: false,
+          stack,
+          _sessionIds: perDayInfo.map((info) => info?.sessionId || null),
+        });
+      }
+    }
+
+    return { ganttLabels: labelsForDays, ganttDatasets: datasets };
+  }, [logRange, fetchStart, fetchEnd, sessionRows, projectColorIndex]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -217,13 +286,7 @@ export default function StaffDashboard() {
       type: 'bar',
       data: {
         labels: ganttLabels,
-        datasets: ganttSlots.map((slot, i) => ({
-          label: `Session ${i + 1}`,
-          data: slot.data,
-          backgroundColor: TIMELINE_BAR_COLOR,
-          borderRadius: 4,
-          borderSkipped: false,
-        })),
+        datasets: ganttDatasets,
       },
       options: {
         indexAxis: 'y',
@@ -232,27 +295,24 @@ export default function StaffDashboard() {
         plugins: { legend: { display: false }, tooltip: { enabled: false } },
         scales: {
           x: {
-            // A single day tops out at 24h, so the axis is fixed 0–24 rather than
-            // auto-scaling to whatever hours happen to be logged. Not stacked — each
-            // dataset is its own session slot with its own real [start, end] pair, and
-            // Chart.js's stacking would otherwise shift later slots by earlier ones'
-            // cumulative width instead of preserving their actual times.
-            min: 0, max: 24,
+            // A single day tops out at 24h, so the axis is fixed 0–24 rather than auto-scaling
+            // to whatever hours happen to be logged.
+            stacked: true, min: 0, max: 24,
             grid: { color: '#e2e8f0' },
             ticks: { color: '#94a3b8', stepSize: 2, precision: 0, callback: (v) => clockHourLabel(v) },
           },
-          y: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+          y: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8' } },
         },
         onClick: (evt, elements) => {
           if (!elements.length) return;
           const { datasetIndex, index } = elements[0];
-          const sessionId = ganttSlots[datasetIndex]?.sessionIds[index];
+          const sessionId = ganttDatasets[datasetIndex]?._sessionIds[index];
           if (sessionId) setSelectedSessionId(sessionId);
         },
       },
     });
     return () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } };
-  }, [ganttLabels, ganttSlots]);
+  }, [ganttLabels, ganttDatasets]);
 
   const selectedSession = useMemo(() => {
     if (!selectedSessionId) return null;
@@ -344,6 +404,17 @@ export default function StaffDashboard() {
             </div>
           </div>
         </div>
+
+        {!logLoading && legendItems.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {legendItems.map((item) => (
+              <span key={item.code} className="flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                <span className="w-2 h-2 rounded-sm" style={{ background: item.color }} />
+                {item.code}
+              </span>
+            ))}
+          </div>
+        )}
 
         {logLoading ? (
           <p className="text-sm text-slate-400 text-center py-10">Loading…</p>
