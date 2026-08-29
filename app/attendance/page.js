@@ -1039,6 +1039,13 @@ export default function AttendancePage() {
             // for, so it goes straight to closing that session with an editable End Time instead
             // of offering to start a second, duplicate entry for the day.
             <form onSubmit={submitActiveSessionClockOut}>
+              <div className="mb-6 flex items-center gap-3">
+                <div className="h-3 w-3 rounded-full bg-green-500" />
+                <span className="text-sm font-semibold text-green-700">Active session</span>
+              </div>
+
+              {allocationTracker}
+
               <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
                 <p className="text-sm text-blue-800">
                   Active session — clocked in {fmtSlashDate(new Date(closingActiveEntry.clock_in_time).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' }))} at {fmtTimeSGT(closingActiveEntry.clock_in_time)}
