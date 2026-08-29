@@ -491,6 +491,68 @@ export default function AttendancePage() {
   // Set when the selected date already has something logged — shows a confirmation before
   // creating what might be a duplicate entry, naming the period(s) already on record.
   const [dayConflictEntries, setDayConflictEntries] = useState(null);
+  // Set when the proposed entry's time range genuinely overlaps one already logged — this is a
+  // hard block (never allowed to create a duplicate on top of it), offering to edit the existing
+  // entry's times instead.
+  const [overlapEntry, setOverlapEntry] = useState(null);
+  // The existing, already-logged entry currently being corrected (Start/End time edit), reached
+  // either from the overlap block above or opened directly. Editing preserves the pre-edit values
+  // server-side (original_clock_in_time/out) for audit purposes only — staff only ever see the
+  // current, edited times.
+  const [editingEntry, setEditingEntry] = useState(null); // { attendance_id, clock_in_time, clock_out_time }
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // True if [newStart, newEnd) genuinely overlaps an existing entry's [clock_in_time, clock_out_time
+  // or "still open" up to now) — used to hard-block a duplicate Manual Entry / clock-in on top of
+  // time already recorded, rather than just warning about the same calendar day.
+  const findOverlap = (entries, newStart, newEnd) => (entries || []).find((e) => {
+    const exStart = new Date(e.clock_in_time).getTime();
+    const exEnd = e.clock_out_time ? new Date(e.clock_out_time).getTime() : Date.now();
+    return exStart < newEnd.getTime() && exEnd > newStart.getTime();
+  });
+
+  const openEditEntry = (entry) => {
+    setOverlapEntry(null);
+    setDayConflictEntries(null);
+    const start = new Date(entry.clock_in_time);
+    const end = entry.clock_out_time ? new Date(entry.clock_out_time) : new Date();
+    const toDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const toTimeStr = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    setEditingEntry(entry);
+    setEditStartDate(toDateStr(start));
+    setEditStartTime(toTimeStr(start));
+    setEditEndDate(toDateStr(end));
+    setEditEndTime(toTimeStr(end));
+  };
+
+  const submitEditTimes = async (e) => {
+    e.preventDefault();
+    if (!editingEntry || !user?.user_id) return;
+    if (!editStartDate || !editStartTime || !editEndDate || !editEndTime) {
+      showToast('Please fill in both start and end time.', 'error'); return;
+    }
+    const clockInTime = combineDateTime(editStartDate, editStartTime);
+    const clockOutTime = combineDateTime(editEndDate, editEndTime);
+    if (new Date(clockOutTime) <= new Date(clockInTime)) {
+      showToast('End time must be after the start time.', 'error'); return;
+    }
+    setEditSubmitting(true);
+    try {
+      await axios.patch(`${API_BASE}/api/v1/attendance/${editingEntry.attendance_id}/edit-times`, {
+        userId: user.user_id, clockInTime, clockOutTime,
+      });
+      showToast('Entry updated successfully.', 'success');
+      setEditingEntry(null);
+    } catch (e2) {
+      showToast(e2.response?.data?.error || 'Failed to update entry.', 'error');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
 
   // Pure wall-clock arithmetic (no Date-object timezone conversion) so this matches exactly what
   // combineDateTime later sends as the SGT instant, regardless of the browser's own timezone.
@@ -588,6 +650,10 @@ export default function AttendancePage() {
   // allowed up to one day past Start Date — never further.
   const manualEndDateMax = addHoursToClock(manualClockInDate || todayISOStr(), '00:00', 24).date;
 
+  // Step 1's day-entries fetch, kept so Step 2 can re-check the full [start, end) range for a
+  // real time overlap once the End Time is actually known.
+  const [manualDayEntries, setManualDayEntries] = useState([]);
+
   const handleManualClockInStep = async (e) => {
     e.preventDefault();
     if (!user?.user_id) return;
@@ -602,11 +668,18 @@ export default function AttendancePage() {
       }
     }
 
+    let existing = [];
     try {
       const res = await axios.get(`${API_BASE}/api/v1/attendance/day-entries/${user.user_id}`, { params: { date: manualClockInDate } });
-      const existing = res.data?.data || [];
-      if (existing.length > 0) { setDayConflictEntries(existing); return; }
+      existing = res.data?.data || [];
+      setManualDayEntries(existing);
     } catch { /* if the check itself fails, fall through and let the flow proceed */ }
+
+    const newStart = new Date(combineDateTime(manualClockInDate, manualClockInTime));
+    const newEnd = isPastManualEntry ? new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) : newStart;
+    const overlap = findOverlap(existing, newStart, newEnd);
+    if (overlap) { setOverlapEntry(overlap); return; }
+    if (existing.length > 0) { setDayConflictEntries(existing); return; }
 
     if (isPastManualEntry) submitManualEntry(); else setManualStep('end');
   };
@@ -617,6 +690,10 @@ export default function AttendancePage() {
     if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
       showToast('End time must be after the start time.', 'error'); return;
     }
+    const newStart = new Date(combineDateTime(manualClockInDate, manualClockInTime));
+    const newEnd = new Date(combineDateTime(manualClockOutDate, manualClockOutTime));
+    const overlap = findOverlap(manualDayEntries, newStart, newEnd);
+    if (overlap) { setOverlapEntry(overlap); return; }
     submitManualEntry();
   };
 
@@ -1187,7 +1264,87 @@ export default function AttendancePage() {
                 </div>
                 );
               })()}
+
+              {overlapEntry && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setOverlapEntry(null)}>
+                  <div className="relative inline-block max-w-[90vw] rounded-3xl bg-white px-8 pt-6 pb-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end mb-2 -mr-4">
+                      <button type="button" onClick={() => setOverlapEntry(null)} aria-label="Close"
+                        className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">
+                      This overlaps an entry you've logged
+                    </p>
+                    <div className="mb-5 space-y-4">
+                      <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
+                        <li>Time : {fmtTimeSGT(overlapEntry.clock_in_time)} – {overlapEntry.clock_out_time ? fmtTimeSGT(overlapEntry.clock_out_time) : 'still active'}</li>
+                        <li>Date : {fmtSlashDate(manualClockInDate)}</li>
+                      </ul>
+                    </div>
+                    <p className="text-sm text-slate-500 mb-6 text-left">You can't log a new entry over time already recorded. Edit that entry's times instead?</p>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => setOverlapEntry(null)}
+                        className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={() => openEditEntry(overlapEntry)}
+                        className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
+                        Edit Existing Entry
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </form>
+          )}
+
+          {editingEntry && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setEditingEntry(null)}>
+              <form onSubmit={submitEditTimes} className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <button type="button" onClick={() => setEditingEntry(null)} aria-label="Close"
+                  className="absolute top-4 right-4 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+                <p className="text-lg font-semibold text-slate-900 mb-1 pr-8">Edit Entry</p>
+                <p className="text-xs text-slate-400 mb-6">Correcting the clock-in/out times for this entry.</p>
+                <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
+                    <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)}
+                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
+                    <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)}
+                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                    <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)}
+                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
+                    <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)}
+                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                <button type="submit" disabled={editSubmitting}
+                  className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
+                  {editSubmitting ? 'Please wait…' : 'Save Changes'}
+                </button>
+              </form>
+            </div>
           )}
         </div>
       </div>
