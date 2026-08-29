@@ -222,16 +222,26 @@ export default function StaffDashboard() {
         })),
       },
       options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8' } },
-          y: {
-            stacked: true, min: 0, suggestedMax: 8,
-            grid: { color: '#e2e8f0' },
-            ticks: { color: '#94a3b8', stepSize: 1, precision: 0, callback: (v) => `${v}h` },
-          },
+          x: logRange === 'week'
+            ? {
+                // A single day tops out at 24h, so the axis is fixed 0–24 rather than
+                // auto-scaling to whatever hours happen to be logged.
+                stacked: true, min: 0, max: 24,
+                grid: { color: '#e2e8f0' },
+                ticks: { color: '#94a3b8', stepSize: 4, precision: 0, callback: (v) => `${v}h` },
+              }
+            : {
+                // A week's total can exceed 24h, so let it auto-scale instead of clipping.
+                stacked: true, min: 0, suggestedMax: 24,
+                grid: { color: '#e2e8f0' },
+                ticks: { color: '#94a3b8', precision: 0, callback: (v) => `${v}h` },
+              },
+          y: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8' } },
         },
         onClick: (evt, elements) => {
           if (!elements.length) return;
@@ -240,7 +250,7 @@ export default function StaffDashboard() {
       },
     });
     return () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } };
-  }, [labels, series, projectNames, hiddenProjects, bucketKeys]);
+  }, [labels, series, projectNames, hiddenProjects, bucketKeys, logRange]);
 
   const selectedBucketRows = useMemo(() => {
     if (!selectedBucket) return null;
@@ -358,8 +368,8 @@ export default function StaffDashboard() {
           <p className="text-sm text-slate-400 text-center py-10">Loading…</p>
         ) : (
           <>
-            <div style={{ position: 'relative', width: '100%', height: 220 }}>
-              <canvas ref={chartRef} role="img" aria-label="Stacked bar chart of hours worked per project" />
+            <div style={{ position: 'relative', width: '100%', height: 280 }}>
+              <canvas ref={chartRef} role="img" aria-label="Horizontal stacked bar chart of hours worked per project, one row per day" />
             </div>
             {logRows.length === 0 && (
               <p className="mt-2 text-xs text-slate-400 text-center">No clocked hours in this period yet.</p>
