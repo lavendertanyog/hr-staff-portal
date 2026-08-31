@@ -447,7 +447,6 @@ export default function AttendancePage() {
     if (!user?.user_id) return;
     if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
     if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
-    if (projectRows.some((r) => r.code === GENERAL) && !clockDescription.trim()) { setClockDescriptionValidated(true); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
     setLoading(true);
@@ -463,7 +462,6 @@ export default function AttendancePage() {
         latitude: coords.latitude,
         longitude: coords.longitude,
         remark: clockRemark.trim() || undefined,
-        description: clockDescription.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
@@ -482,12 +480,14 @@ export default function AttendancePage() {
 
   const handleClockOut = async () => {
     if (!attendanceId || !user?.user_id) return;
+    if (allocations.some((a) => !a.project_code) && !clockDescription.trim()) { setClockDescriptionValidated(true); return; }
     setLoading(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId, remark: clockRemark.trim() || undefined,
+        description: clockDescription.trim() || undefined,
       });
-      setClockedIn(false); setAttendanceId(null); setClockRemark(''); setAllocations([]);
+      setClockedIn(false); setAttendanceId(null); setClockRemark(''); setClockDescription(''); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
@@ -714,9 +714,9 @@ export default function AttendancePage() {
     }
   }, [manualClockInDate, manualClockInTime, manualProjectRows, manualClockOutTouched]);
 
-  // General (non-project) work has no project name to explain what was done, so a description
-  // is required whenever it's one of the picked rows — separate from the always-optional remark.
-  const hasGeneralClock = projectRows.some((r) => r.code === GENERAL);
+  // General (non-project) work has no project name to explain what was done. For a live session
+  // this is asked for later (on the General card itself, required before clocking out); only a
+  // backdated Manual Entry — submitted whole, with no later "closing" moment — asks up front.
   const hasGeneralManual = manualProjectRows.some((r) => r.code === GENERAL);
 
   // Whenever the staff member already has a real live session open (via Clock In/Out), Manual
@@ -770,7 +770,6 @@ export default function AttendancePage() {
         userId: user.user_id,
         clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
         remark: manualRemark.trim() || undefined,
-        description: manualDescription.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
@@ -799,13 +798,15 @@ export default function AttendancePage() {
     if (!user?.user_id) return;
     if (manualProjectRows.some((r) => !r.code)) { setManualProjectRowsValidated(true); return; }
     if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
-    if (manualProjectRows.some((r) => r.code === GENERAL) && !manualDescription.trim()) { setManualDescriptionValidated(true); return; }
     if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
     if (!manualClockInTime) { showToast('Please enter a start time.', 'error'); return; }
     if (new Date(combineDateTime(manualClockInDate, manualClockInTime)) > new Date()) {
       showToast('You can\'t select a future date.', 'error'); return;
     }
     if (isPastManualEntry) {
+      // A past entry is submitted whole in one step — there's no later "closing" moment to ask
+      // for this then, so General's description has to be collected right here.
+      if (manualProjectRows.some((r) => r.code === GENERAL) && !manualDescription.trim()) { setManualDescriptionValidated(true); return; }
       if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
       if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
         showToast('End time must be after the start time.', 'error'); return;
@@ -849,14 +850,16 @@ export default function AttendancePage() {
     if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
       showToast('You can\'t select a future date.', 'error'); return;
     }
+    if (allocations.some((a) => !a.project_code) && !clockDescription.trim()) { setClockDescriptionValidated(true); return; }
     setManualSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id,
         attendanceId: closingActiveEntry.attendance_id,
         clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
+        description: clockDescription.trim() || undefined,
       });
-      setClockedIn(false); setAttendanceId(null); setAllocations([]);
+      setClockedIn(false); setAttendanceId(null); setAllocations([]); setClockDescription('');
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
@@ -1030,6 +1033,19 @@ export default function AttendancePage() {
                 : <>{(isActive || isPaused) ? `${fmtHours(trackedHrs)} tracked of ` : ''}{fmtHours(a.allocated_hours)} planned{isPaused && ' (paused)'}</>}
               {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· plan edited after completion</span>}
             </span>
+
+            {/* General has no project name to explain what was done, so ask for it here, right on
+                the card itself, once the work is actually underway — required before clocking out. */}
+            {source === 'live' && !a.project_code && (
+              <div className="mt-3">
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Description <span className="text-red-500">*</span></label>
+                <textarea rows={2} value={clockDescription}
+                  onChange={(e) => { setClockDescription(e.target.value); setClockDescriptionValidated(false); }}
+                  placeholder="Briefly describe your general work"
+                  className={`w-full rounded-xl border px-3 py-2 text-xs resize-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${clockDescriptionValidated && !clockDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
+                {clockDescriptionValidated && !clockDescription.trim() && <p className="mt-1 text-xs text-red-500">* Required before clocking out</p>}
+              </div>
+            )}
           </div>
         );
       })}
@@ -1198,17 +1214,6 @@ export default function AttendancePage() {
 
               {!clockedIn && projectSetupUI}
 
-              {!clockedIn && hasGeneralClock && (
-                <div className="mb-6">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
-                  <textarea rows={2} value={clockDescription}
-                    onChange={(e) => { setClockDescription(e.target.value); setClockDescriptionValidated(false); }}
-                    placeholder="What did you work on?"
-                    className={`w-full rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${clockDescriptionValidated && !clockDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
-                  {clockDescriptionValidated && !clockDescription.trim() && <p className="mt-1 text-xs text-red-500">* Required for General (non-project) work</p>}
-                </div>
-              )}
-
               {!clockedIn && (
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
@@ -1286,12 +1291,15 @@ export default function AttendancePage() {
               </div>
               {manualProjectSetupUI}
 
-              {hasGeneralManual && (
+              {/* A backdated entry is submitted whole, with no later "closing" moment to ask
+                  for this instead — so General's description is collected right here. For
+                  today's entry it's asked for later, on the General card itself once active. */}
+              {isPastManualEntry && hasGeneralManual && (
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
                   <textarea rows={2} value={manualDescription}
                     onChange={(e) => { setManualDescription(e.target.value); setManualDescriptionValidated(false); }}
-                    placeholder="What did you work on?"
+                    placeholder="Briefly describe your general work"
                     className={`w-full rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDescriptionValidated && !manualDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
                   {manualDescriptionValidated && !manualDescription.trim() && <p className="mt-1 text-xs text-red-500">* Required for General (non-project) work</p>}
                 </div>
