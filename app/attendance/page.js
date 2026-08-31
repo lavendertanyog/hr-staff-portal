@@ -379,13 +379,10 @@ export default function AttendancePage() {
     return { hours, days };
   }, [pastSessions]);
 
-  const recentEntries = useMemo(() => pastSessions.slice(0, 5), [pastSessions]);
-
-  // Full History panel — same data as above, with quick pill filters and a specific-date picker.
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // Recent Entries card — quick pill filters and a specific-date picker, right on the card.
   const [historyPill, setHistoryPill] = useState('all'); // 'all' | 'week' | 'month'
   const [historyDate, setHistoryDate] = useState(null); // overrides the pill when set
-  const [historyVisibleCount, setHistoryVisibleCount] = useState(10);
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(5);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
@@ -401,13 +398,6 @@ export default function AttendancePage() {
     }
     return pastSessions;
   }, [pastSessions, historyPill, historyDate]);
-
-  const openHistory = () => {
-    setHistoryOpen(true);
-    setHistoryPill('all');
-    setHistoryDate(null);
-    setHistoryVisibleCount(10);
-  };
 
   // Days in the currently-displayed calendar month, Monday-first, padded with the leading days
   // of the previous month so the grid always starts on a Monday column.
@@ -646,6 +636,24 @@ export default function AttendancePage() {
       showToast(e2.response?.data?.error || 'Failed to update entry.', 'error');
     } finally {
       setEditSubmitting(false);
+    }
+  };
+
+  const [deleteConfirmEntry, setDeleteConfirmEntry] = useState(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  const confirmDeleteEntry = async () => {
+    if (!deleteConfirmEntry || !user?.user_id) return;
+    setDeleteSubmitting(true);
+    try {
+      await axios.delete(`${API_BASE}/api/v1/attendance/${deleteConfirmEntry.attendance_id}`, { data: { userId: user.user_id } });
+      showToast('Entry deleted.', 'success');
+      setDeleteConfirmEntry(null);
+      refreshPastSessions();
+    } catch (e2) {
+      showToast(e2.response?.data?.error || 'Failed to delete entry.', 'error');
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -1238,6 +1246,10 @@ export default function AttendancePage() {
             </form>
           ) : (
             <form onSubmit={handleManualClockInStep} noValidate>
+              <div className="mb-6 flex items-center gap-3">
+                <div className="h-3 w-3 rounded-full bg-slate-300" />
+                <span className="text-sm font-semibold text-slate-500">Not clocked in</span>
+              </div>
               {manualProjectSetupUI}
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
@@ -1404,8 +1416,7 @@ export default function AttendancePage() {
           )}
         </div>
 
-        {/* Right column: This Week stats + a Recent Entries preview, with a link into the full,
-            filterable History panel below. */}
+        {/* Right column: This Week stats + a filterable Recent Entries list, with edit/delete. */}
         <div className="flex flex-col gap-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">This week</p>
@@ -1422,32 +1433,101 @@ export default function AttendancePage() {
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Recent entries</p>
-              <button type="button" onClick={openHistory} className="text-xs font-semibold text-[#0c3b8f] hover:underline">View all</button>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">Recent entries</p>
+
+            <div className="flex items-center justify-between gap-2 mb-4 relative">
+              <div className="flex gap-1.5 flex-wrap">
+                {[{ k: 'all', l: 'All' }, { k: 'week', l: 'This week' }, { k: 'month', l: 'This month' }].map((p) => (
+                  <button key={p.k} type="button"
+                    onClick={() => { setHistoryPill(p.k); setHistoryDate(null); setHistoryVisibleCount(5); }}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
+                      !historyDate && historyPill === p.k ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    style={!historyDate && historyPill === p.k ? { background: '#0c3b8f' } : undefined}>
+                    {p.l}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setCalendarOpen((v) => !v)}
+                className="flex-shrink-0 flex items-center gap-1 text-xs font-semibold border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 hover:bg-slate-50 transition"
+                aria-label="Filter by date">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              </button>
+
+              {calendarOpen && (
+                <div className="absolute top-10 right-0 z-10 bg-white border border-slate-200 rounded-2xl shadow-xl p-3.5 w-60">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="text-slate-400 hover:text-slate-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                    </button>
+                    <p className="text-xs font-semibold text-slate-900">{calendarMonth.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' })}</p>
+                    <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="text-slate-400 hover:text-slate-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-[10px] text-slate-400 text-center mb-1">
+                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-xs text-center text-slate-700">
+                    {calendarDays.map((d, i) => {
+                      if (!d) return <span key={i} />;
+                      const iso = toISODateStr(d);
+                      const isFuture = iso > todayISOStr();
+                      const isSelected = historyDate === iso;
+                      return (
+                        <button key={i} type="button" disabled={isFuture}
+                          onClick={() => { setHistoryDate(iso); setHistoryVisibleCount(5); setCalendarOpen(false); }}
+                          className={`py-1 rounded-full transition ${isSelected ? 'text-white font-semibold' : isFuture ? 'text-slate-300' : 'hover:bg-slate-100'}`}
+                          style={isSelected ? { background: '#0c3b8f' } : undefined}>
+                          {d.getDate()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
+
             {pastSessionsLoading ? (
               <p className="text-sm text-slate-400 text-center py-6">Loading…</p>
-            ) : recentEntries.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-6">No attendance logged yet.</p>
+            ) : filteredHistoryEntries.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">No attendance logged in this period.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {recentEntries.map((s) => (
+                {filteredHistoryEntries.slice(0, historyVisibleCount).map((s) => (
                   <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-3 py-2.5 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-slate-900">{fmtSlashDate(s.day)}</p>
                       <p className="text-[11px] text-slate-500">{fmtTimeSGT(s.clock_in_time)} – {s.clock_out_time ? fmtTimeSGT(s.clock_out_time) : 'still active'}</p>
                     </div>
-                    <button type="button" onClick={() => openEditEntry(s)} aria-label="Edit entry"
-                      className="flex-shrink-0 w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
+                    <div className="flex-shrink-0 flex items-center gap-1.5">
+                      <button type="button" onClick={() => openEditEntry(s)} aria-label="Edit entry"
+                        className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button type="button" onClick={() => setDeleteConfirmEntry(s)} aria-label="Delete entry"
+                        className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
+            )}
+
+            {filteredHistoryEntries.length > historyVisibleCount && (
+              <button type="button" onClick={() => setHistoryVisibleCount((v) => v + 5)}
+                className="w-full mt-3 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition">
+                Load more
+              </button>
             )}
           </div>
         </div>
@@ -1485,112 +1565,24 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {historyOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => { setHistoryOpen(false); setCalendarOpen(false); }}>
-          <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-base font-bold text-slate-900">Attendance history</p>
-              <button type="button" onClick={() => { setHistoryOpen(false); setCalendarOpen(false); }} aria-label="Close"
-                className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+      {deleteConfirmEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setDeleteConfirmEntry(null)}>
+          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-lg font-semibold text-slate-900 mb-2">Delete this entry?</p>
+            <p className="text-sm text-slate-500 mb-1">
+              {fmtSlashDate(deleteConfirmEntry.day)} &middot; {fmtTimeSGT(deleteConfirmEntry.clock_in_time)} – {deleteConfirmEntry.clock_out_time ? fmtTimeSGT(deleteConfirmEntry.clock_out_time) : 'still active'}
+            </p>
+            <p className="text-sm text-slate-500 mb-6">This can't be undone.</p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteConfirmEntry(null)}
+                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmDeleteEntry} disabled={deleteSubmitting}
+                className="flex-1 rounded-2xl py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                {deleteSubmitting ? 'Please wait…' : 'Delete'}
               </button>
             </div>
-
-            <div className="flex items-center justify-between gap-2 mb-4 relative">
-              <div className="flex gap-1.5 flex-wrap">
-                {[{ k: 'all', l: 'All' }, { k: 'week', l: 'This week' }, { k: 'month', l: 'This month' }].map((p) => (
-                  <button key={p.k} type="button"
-                    onClick={() => { setHistoryPill(p.k); setHistoryDate(null); setHistoryVisibleCount(10); }}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
-                      !historyDate && historyPill === p.k ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                    style={!historyDate && historyPill === p.k ? { background: '#0c3b8f' } : undefined}>
-                    {p.l}
-                  </button>
-                ))}
-              </div>
-              <button type="button" onClick={() => setCalendarOpen((v) => !v)}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                Filter by date
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-
-              {calendarOpen && (
-                <div className="absolute top-10 right-0 z-10 bg-white border border-slate-200 rounded-2xl shadow-xl p-3.5 w-60">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="text-slate-400 hover:text-slate-600">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-                    </button>
-                    <p className="text-xs font-semibold text-slate-900">{calendarMonth.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' })}</p>
-                    <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="text-slate-400 hover:text-slate-600">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-7 gap-0.5 text-[10px] text-slate-400 text-center mb-1">
-                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
-                  </div>
-                  <div className="grid grid-cols-7 gap-0.5 text-xs text-center text-slate-700">
-                    {calendarDays.map((d, i) => {
-                      if (!d) return <span key={i} />;
-                      const iso = toISODateStr(d);
-                      const isFuture = iso > todayISOStr();
-                      const isSelected = historyDate === iso;
-                      return (
-                        <button key={i} type="button" disabled={isFuture}
-                          onClick={() => { setHistoryDate(iso); setHistoryVisibleCount(10); setCalendarOpen(false); }}
-                          className={`py-1 rounded-full transition ${isSelected ? 'text-white font-semibold' : isFuture ? 'text-slate-300' : 'hover:bg-slate-100'}`}
-                          style={isSelected ? { background: '#0c3b8f' } : undefined}>
-                          {d.getDate()}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {pastSessionsLoading ? (
-              <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
-            ) : filteredHistoryEntries.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">No attendance logged in this period.</p>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {filteredHistoryEntries.slice(0, historyVisibleCount).map((s) => (
-                  <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 mb-1">{fmtSlashDate(s.day)}</p>
-                      <p className="text-xs text-slate-500 mb-2">{fmtTimeSGT(s.clock_in_time)} – {s.clock_out_time ? fmtTimeSGT(s.clock_out_time) : 'still active'} &middot; {fmtHours(sessionTotalHours(s))}</p>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {(s.allocations || []).map((a, i) => (
-                          <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{a.project_code}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => { setHistoryOpen(false); openEditEntry(s); }} aria-label="Edit entry"
-                      className="flex-shrink-0 w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {filteredHistoryEntries.length > historyVisibleCount && (
-              <button type="button" onClick={() => setHistoryVisibleCount((v) => v + 10)}
-                className="w-full mt-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 text-sm font-semibold hover:bg-slate-50 transition">
-                Load more
-              </button>
-            )}
           </div>
         </div>
       )}
