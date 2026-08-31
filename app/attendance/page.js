@@ -241,21 +241,19 @@ export default function AttendancePage() {
 
   // Refresh the manual entry date/time to "now" whenever the fields are still at their
   // untouched defaults — so switching to the tab later in the day shows current time,
-  // without clobbering a date/time the user already deliberately picked. Also leaves
-  // manualStep alone if the staff member already advanced to Step 2, so navigating away to
-  // another tab and back doesn't wipe out their in-progress Clock In.
+  // without clobbering a date/time the user already deliberately picked.
   const openManualTab = () => {
     setLogTab('manual');
     if (clockedIn) {
-      // Nothing to set up — Manual Entry will render straight into closing the live session,
-      // so seed a sensible "right now" End Time for it to edit, unless they already edited it.
+      // A live session (started from either tab) is already open — Manual Entry renders
+      // straight into closing it, so just seed a sensible "right now" End Time to edit,
+      // unless they already edited it.
       if (!manualClockOutTouched) {
         setManualClockOutDate(todayISOStr());
         setManualClockOutTime(nowHHMM());
       }
       return;
     }
-    if (manualStep === 'end') return;
     setManualClockInDate((d) => d || todayISOStr());
     setManualClockInTime((t) => t || nowHHMM());
   };
@@ -700,10 +698,6 @@ export default function AttendancePage() {
     }
   }, [manualClockInDate, manualClockInTime, manualProjectRows, manualClockOutTouched]);
 
-  // Two-phase form: Step 1 collects the start + what was worked on, Step 2 (only reachable after
-  // Step 1) collects when it actually ended. Nothing is sent to the backend until Step 2 submits
-  // — Step 1's "Clock In" just advances the form, it doesn't create anything yet.
-  const [manualStep, setManualStep] = useState('start'); // 'start' | 'end'
   // Whenever the staff member already has a real live session open (via Clock In/Out), Manual
   // Entry has nothing to "clock in" for — it goes straight to closing that exact session (via the
   // same clock-out endpoint the live tab uses) instead of offering to start a second, duplicate
@@ -733,7 +727,6 @@ export default function AttendancePage() {
       setManualProjectRowsValidated(false);
       setManualClockInTouched(false);
       setManualClockOutTouched(false);
-      setManualStep('start');
       refreshPastSessions();
     } catch (e) { showToast(e.response?.data?.error || 'Manual entry failed.', 'error'); }
     finally { setManualSubmitting(false); }
@@ -743,14 +736,39 @@ export default function AttendancePage() {
   // reason to ask separately "when did you finish" afterward — both times are already known,
   // so collect them together in one step. Only "today" keeps the two-step Clock In / Clock Out
   // flow, since the end time genuinely might not be known yet.
+  // Clocking in "now" (today, no end time yet) via Manual Entry creates the exact same kind of
+  // open ACTIVE session as the Clock In/Out tab's own Clock In — so both tabs immediately show
+  // the same "Active session" and either one can close it out.
+  const submitManualClockIn = async () => {
+    const allocationsPayload = manualProjectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
+    setManualSubmitting(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/clock-in`, {
+        userId: user.user_id,
+        clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
+        remark: manualRemark.trim() || undefined,
+        allocations: allocationsPayload,
+      });
+      const data = res.data?.data;
+      const id = data?.attendance_id;
+      const firstCode = data?.allocations?.[0]?.project_code || GENERAL;
+      setAttendanceId(id); setClockedIn(true); setSelectedProject(firstCode);
+      setActiveSessionClockInTime(data?.clock_in_time);
+      setAllocations(data?.allocations || []);
+      notifiedRef.current = new Set();
+      sessionStorage.setItem('staff_attendance_id', id);
+      sessionStorage.setItem('staff_attendance_project', firstCode);
+      sessionStorage.setItem('staff_attendance_user_id', user.user_id);
+      showToast('Clocked in successfully.', 'success');
+      refreshPastSessions();
+    } catch (e) { showToast(e.response?.data?.error || 'Clock-in failed.', 'error'); }
+    finally { setManualSubmitting(false); }
+  };
+
   const isPastManualEntry = manualClockInDate && manualClockInDate < todayISOStr();
   // A shift can legitimately cross midnight (e.g. clocked in 8pm, out 4am), so End Date is
   // allowed up to one day past Start Date — never further.
   const manualEndDateMax = addHoursToClock(manualClockInDate || todayISOStr(), '00:00', 24).date;
-
-  // Step 1's day-entries fetch, kept so Step 2 can re-check the full [start, end) range for a
-  // real time overlap once the End Time is actually known.
-  const [manualDayEntries, setManualDayEntries] = useState([]);
 
   const handleManualClockInStep = async (e) => {
     e.preventDefault();
@@ -776,7 +794,6 @@ export default function AttendancePage() {
     try {
       const res = await axios.get(`${API_BASE}/api/v1/attendance/day-entries/${user.user_id}`, { params: { date: manualClockInDate } });
       existing = res.data?.data || [];
-      setManualDayEntries(existing);
     } catch { /* if the check itself fails, fall through and let the flow proceed */ }
 
     const newStart = new Date(combineDateTime(manualClockInDate, manualClockInTime));
@@ -785,23 +802,7 @@ export default function AttendancePage() {
     if (overlap) { setOverlapEntry(overlap); return; }
     if (existing.length > 0) { setDayConflictEntries(existing); return; }
 
-    if (isPastManualEntry) submitManualEntry(); else setManualStep('end');
-  };
-
-  const handleManualClockOutStep = (e) => {
-    e.preventDefault();
-    if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
-    if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
-      showToast('End time must be after the start time.', 'error'); return;
-    }
-    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
-      showToast('You can\'t select a future date.', 'error'); return;
-    }
-    const newStart = new Date(combineDateTime(manualClockInDate, manualClockInTime));
-    const newEnd = new Date(combineDateTime(manualClockOutDate, manualClockOutTime));
-    const overlap = findOverlap(manualDayEntries, newStart, newEnd);
-    if (overlap) { setOverlapEntry(overlap); return; }
-    submitManualEntry();
+    if (isPastManualEntry) submitManualEntry(); else submitManualClockIn();
   };
 
   // Closes the staff member's real live session (started via Clock In/Out) using the End Time
@@ -836,7 +837,6 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_user_id');
       showToast('Active session clocked out successfully.', 'success');
       setManualClockOutTouched(false);
-      setManualStep('start');
       refreshPastSessions();
     } catch (e2) { showToast(e2.response?.data?.error || 'Clock-out failed.', 'error'); }
     finally { setManualSubmitting(false); }
@@ -1237,98 +1237,45 @@ export default function AttendancePage() {
               </button>
             </form>
           ) : (
-            <form onSubmit={manualStep === 'start' ? handleManualClockInStep : handleManualClockOutStep} noValidate>
-              {manualStep === 'start' ? (
-                <>
-                  {manualProjectSetupUI}
-                  <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="min-w-0">
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                      <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => setManualClockInDate(e.target.value)}
-                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
-                      <input type="time" value={manualClockInTime} onChange={(e) => { setManualClockInTime(e.target.value); setManualClockInTouched(true); }}
-                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
+            <form onSubmit={handleManualClockInStep} noValidate>
+              {manualProjectSetupUI}
+              <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                  <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => setManualClockInDate(e.target.value)}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="min-w-0">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
+                  <input type="time" value={manualClockInTime} onChange={(e) => { setManualClockInTime(e.target.value); setManualClockInTouched(true); }}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              {isPastManualEntry && (
+                <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                    <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
+                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  {isPastManualEntry && (
-                    <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="min-w-0">
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                        <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
-                          className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                        <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
-                          className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                    </div>
-                  )}
-                  <div className="mb-6">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
-                    <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
-                      placeholder="Add notes or specific tasks (optional)"
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <div className="min-w-0">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
+                    <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
+                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
-                  <button type="submit" disabled={manualSubmitting || !manualClockInTime}
-                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
-                    style={{ background: '#0c3b8f' }}>
-                    {manualSubmitting ? 'Please wait…' : (isPastManualEntry ? 'Submit' : 'Clock In')}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="mb-6 flex items-center gap-3">
-                    <div className="h-3 w-3 rounded-full bg-green-500" />
-                    <span className="text-sm font-semibold text-green-700">Active session</span>
-                  </div>
-
-                  <div className="mb-5 space-y-3">
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Allocated</span>
-                      <span className="text-xs font-bold text-slate-600">
-                        {fmtHours(manualProjectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0))} of {fmtHours(STANDARD_WORKDAY_HOURS)}
-                      </span>
-                    </div>
-                    {manualProjectRows.map((r, i) => (
-                      <div key={i} className="rounded-2xl border border-blue-300 bg-blue-50/40 p-4 flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-slate-800">{projectLabel(r.code, projects)}</span>
-                        <span className="text-xs text-slate-500">{fmtHours(parseFloat(r.hours) || 0)} planned</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mb-5 flex items-center justify-between gap-3">
-                    <p className="text-xs text-slate-500">
-                      Clocked in {new Date(`${manualClockInDate}T${manualClockInTime}:00`).toLocaleDateString('en-SG', { day: '2-digit', month: '2-digit', year: 'numeric' })} at {fmtTimeSGT(combineDateTime(manualClockInDate, manualClockInTime))}
-                    </p>
-                    <button type="button" onClick={() => setManualStep('start')} className="flex-shrink-0 text-xs font-semibold text-[#0c3b8f] hover:underline">
-                      Edit
-                    </button>
-                  </div>
-                  <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="min-w-0">
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                      <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
-                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">
-                        End Time <span className="font-normal text-slate-400">(when you actually clocked off)</span>
-                      </label>
-                      <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
-                        className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-                  <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
-                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                    {manualSubmitting ? 'Please wait…' : 'Clock Out'}
-                  </button>
-                </>
+                </div>
               )}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+                <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
+                  placeholder="Add notes or specific tasks (optional)"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="submit" disabled={manualSubmitting || !manualClockInTime}
+                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
+                style={{ background: '#0c3b8f' }}>
+                {manualSubmitting ? 'Please wait…' : (isPastManualEntry ? 'Submit' : 'Clock In')}
+              </button>
 
               {dayConflictEntries && (() => {
                 const isToday = manualClockInDate === todayISOStr();
@@ -1363,7 +1310,7 @@ export default function AttendancePage() {
                       </button>
                       <button type="button" onClick={() => {
                         setDayConflictEntries(null);
-                        if (isPastManualEntry) submitManualEntry(); else setManualStep('end');
+                        if (isPastManualEntry) submitManualEntry(); else submitManualClockIn();
                       }} disabled={manualSubmitting}
                         className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
                         {manualSubmitting ? 'Please wait…' : 'Confirm'}
