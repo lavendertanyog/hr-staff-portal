@@ -179,6 +179,10 @@ export default function AttendancePage() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [clockRemark, setClockRemark] = useState('');
+  // General (non-project) work has no project name to explain what was done, so — unlike the
+  // optional remark — a description is required whenever General is one of the picked rows.
+  const [clockDescription, setClockDescription] = useState('');
+  const [clockDescriptionValidated, setClockDescriptionValidated] = useState(false);
   const [clockedIn, setClockedIn] = useState(false);
   const [attendanceId, setAttendanceId] = useState(null);
   // The live session's own clock-in time, kept alongside attendanceId so Manual Entry can close
@@ -217,6 +221,8 @@ export default function AttendancePage() {
   const [manualClockInDate, setManualClockInDate] = useState(() => todayISOStr());
   const [manualClockInTime, setManualClockInTime] = useState(() => nowHHMM());
   const [manualRemark, setManualRemark] = useState('');
+  const [manualDescription, setManualDescription] = useState('');
+  const [manualDescriptionValidated, setManualDescriptionValidated] = useState(false);
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -441,6 +447,7 @@ export default function AttendancePage() {
     if (!user?.user_id) return;
     if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
     if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
+    if (projectRows.some((r) => r.code === GENERAL) && !clockDescription.trim()) { setClockDescriptionValidated(true); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
     setLoading(true);
@@ -456,6 +463,7 @@ export default function AttendancePage() {
         latitude: coords.latitude,
         longitude: coords.longitude,
         remark: clockRemark.trim() || undefined,
+        description: clockDescription.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
@@ -706,6 +714,11 @@ export default function AttendancePage() {
     }
   }, [manualClockInDate, manualClockInTime, manualProjectRows, manualClockOutTouched]);
 
+  // General (non-project) work has no project name to explain what was done, so a description
+  // is required whenever it's one of the picked rows — separate from the always-optional remark.
+  const hasGeneralClock = projectRows.some((r) => r.code === GENERAL);
+  const hasGeneralManual = manualProjectRows.some((r) => r.code === GENERAL);
+
   // Whenever the staff member already has a real live session open (via Clock In/Out), Manual
   // Entry has nothing to "clock in" for — it goes straight to closing that exact session (via the
   // same clock-out endpoint the live tab uses) instead of offering to start a second, duplicate
@@ -724,15 +737,17 @@ export default function AttendancePage() {
         clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
         clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
         remark: manualRemark.trim() || undefined,
+        description: manualDescription.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
       const totalHours = (data?.allocations || []).reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
       setManualAllocations(data?.allocations || []);
       showToast(`Entry logged — ${fmtHours(totalHours)} recorded.`, 'success');
-      setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark('');
+      setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark(''); setManualDescription('');
       setManualProjectRows([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
       setManualProjectRowsValidated(false);
+      setManualDescriptionValidated(false);
       setManualClockInTouched(false);
       setManualClockOutTouched(false);
       refreshPastSessions();
@@ -755,6 +770,7 @@ export default function AttendancePage() {
         userId: user.user_id,
         clockInTime: combineDateTime(manualClockInDate, manualClockInTime),
         remark: manualRemark.trim() || undefined,
+        description: manualDescription.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
@@ -783,6 +799,7 @@ export default function AttendancePage() {
     if (!user?.user_id) return;
     if (manualProjectRows.some((r) => !r.code)) { setManualProjectRowsValidated(true); return; }
     if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
+    if (manualProjectRows.some((r) => r.code === GENERAL) && !manualDescription.trim()) { setManualDescriptionValidated(true); return; }
     if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
     if (!manualClockInTime) { showToast('Please enter a start time.', 'error'); return; }
     if (new Date(combineDateTime(manualClockInDate, manualClockInTime)) > new Date()) {
@@ -1157,9 +1174,9 @@ export default function AttendancePage() {
       <div className="grid gap-6 items-start lg:grid-cols-[minmax(0,42rem)_26rem]">
         {/* Log Time card — minHeight keeps it at least as tall as the right column (This week +
             Recent entries, sized to show 5 full entries), so the two stay bottom-aligned. */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm" style={{ minHeight: 630 }}>
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm flex flex-col" style={{ minHeight: 630 }}>
           {/* Segment tabs */}
-          <div className="mb-6 flex gap-2 rounded-2xl bg-slate-100 p-1">
+          <div className="mb-6 flex-shrink-0 flex gap-2 rounded-2xl bg-slate-100 p-1">
             <button type="button" onClick={() => setLogTab('clock')}
               className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'clock' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
               Clock In/Out
@@ -1171,7 +1188,7 @@ export default function AttendancePage() {
           </div>
 
           {logTab === 'clock' ? (
-            <>
+            <div className="flex flex-col flex-1 min-h-0">
               <div className="mb-6 flex items-center gap-3">
                 <div className={`h-3 w-3 rounded-full ${clockedIn ? 'bg-green-500' : 'bg-slate-300'}`} />
                 <span className={`text-sm font-semibold ${clockedIn ? 'text-green-700' : 'text-slate-500'}`}>
@@ -1180,6 +1197,17 @@ export default function AttendancePage() {
               </div>
 
               {!clockedIn && projectSetupUI}
+
+              {!clockedIn && hasGeneralClock && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
+                  <textarea rows={2} value={clockDescription}
+                    onChange={(e) => { setClockDescription(e.target.value); setClockDescriptionValidated(false); }}
+                    placeholder="What did you work on?"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${clockDescriptionValidated && !clockDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
+                  {clockDescriptionValidated && !clockDescription.trim() && <p className="mt-1 text-xs text-red-500">* Required for General (non-project) work</p>}
+                </div>
+              )}
 
               {!clockedIn && (
                 <div className="mb-6">
@@ -1201,6 +1229,8 @@ export default function AttendancePage() {
                 </div>
               )}
 
+              <div className="flex-1" />
+
               {!clockedIn ? (
                   <button onClick={handleClockIn} disabled={loading}
                     className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
@@ -1213,12 +1243,12 @@ export default function AttendancePage() {
                     {loading ? 'Please wait…' : 'Clock Out'}
                   </button>
                 )}
-            </>
+            </div>
           ) : closingActiveEntry ? (
             // Already has a real live session open — Manual Entry has nothing left to "clock in"
             // for, so it goes straight to closing that session with an editable End Time instead
             // of offering to start a second, duplicate entry for the day.
-            <form onSubmit={submitActiveSessionClockOut} noValidate>
+            <form onSubmit={submitActiveSessionClockOut} noValidate className="flex flex-col flex-1 min-h-0">
               <div className="mb-6 flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full bg-green-500" />
                 <span className="text-sm font-semibold text-green-700">Active session</span>
@@ -1240,18 +1270,33 @@ export default function AttendancePage() {
                     className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
+
+              <div className="flex-1" />
+
               <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
                 {manualSubmitting ? 'Please wait…' : 'Clock Out'}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleManualClockInStep} noValidate>
+            <form onSubmit={handleManualClockInStep} noValidate className="flex flex-col flex-1 min-h-0">
               <div className="mb-6 flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full bg-slate-300" />
                 <span className="text-sm font-semibold text-slate-500">Not clocked in</span>
               </div>
               {manualProjectSetupUI}
+
+              {hasGeneralManual && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
+                  <textarea rows={2} value={manualDescription}
+                    onChange={(e) => { setManualDescription(e.target.value); setManualDescriptionValidated(false); }}
+                    placeholder="What did you work on?"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDescriptionValidated && !manualDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
+                  {manualDescriptionValidated && !manualDescription.trim() && <p className="mt-1 text-xs text-red-500">* Required for General (non-project) work</p>}
+                </div>
+              )}
+
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
@@ -1284,6 +1329,9 @@ export default function AttendancePage() {
                   placeholder="Add notes or specific tasks (optional)"
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+
+              <div className="flex-1" />
+
               <button type="submit" disabled={manualSubmitting || !manualClockInTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                 style={{ background: '#0c3b8f' }}>
@@ -1410,7 +1458,7 @@ export default function AttendancePage() {
                 </div>
                 <button type="submit" disabled={editSubmitting}
                   className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                  {editSubmitting ? 'Please wait…' : 'Save Changes'}
+                  {editSubmitting ? 'Please wait…' : 'Save'}
                 </button>
               </form>
             </div>
