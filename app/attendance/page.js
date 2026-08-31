@@ -1155,8 +1155,9 @@ export default function AttendancePage() {
           give the page a permanent, useful home instead of empty space beside the (comparatively
           narrow) Log Time card. Stacks below it on mobile/tablet. */}
       <div className="grid gap-6 items-start lg:grid-cols-[minmax(0,42rem)_26rem]">
-        {/* Log Time card */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        {/* Log Time card — minHeight keeps it at least as tall as the right column (This week +
+            Recent entries, sized to show 5 full entries), so the two stay bottom-aligned. */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm" style={{ minHeight: 630 }}>
           {/* Segment tabs */}
           <div className="mb-6 flex gap-2 rounded-2xl bg-slate-100 p-1">
             <button type="button" onClick={() => setLogTab('clock')}
@@ -1432,9 +1433,10 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Fixed height, matching the Clock In/Out tab's default height — kept constant so this
-              card never grows or shrinks as filters/Load more/tab switches change its content. */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col" style={{ height: 408 }}>
+          {/* Fixed height — tall enough to show 5 entries in full without scrolling — kept
+              constant so this card never grows or shrinks as filters/Load more/tab switches
+              change its content. The Log Time card's minHeight is set to match this. */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col" style={{ height: 440 }}>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4 flex-shrink-0">Recent entries</p>
 
             <div className="flex items-center justify-between gap-2 mb-4 relative flex-shrink-0">
