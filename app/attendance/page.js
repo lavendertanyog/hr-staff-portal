@@ -241,20 +241,23 @@ export default function AttendancePage() {
 
   // Refresh the manual entry date/time to "now" whenever the fields are still at their
   // untouched defaults — so switching to the tab later in the day shows current time,
-  // without clobbering a date/time the user already deliberately picked.
+  // without clobbering a date/time the user already deliberately picked. Also leaves
+  // manualStep alone if the staff member already advanced to Step 2, so navigating away to
+  // another tab and back doesn't wipe out their in-progress Clock In.
   const openManualTab = () => {
     setLogTab('manual');
-    setManualStep('start');
     if (clockedIn) {
       // Nothing to set up — Manual Entry will render straight into closing the live session,
-      // so seed a sensible "right now" End Time for it to edit.
-      setManualClockOutDate(todayISOStr());
-      setManualClockOutTime(nowHHMM());
-      setManualClockOutTouched(true);
+      // so seed a sensible "right now" End Time for it to edit, unless they already edited it.
+      if (!manualClockOutTouched) {
+        setManualClockOutDate(todayISOStr());
+        setManualClockOutTime(nowHHMM());
+      }
+      return;
     }
+    if (manualStep === 'end') return;
     setManualClockInDate((d) => d || todayISOStr());
     setManualClockInTime((t) => t || nowHHMM());
-    setManualClockInTouched(false);
   };
 
   useEffect(() => {
