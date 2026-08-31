@@ -99,6 +99,26 @@ function nowHHMM() {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
+function toISODateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function mondayOfThisWeekISO() {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // 0 = Monday
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dow);
+  return toISODateStr(monday);
+}
+function daysAgoISO(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return toISODateStr(d);
+}
+// Total hours across a session's project allocations — the same value shown in its breakdown.
+function sessionTotalHours(session) {
+  return (session.allocations || []).reduce((sum, a) => sum + Number(a.hours || 0), 0);
+}
+
 const STANDARD_WORKDAY_HOURS = 8;
 
 // Splits the workday into values on the same 0.25h grid as the hour input's `step`, so every
@@ -333,6 +353,75 @@ export default function AttendancePage() {
       .then((r) => setProjects(r.data?.data || [])).catch(() => {});
   }, [user?.user_id]);
 
+  // Sidebar (right column): "This week" stats + a recent-entries preview, both derived from a
+  // single 180-day lookback fetch — also backs the full History panel, so there's only one
+  // network call to keep in sync when an entry is edited.
+  const [pastSessions, setPastSessions] = useState([]);
+  const [pastSessionsLoading, setPastSessionsLoading] = useState(true);
+
+  const refreshPastSessions = () => {
+    if (!user?.user_id) return;
+    setPastSessionsLoading(true);
+    axios.get(`${API_BASE}/api/v1/attendance/sessions/${user.user_id}`, { params: { start: daysAgoISO(180), end: todayISOStr() } })
+      .then((r) => setPastSessions((r.data?.data || []).slice().sort((a, b) => new Date(b.clock_in_time) - new Date(a.clock_in_time))))
+      .catch(() => setPastSessions([]))
+      .finally(() => setPastSessionsLoading(false));
+  };
+
+  useEffect(() => { refreshPastSessions(); }, [user?.user_id]);
+
+  const weekStats = useMemo(() => {
+    const monday = mondayOfThisWeekISO();
+    const thisWeek = pastSessions.filter((s) => s.day >= monday);
+    const hours = thisWeek.reduce((sum, s) => sum + sessionTotalHours(s), 0);
+    const days = new Set(thisWeek.map((s) => s.day)).size;
+    return { hours, days };
+  }, [pastSessions]);
+
+  const recentEntries = useMemo(() => pastSessions.slice(0, 5), [pastSessions]);
+
+  // Full History panel — same data as above, with quick pill filters and a specific-date picker.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyPill, setHistoryPill] = useState('all'); // 'all' | 'week' | 'month'
+  const [historyDate, setHistoryDate] = useState(null); // overrides the pill when set
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(10);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+
+  const filteredHistoryEntries = useMemo(() => {
+    if (historyDate) return pastSessions.filter((s) => s.day === historyDate);
+    if (historyPill === 'week') {
+      const monday = mondayOfThisWeekISO();
+      return pastSessions.filter((s) => s.day >= monday);
+    }
+    if (historyPill === 'month') {
+      const firstOfMonth = `${todayISOStr().slice(0, 7)}-01`;
+      return pastSessions.filter((s) => s.day >= firstOfMonth);
+    }
+    return pastSessions;
+  }, [pastSessions, historyPill, historyDate]);
+
+  const openHistory = () => {
+    setHistoryOpen(true);
+    setHistoryPill('all');
+    setHistoryDate(null);
+    setHistoryVisibleCount(10);
+  };
+
+  // Days in the currently-displayed calendar month, Monday-first, padded with the leading days
+  // of the previous month so the grid always starts on a Monday column.
+  const calendarDays = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const leadingBlanks = (firstOfMonth.getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+    return cells;
+  }, [calendarMonth]);
+
   const showMsg = (text, type) => showToast(text, type);
 
   // Re-split the standard 8h workday evenly across however many rows exist, keeping any codes
@@ -404,6 +493,7 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
       showToast('Clocked out successfully.', 'success');
+      refreshPastSessions();
     } catch (e) { showMsg(e.response?.data?.error || 'Clock-out failed.', 'error'); }
     finally { setLoading(false); }
   };
@@ -540,6 +630,9 @@ export default function AttendancePage() {
     if (new Date(clockOutTime) <= new Date(clockInTime)) {
       showToast('End time must be after the start time.', 'error'); return;
     }
+    if (new Date(clockInTime) > new Date()) {
+      showToast('You can\'t select a future date.', 'error'); return;
+    }
     setEditSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/attendance/${editingEntry.attendance_id}/edit-times`, {
@@ -547,6 +640,7 @@ export default function AttendancePage() {
       });
       showToast('Entry updated successfully.', 'success');
       setEditingEntry(null);
+      refreshPastSessions();
     } catch (e2) {
       showToast(e2.response?.data?.error || 'Failed to update entry.', 'error');
     } finally {
@@ -637,6 +731,7 @@ export default function AttendancePage() {
       setManualClockInTouched(false);
       setManualClockOutTouched(false);
       setManualStep('start');
+      refreshPastSessions();
     } catch (e) { showToast(e.response?.data?.error || 'Manual entry failed.', 'error'); }
     finally { setManualSubmitting(false); }
   };
@@ -661,10 +756,16 @@ export default function AttendancePage() {
     if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
     if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
     if (!manualClockInTime) { showToast('Please enter a start time.', 'error'); return; }
+    if (new Date(combineDateTime(manualClockInDate, manualClockInTime)) > new Date()) {
+      showToast('You can\'t select a future date.', 'error'); return;
+    }
     if (isPastManualEntry) {
       if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
       if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
         showToast('End time must be after the start time.', 'error'); return;
+      }
+      if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
+        showToast('You can\'t select a future date.', 'error'); return;
       }
     }
 
@@ -690,6 +791,9 @@ export default function AttendancePage() {
     if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
       showToast('End time must be after the start time.', 'error'); return;
     }
+    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
+      showToast('You can\'t select a future date.', 'error'); return;
+    }
     const newStart = new Date(combineDateTime(manualClockInDate, manualClockInTime));
     const newEnd = new Date(combineDateTime(manualClockOutDate, manualClockOutTime));
     const overlap = findOverlap(manualDayEntries, newStart, newEnd);
@@ -705,8 +809,16 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!closingActiveEntry || !user?.user_id) return;
     if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
-    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) <= new Date(closingActiveEntry.clock_in_time)) {
+    // The End Time input only has minute precision, but a clock-in can land a few seconds into
+    // that same minute — compare against the start of the clock-in's minute (matching the
+    // backend's own clockInFloored check) so closing out in that same minute isn't rejected.
+    const clockInFloored = new Date(closingActiveEntry.clock_in_time);
+    clockInFloored.setSeconds(0, 0);
+    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) < clockInFloored) {
       showToast('End time must be after the start time.', 'error'); return;
+    }
+    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
+      showToast('You can\'t select a future date.', 'error'); return;
     }
     setManualSubmitting(true);
     try {
@@ -722,6 +834,7 @@ export default function AttendancePage() {
       showToast('Active session clocked out successfully.', 'success');
       setManualClockOutTouched(false);
       setManualStep('start');
+      refreshPastSessions();
     } catch (e2) { showToast(e2.response?.data?.error || 'Clock-out failed.', 'error'); }
     finally { setManualSubmitting(false); }
   };
@@ -1027,34 +1140,12 @@ export default function AttendancePage() {
         </button>
       </div>
 
-      {/* Mobile: help card stacks above the Log Time card. Desktop: sits beside it in a second column. */}
-      <div className={`grid gap-6 items-start ${showHelp ? 'lg:grid-cols-[minmax(0,42rem)_26rem]' : ''}`}>
-        {showHelp && (
-          <div className="order-first lg:order-last rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
-            <ul className="space-y-4 text-sm text-slate-600">
-              {[
-                { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
-                { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
-                { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
-                { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
-                { n: '5', t: 'Clock-in & "still working?" reminders', d: 'A reminder appears hourly if you haven\'t clocked in by 8:30am. Once clocked in, you\'ll be asked to confirm you\'re still working periodically — if you miss it, you\'re auto clocked-out after 4 hours since your last check-in. This pauses over lunch (12–2pm) and on weekends.' },
-              ].map((s) => (
-                <li key={s.n} className="flex gap-4">
-                  <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
-                  <div>
-                    <p className="font-semibold text-slate-800">{s.t}</p>
-                    <p className="text-slate-500 mt-0.5">{s.d}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
-          </div>
-        )}
-
+      {/* Right column is always present on desktop — This Week stats + a Recent Entries preview
+          give the page a permanent, useful home instead of empty space beside the (comparatively
+          narrow) Log Time card. Stacks below it on mobile/tablet. */}
+      <div className="grid gap-6 items-start lg:grid-cols-[minmax(0,42rem)_26rem]">
         {/* Log Time card */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm max-w-2xl">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
           {/* Segment tabs */}
           <div className="mb-6 flex gap-2 rounded-2xl bg-slate-100 p-1">
             <button type="button" onClick={() => setLogTab('clock')}
@@ -1115,7 +1206,7 @@ export default function AttendancePage() {
             // Already has a real live session open — Manual Entry has nothing left to "clock in"
             // for, so it goes straight to closing that session with an editable End Time instead
             // of offering to start a second, duplicate entry for the day.
-            <form onSubmit={submitActiveSessionClockOut}>
+            <form onSubmit={submitActiveSessionClockOut} noValidate>
               <div className="mb-6 flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full bg-green-500" />
                 <span className="text-sm font-semibold text-green-700">Active session</span>
@@ -1123,11 +1214,6 @@ export default function AttendancePage() {
 
               {allocationTracker}
 
-              <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
-                <p className="text-sm text-blue-800">
-                  Active session — clocked in {fmtSlashDate(new Date(closingActiveEntry.clock_in_time).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' }))} at {fmtTimeSGT(closingActiveEntry.clock_in_time)}
-                </p>
-              </div>
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
@@ -1148,7 +1234,7 @@ export default function AttendancePage() {
               </button>
             </form>
           ) : (
-            <form onSubmit={manualStep === 'start' ? handleManualClockInStep : handleManualClockOutStep}>
+            <form onSubmit={manualStep === 'start' ? handleManualClockInStep : handleManualClockOutStep} noValidate>
               {manualStep === 'start' ? (
                 <>
                   {manualProjectSetupUI}
@@ -1192,11 +1278,31 @@ export default function AttendancePage() {
                 </>
               ) : (
                 <>
-                  <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 flex items-center justify-between gap-3">
-                    <p className="text-sm text-blue-800">
+                  <div className="mb-6 flex items-center gap-3">
+                    <div className="h-3 w-3 rounded-full bg-green-500" />
+                    <span className="text-sm font-semibold text-green-700">Active session</span>
+                  </div>
+
+                  <div className="mb-5 space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Allocated</span>
+                      <span className="text-xs font-bold text-slate-600">
+                        {fmtHours(manualProjectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0))} of {fmtHours(STANDARD_WORKDAY_HOURS)}
+                      </span>
+                    </div>
+                    {manualProjectRows.map((r, i) => (
+                      <div key={i} className="rounded-2xl border border-blue-300 bg-blue-50/40 p-4 flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-800">{projectLabel(r.code, projects)}</span>
+                        <span className="text-xs text-slate-500">{fmtHours(parseFloat(r.hours) || 0)} planned</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mb-5 flex items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">
                       Clocked in {new Date(`${manualClockInDate}T${manualClockInTime}:00`).toLocaleDateString('en-SG', { day: '2-digit', month: '2-digit', year: 'numeric' })} at {fmtTimeSGT(combineDateTime(manualClockInDate, manualClockInTime))}
                     </p>
-                    <button type="button" onClick={() => setManualStep('start')} className="flex-shrink-0 text-xs font-semibold text-blue-700 hover:underline">
+                    <button type="button" onClick={() => setManualStep('start')} className="flex-shrink-0 text-xs font-semibold text-[#0c3b8f] hover:underline">
                       Edit
                     </button>
                   </div>
@@ -1305,7 +1411,7 @@ export default function AttendancePage() {
 
           {editingEntry && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setEditingEntry(null)}>
-              <form onSubmit={submitEditTimes} className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <form onSubmit={submitEditTimes} noValidate className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 <button type="button" onClick={() => setEditingEntry(null)} aria-label="Close"
                   className="absolute top-4 right-4 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1318,7 +1424,7 @@ export default function AttendancePage() {
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
-                    <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)}
+                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => setEditStartDate(e.target.value)}
                       className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="min-w-0">
@@ -1330,7 +1436,7 @@ export default function AttendancePage() {
                 <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                    <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)}
+                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => setEditEndDate(e.target.value)}
                       className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="min-w-0">
@@ -1347,7 +1453,197 @@ export default function AttendancePage() {
             </div>
           )}
         </div>
+
+        {/* Right column: This Week stats + a Recent Entries preview, with a link into the full,
+            filterable History panel below. */}
+        <div className="flex flex-col gap-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">This week</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs text-slate-400 mb-1">Hours logged</p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">{fmtHours(weekStats.hours)}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs text-slate-400 mb-1">Days worked</p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">{weekStats.days}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Recent entries</p>
+              <button type="button" onClick={openHistory} className="text-xs font-semibold text-[#0c3b8f] hover:underline">View all</button>
+            </div>
+            {pastSessionsLoading ? (
+              <p className="text-sm text-slate-400 text-center py-6">Loading…</p>
+            ) : recentEntries.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">No attendance logged yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {recentEntries.map((s) => (
+                  <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-3 py-2.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-900">{fmtSlashDate(s.day)}</p>
+                      <p className="text-[11px] text-slate-500">{fmtTimeSGT(s.clock_in_time)} – {s.clock_out_time ? fmtTimeSGT(s.clock_out_time) : 'still active'}</p>
+                    </div>
+                    <button type="button" onClick={() => openEditEntry(s)} aria-label="Edit entry"
+                      className="flex-shrink-0 w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setShowHelp(false)}>
+          <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => setShowHelp(false)} aria-label="Close"
+              className="absolute top-6 right-6 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
+            <ul className="space-y-4 text-sm text-slate-600">
+              {[
+                { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
+                { n: '2', t: 'Add a remark', d: 'Optionally note what you worked on — helps your manager review your attendance report.' },
+                { n: '3', t: 'Clock In or log manually', d: 'Clock in/out live, or use Manual Entry if you forgot to clock in for a shift.' },
+                { n: '4', t: 'Reviewed by your manager', d: 'Your total hours, overtime, and remarks appear in your manager\'s attendance report.' },
+                { n: '5', t: 'Clock-in & "still working?" reminders', d: 'A reminder appears hourly if you haven\'t clocked in by 8:30am on a weekday (staff aren\'t expected to clock in at 8:30am on weekends, so this reminder doesn\'t apply then). Once clocked in — any day, including weekends — you\'ll be asked to confirm you\'re still working periodically, and auto clocked-out after 4 hours since your last check-in if you miss it. Only the forced auto clock-out pauses over lunch (12–2pm); the reminder itself keeps checking in as usual.' },
+              ].map((s) => (
+                <li key={s.n} className="flex gap-4">
+                  <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
+                  <div>
+                    <p className="font-semibold text-slate-800">{s.t}</p>
+                    <p className="text-slate-500 mt-0.5">{s.d}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
+          </div>
+        </div>
+      )}
+
+      {historyOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => { setHistoryOpen(false); setCalendarOpen(false); }}>
+          <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-base font-bold text-slate-900">Attendance history</p>
+              <button type="button" onClick={() => { setHistoryOpen(false); setCalendarOpen(false); }} aria-label="Close"
+                className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 mb-4 relative">
+              <div className="flex gap-1.5 flex-wrap">
+                {[{ k: 'all', l: 'All' }, { k: 'week', l: 'This week' }, { k: 'month', l: 'This month' }].map((p) => (
+                  <button key={p.k} type="button"
+                    onClick={() => { setHistoryPill(p.k); setHistoryDate(null); setHistoryVisibleCount(10); }}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
+                      !historyDate && historyPill === p.k ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    style={!historyDate && historyPill === p.k ? { background: '#0c3b8f' } : undefined}>
+                    {p.l}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setCalendarOpen((v) => !v)}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Filter by date
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {calendarOpen && (
+                <div className="absolute top-10 right-0 z-10 bg-white border border-slate-200 rounded-2xl shadow-xl p-3.5 w-60">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="text-slate-400 hover:text-slate-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                    </button>
+                    <p className="text-xs font-semibold text-slate-900">{calendarMonth.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' })}</p>
+                    <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="text-slate-400 hover:text-slate-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-[10px] text-slate-400 text-center mb-1">
+                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-xs text-center text-slate-700">
+                    {calendarDays.map((d, i) => {
+                      if (!d) return <span key={i} />;
+                      const iso = toISODateStr(d);
+                      const isFuture = iso > todayISOStr();
+                      const isSelected = historyDate === iso;
+                      return (
+                        <button key={i} type="button" disabled={isFuture}
+                          onClick={() => { setHistoryDate(iso); setHistoryVisibleCount(10); setCalendarOpen(false); }}
+                          className={`py-1 rounded-full transition ${isSelected ? 'text-white font-semibold' : isFuture ? 'text-slate-300' : 'hover:bg-slate-100'}`}
+                          style={isSelected ? { background: '#0c3b8f' } : undefined}>
+                          {d.getDate()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {pastSessionsLoading ? (
+              <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
+            ) : filteredHistoryEntries.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">No attendance logged in this period.</p>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {filteredHistoryEntries.slice(0, historyVisibleCount).map((s) => (
+                  <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 mb-1">{fmtSlashDate(s.day)}</p>
+                      <p className="text-xs text-slate-500 mb-2">{fmtTimeSGT(s.clock_in_time)} – {s.clock_out_time ? fmtTimeSGT(s.clock_out_time) : 'still active'} &middot; {fmtHours(sessionTotalHours(s))}</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {(s.allocations || []).map((a, i) => (
+                          <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{a.project_code}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => { setHistoryOpen(false); openEditEntry(s); }} aria-label="Edit entry"
+                      className="flex-shrink-0 w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {filteredHistoryEntries.length > historyVisibleCount && (
+              <button type="button" onClick={() => setHistoryVisibleCount((v) => v + 10)}
+                className="w-full mt-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 text-sm font-semibold hover:bg-slate-50 transition">
+                Load more
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

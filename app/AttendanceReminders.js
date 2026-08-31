@@ -59,12 +59,6 @@ function isWeekday(sgt) {
   const day = sgt.getUTCDay(); // sgt's UTC getters hold the SGT wall-clock value (see sgtNow)
   return day !== 0 && day !== 6;
 }
-// Weekends pause the whole sequence — no prompts, no auto clock-out. No evening cutoff — with
-// the midnight backstop removed, this cycle is the only thing preventing an overnight session,
-// so it has to keep running for as long as someone is actually clocked in, into the evening.
-function isSuppressedWindow(sgt) {
-  return !isWeekday(sgt);
-}
 // Lunch (12pm-2pm) only pauses the hard auto clock-out — people are reasonably away from their
 // desk then. The "still working?" prompt keeps appearing and the countdown keeps running as
 // normal through lunch, so a 9am clock-in still gets its first checkpoint around 12:30pm; it's
@@ -135,11 +129,9 @@ export default function AttendanceReminders() {
         const confirmedMs = new Date(session.last_activity_confirmed_at || session.clock_in_time).getTime();
         const hoursSinceConfirm = (Date.now() - confirmedMs) / 3600000;
 
-        if (isSuppressedWindow(sgtNow())) {
-          setStillWorkingSession(null);
-          return;
-        }
-
+        // Unlike the 8:30am clock-in reminder, this cycle is NOT weekend-suppressed — staff
+        // aren't expected to clock in at 8:30am on a weekend, but if someone chooses to clock in
+        // anyway, the still-working checkpoints and auto-clockout apply exactly as on a weekday.
         const duringLunch = isLunchWindow(sgtNow());
 
         if (hoursSinceConfirm >= AUTO_CLOCKOUT_HOURS && !duringLunch) {
