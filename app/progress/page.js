@@ -110,16 +110,23 @@ function ProgressContent() {
 
   useEffect(() => { if (user?.user_id) fetchData(user.user_id); }, [user?.user_id, fetchData]);
 
+  // The latest logged completion % for a project — shown as context in the update form, since
+  // staff now enter how much progress they made, not the running total from scratch.
+  const getCurrentPct = (code) => {
+    const log = progressHistory.find((h) => h.project_code === code);
+    return log ? Math.min(100, Math.max(0, Number(log.completion_percentage || 0))) : 0;
+  };
+
   const handleProgressSubmit = async (e) => {
     e.preventDefault();
-    if (!progressProject || !progressPct) { showToast('Project and completion % are required.', 'error'); return; }
+    if (!progressProject || !progressPct) { showToast('Project and progress added are required.', 'error'); return; }
     const pct = parseFloat(progressPct);
-    if (isNaN(pct) || pct < 0 || pct > 100) { showToast('Completion % must be between 0 and 100.', 'error'); return; }
+    if (isNaN(pct) || pct <= 0 || pct > 100) { showToast('Progress added must be greater than 0 and at most 100.', 'error'); return; }
     setSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/projects/progress-log`, {
         projectCode: progressProject, reporterId: user.user_id,
-        completionPercentage: pct, progressSummary: progressSummary.trim() || `Progress update: ${pct}%`,
+        completionPercentage: pct, progressSummary: progressSummary.trim() || `Progress update: +${pct}%`,
       });
       showToast('Progress logged successfully.', 'success');
       setShowProgressForm(false); setProgressPct(''); setProgressSummary(''); setProgressProject('');
@@ -390,10 +397,14 @@ function ProgressContent() {
                       <option value="">Select project…</option>
                       {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
                     </select>
+                    {progressProject && (
+                      <p className="mt-2 text-xs text-slate-400">Current progress: {getCurrentPct(progressProject).toFixed(0)}%</p>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Completion % <span className="font-normal text-slate-400">(0 – 100)</span></label>
-                    <input type="number" min="0" max="100" step="0.1" value={progressPct} onChange={(e) => setProgressPct(e.target.value)}
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Progress Made <span className="font-normal text-slate-400">(added to your current progress)</span></label>
+                    <input type="number" min="0.1" max={progressProject ? Math.max(0.1, 100 - getCurrentPct(progressProject)) : 100} step="0.1"
+                      value={progressPct} onChange={(e) => setProgressPct(e.target.value)} placeholder="e.g. 10"
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                   </div>
                   <div>
