@@ -52,6 +52,20 @@ function ProgressContent() {
   const [budgetHours, setBudgetHours] = useState('');
   const [budgetJustification, setBudgetJustification] = useState('');
 
+  // Editing/deleting an already-submitted progress entry (manual entries only — system-generated
+  // "Auto-progress baseline" rows can't be touched, see isAutoEntry above).
+  const [editingProgressLog, setEditingProgressLog] = useState(null);
+  const [editProgressPct, setEditProgressPct] = useState('');
+  const [editProgressSummary, setEditProgressSummary] = useState('');
+  const [deleteProgressConfirm, setDeleteProgressConfirm] = useState(null);
+
+  // Editing/deleting a budget request — only while it's still PENDING (once a manager or AM has
+  // acted on it, the review decision is final and it can no longer be changed).
+  const [editingBudgetRequest, setEditingBudgetRequest] = useState(null);
+  const [editBudgetHours, setEditBudgetHours] = useState('');
+  const [editBudgetJustification, setEditBudgetJustification] = useState('');
+  const [deleteBudgetConfirm, setDeleteBudgetConfirm] = useState(null);
+
   // Progress history filters
   const [progressSearch, setProgressSearch] = useState('');
   const [progressStatusFilter, setProgressStatusFilter] = useState('ALL'); // ALL | COMPLETED | ONGOING | DELETED
@@ -122,6 +136,74 @@ function ProgressContent() {
       setShowBudgetForm(false); setBudgetHours(''); setBudgetJustification(''); setBudgetProject('');
       await fetchData(user.user_id);
     } catch (err) { setMessage(err.response?.data?.error || 'Submission failed.'); setMessageType('error'); }
+    finally { setSubmitting(false); }
+  };
+
+  const openEditProgressLog = (log) => {
+    setEditingProgressLog(log);
+    setEditProgressPct(String(log.completion_percentage));
+    setEditProgressSummary(log.progress_summary || '');
+  };
+
+  const submitEditProgressLog = async (e) => {
+    e.preventDefault();
+    const pct = parseFloat(editProgressPct);
+    if (isNaN(pct) || pct < 0 || pct > 100) { setMessage('Completion % must be between 0 and 100.'); setMessageType('error'); return; }
+    setSubmitting(true); setMessage('');
+    try {
+      await axios.patch(`${API_BASE}/api/v1/projects/progress-log/${editingProgressLog.log_id}`, {
+        userId: user.user_id, completionPercentage: pct, progressSummary: editProgressSummary.trim(),
+      });
+      setMessage('Progress entry updated.'); setMessageType('success');
+      setEditingProgressLog(null);
+      await fetchData(user.user_id);
+    } catch (err) { setMessage(err.response?.data?.error || 'Update failed.'); setMessageType('error'); }
+    finally { setSubmitting(false); }
+  };
+
+  const confirmDeleteProgressLog = async () => {
+    if (!deleteProgressConfirm) return;
+    setSubmitting(true);
+    try {
+      await axios.delete(`${API_BASE}/api/v1/projects/progress-log/${deleteProgressConfirm.log_id}`, { data: { userId: user.user_id } });
+      setMessage('Progress entry deleted.'); setMessageType('success');
+      setDeleteProgressConfirm(null);
+      await fetchData(user.user_id);
+    } catch (err) { setMessage(err.response?.data?.error || 'Delete failed.'); setMessageType('error'); }
+    finally { setSubmitting(false); }
+  };
+
+  const openEditBudgetRequest = (req) => {
+    setEditingBudgetRequest(req);
+    setEditBudgetHours(String(req.requested_hours));
+    setEditBudgetJustification(req.justification || '');
+  };
+
+  const submitEditBudgetRequest = async (e) => {
+    e.preventDefault();
+    const hrs = parseFloat(editBudgetHours);
+    if (isNaN(hrs) || hrs <= 0) { setMessage('Hours must be a positive number.'); setMessageType('error'); return; }
+    setSubmitting(true); setMessage('');
+    try {
+      await axios.patch(`${API_BASE}/api/v1/projects/budget-request/${editingBudgetRequest.request_id}`, {
+        userId: user.user_id, requestedHours: hrs, justification: editBudgetJustification.trim() || undefined,
+      });
+      setMessage('Budget request updated.'); setMessageType('success');
+      setEditingBudgetRequest(null);
+      await fetchData(user.user_id);
+    } catch (err) { setMessage(err.response?.data?.error || 'Update failed.'); setMessageType('error'); }
+    finally { setSubmitting(false); }
+  };
+
+  const confirmDeleteBudgetRequest = async () => {
+    if (!deleteBudgetConfirm) return;
+    setSubmitting(true);
+    try {
+      await axios.delete(`${API_BASE}/api/v1/projects/budget-request/${deleteBudgetConfirm.request_id}`, { data: { userId: user.user_id } });
+      setMessage('Budget request deleted.'); setMessageType('success');
+      setDeleteBudgetConfirm(null);
+      await fetchData(user.user_id);
+    } catch (err) { setMessage(err.response?.data?.error || 'Delete failed.'); setMessageType('error'); }
     finally { setSubmitting(false); }
   };
 
@@ -349,10 +431,13 @@ function ProgressContent() {
                       <th className="px-6 py-4 whitespace-nowrap">Source</th>
                       <th className="px-6 py-4 whitespace-nowrap">Summary</th>
                       <th className="px-6 py-4 whitespace-nowrap">Logged</th>
+                      <th className="px-6 py-4 whitespace-nowrap text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filteredProgressHistory.slice(0, 50).map((r) => (
+                    {filteredProgressHistory.slice(0, 50).map((r) => {
+                      const isAuto = isAutoEntry(r.progress_summary);
+                      return (
                       <tr key={r.log_id} className="hover:bg-slate-50 transition">
                         <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
                           {r.project_code}{!r.project_name && <span className="ml-1.5 text-xs font-normal text-red-500">(deleted)</span>}
@@ -365,11 +450,20 @@ function ProgressContent() {
                             <span className="text-sm font-semibold text-slate-900 whitespace-nowrap">{Number(r.completion_percentage).toFixed(0)}%</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap"><SourceBadge isAuto={isAutoEntry(r.progress_summary)} /></td>
+                        <td className="px-6 py-4 whitespace-nowrap"><SourceBadge isAuto={isAuto} /></td>
                         <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.progress_summary || '—'}</td>
                         <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{String(r.logged_at).slice(0, 10)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          {!isAuto && (
+                            <div className="flex items-center justify-end gap-3">
+                              <button type="button" onClick={() => openEditProgressLog(r)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">Edit</button>
+                              <button type="button" onClick={() => setDeleteProgressConfirm(r)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                            </div>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -458,6 +552,7 @@ function ProgressContent() {
                       <th className="px-6 py-4">Reason</th>
                       <th className="px-6 py-4 whitespace-nowrap">Submitted</th>
                       <th className="px-6 py-4 whitespace-nowrap">Details</th>
+                      <th className="px-6 py-4 whitespace-nowrap text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -477,10 +572,18 @@ function ProgressContent() {
                                 {isOpen ? 'Hide' : 'View'}
                               </button>
                             </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                              {r.status === 'PENDING' && (
+                                <div className="flex items-center justify-end gap-3">
+                                  <button type="button" onClick={() => openEditBudgetRequest(r)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">Edit</button>
+                                  <button type="button" onClick={() => setDeleteBudgetConfirm(r)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50/60">
-                              <td colSpan={6} className="px-6 py-4">
+                              <td colSpan={7} className="px-6 py-4">
                                 <div className="grid gap-3 sm:grid-cols-2">
                                   <div>
                                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Justification</p>
@@ -503,6 +606,106 @@ function ProgressContent() {
             )}
           </div>
         </>
+      )}
+
+      {editingProgressLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingProgressLog(null); }}>
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-5 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Edit Progress Entry</p>
+              <button type="button" onClick={() => setEditingProgressLog(null)}
+                className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+            </div>
+            <form onSubmit={submitEditProgressLog} className="space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Completion % <span className="font-normal text-slate-400">(0 – 100)</span></label>
+                <input type="number" min="0" max="100" step="0.1" value={editProgressPct} onChange={(e) => setEditProgressPct(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Summary <span className="font-normal text-slate-400">(optional)</span></label>
+                <textarea rows={3} value={editProgressSummary} onChange={(e) => setEditProgressSummary(e.target.value)} placeholder="What did you work on?"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
+                {submitting ? 'Please wait…' : 'SAVE'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteProgressConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setDeleteProgressConfirm(null); }}>
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <p className="text-lg font-semibold text-slate-900 mb-2">Delete this progress entry?</p>
+            <p className="text-sm text-slate-500 mb-6">
+              {deleteProgressConfirm.project_code} &middot; {Number(deleteProgressConfirm.completion_percentage).toFixed(0)}% &middot; this can't be undone.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteProgressConfirm(null)}
+                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmDeleteProgressLog} disabled={submitting}
+                className="flex-1 rounded-2xl py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                {submitting ? 'Please wait…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingBudgetRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingBudgetRequest(null); }}>
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-5 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Edit Budget Request</p>
+              <button type="button" onClick={() => setEditingBudgetRequest(null)}
+                className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+            </div>
+            <form onSubmit={submitEditBudgetRequest} className="space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Additional Hours Requested</label>
+                <input type="number" min="0.5" step="0.5" value={editBudgetHours} onChange={(e) => setEditBudgetHours(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Justification <span className="font-normal text-slate-400">(optional)</span></label>
+                <textarea rows={3} value={editBudgetJustification} onChange={(e) => setEditBudgetJustification(e.target.value)} placeholder="Explain why additional hours are needed…"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
+                {submitting ? 'Please wait…' : 'SAVE'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteBudgetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setDeleteBudgetConfirm(null); }}>
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <p className="text-lg font-semibold text-slate-900 mb-2">Delete this budget request?</p>
+            <p className="text-sm text-slate-500 mb-6">
+              {deleteBudgetConfirm.project_code} &middot; {deleteBudgetConfirm.requested_hours} hrs &middot; this can't be undone.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteBudgetConfirm(null)}
+                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmDeleteBudgetRequest} disabled={submitting}
+                className="flex-1 rounded-2xl py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
+                {submitting ? 'Please wait…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
