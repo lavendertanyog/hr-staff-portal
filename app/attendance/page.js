@@ -460,7 +460,7 @@ export default function AttendancePage() {
   const handleClockIn = async () => {
     if (!user?.user_id) return;
     if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
-    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { showMsg('Please enter valid hours for every project.', 'error'); return; }
+    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setProjectRowsValidated(true); showMsg('Please enter valid hours for every project.', 'error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
     setLoading(true);
@@ -602,8 +602,8 @@ export default function AttendancePage() {
   const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
   const [manualClockOutTime, setManualClockOutTime] = useState(() => nowHHMM());
   const [manualClockOutTouched, setManualClockOutTouched] = useState(false); // true once staff edits End Time directly
-  const [manualDateError, setManualDateError] = useState(null); // null | 'date' | 'time'
-  const [activeDateError, setActiveDateError] = useState(null); // null | 'date' | 'time' — closing the real active session
+  const [manualFieldErrors, setManualFieldErrors] = useState([]); // any of 'startDate'|'startTime'|'endDate'|'endTime'
+  const [activeFieldErrors, setActiveFieldErrors] = useState([]); // 'endDate'/'endTime' — closing the real active session
   // The just-submitted entry's own allocations — kept so a correction/delete could reuse the
   // same tracker component again later, even though nothing currently renders it.
   const [manualAllocations, setManualAllocations] = useState([]);
@@ -624,7 +624,7 @@ export default function AttendancePage() {
   const [editEndDate, setEditEndDate] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
-  const [editDateError, setEditDateError] = useState(null); // null | 'date' | 'time'
+  const [editFieldErrors, setEditFieldErrors] = useState([]); // any of 'startDate'|'startTime'|'endDate'|'endTime'
 
   // True if [newStart, newEnd) genuinely overlaps an existing entry's [clock_in_time, clock_out_time
   // or "still open" up to now) — used to hard-block a duplicate Manual Entry / clock-in on top of
@@ -647,27 +647,35 @@ export default function AttendancePage() {
     setEditStartTime(toTimeStr(start));
     setEditEndDate(toDateStr(end));
     setEditEndTime(toTimeStr(end));
-    setEditDateError(null);
+    setEditFieldErrors([]);
   };
 
   const submitEditTimes = async (e) => {
     e.preventDefault();
     if (!editingEntry || !user?.user_id) return;
-    if (!editStartDate || !editStartTime || !editEndDate || !editEndTime) {
-      showToast('Please fill in both start and end time.', 'error'); return;
+    const missing = [];
+    if (!editStartDate) missing.push('startDate');
+    if (!editStartTime) missing.push('startTime');
+    if (!editEndDate) missing.push('endDate');
+    if (!editEndTime) missing.push('endTime');
+    if (missing.length > 0) {
+      setEditFieldErrors(missing);
+      showToast('Please fill in the highlighted field(s).', 'error');
+      return;
     }
     const orderError = dateTimeOrderError(editStartDate, editStartTime, editEndDate, editEndTime);
     if (orderError) {
-      setEditDateError(orderError);
+      setEditFieldErrors([orderError === 'date' ? 'endDate' : 'endTime']);
       showToast(orderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
       return;
     }
-    setEditDateError(null);
     const clockInTime = combineDateTime(editStartDate, editStartTime);
     const clockOutTime = combineDateTime(editEndDate, editEndTime);
     if (new Date(clockInTime) > new Date()) {
+      setEditFieldErrors(['startDate', 'startTime']);
       showToast('You can\'t select a future date.', 'error'); return;
     }
+    setEditFieldErrors([]);
     setEditSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/attendance/${editingEntry.attendance_id}/edit-times`, {
@@ -833,28 +841,43 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!user?.user_id) return;
     if (manualProjectRows.some((r) => !r.code)) { setManualProjectRowsValidated(true); return; }
-    if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { showToast('Please enter valid hours for every project.', 'error'); return; }
-    if (!manualClockInDate) { showToast('Please select a date.', 'error'); return; }
-    if (!manualClockInTime) { showToast('Please enter a start time.', 'error'); return; }
+    if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualProjectRowsValidated(true); showToast('Please enter valid hours for every project.', 'error'); return; }
+    const startMissing = [];
+    if (!manualClockInDate) startMissing.push('startDate');
+    if (!manualClockInTime) startMissing.push('startTime');
+    if (startMissing.length > 0) {
+      setManualFieldErrors(startMissing);
+      showToast('Please fill in the highlighted field(s).', 'error');
+      return;
+    }
     if (new Date(combineDateTime(manualClockInDate, manualClockInTime)) > new Date()) {
+      setManualFieldErrors(['startDate', 'startTime']);
       showToast('You can\'t select a future date.', 'error'); return;
     }
     if (isPastManualEntry) {
       // A past entry is submitted whole in one step — there's no later "closing" moment to ask
       // for this then, so General's description has to be collected right here.
       if (manualProjectRows.some((r) => r.code === GENERAL) && !manualDescription.trim()) { setManualDescriptionValidated(true); return; }
-      if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
+      if (!manualClockOutDate || !manualClockOutTime) {
+        const endMissing = [];
+        if (!manualClockOutDate) endMissing.push('endDate');
+        if (!manualClockOutTime) endMissing.push('endTime');
+        setManualFieldErrors(endMissing);
+        showToast('Please fill in the highlighted field(s).', 'error');
+        return;
+      }
       const manualOrderError = dateTimeOrderError(manualClockInDate, manualClockInTime, manualClockOutDate, manualClockOutTime);
       if (manualOrderError) {
-        setManualDateError(manualOrderError);
+        setManualFieldErrors([manualOrderError === 'date' ? 'endDate' : 'endTime']);
         showToast(manualOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
         return;
       }
-      setManualDateError(null);
       if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
+        setManualFieldErrors(['endDate', 'endTime']);
         showToast('You can\'t select a future date.', 'error'); return;
       }
     }
+    setManualFieldErrors([]);
 
     let existing = [];
     try {
@@ -878,7 +901,14 @@ export default function AttendancePage() {
   const submitActiveSessionClockOut = async (e) => {
     e.preventDefault();
     if (!closingActiveEntry || !user?.user_id) return;
-    if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
+    if (!manualClockOutDate || !manualClockOutTime) {
+      const missing = [];
+      if (!manualClockOutDate) missing.push('endDate');
+      if (!manualClockOutTime) missing.push('endTime');
+      setActiveFieldErrors(missing);
+      showToast('Please fill in the highlighted field(s).', 'error');
+      return;
+    }
     // The End Time input only has minute precision, but a clock-in can land a few seconds into
     // that same minute — combineDateTime forces :00 seconds on both sides, matching the
     // backend's own clockInFloored check, so closing out in that same minute isn't rejected.
@@ -887,14 +917,15 @@ export default function AttendancePage() {
     const startTimeStr = `${String(clockInMoment.getHours()).padStart(2, '0')}:${String(clockInMoment.getMinutes()).padStart(2, '0')}`;
     const activeOrderError = dateTimeOrderError(startDateStr, startTimeStr, manualClockOutDate, manualClockOutTime);
     if (activeOrderError) {
-      setActiveDateError(activeOrderError);
+      setActiveFieldErrors([activeOrderError === 'date' ? 'endDate' : 'endTime']);
       showToast(activeOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
       return;
     }
-    setActiveDateError(null);
     if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
+      setActiveFieldErrors(['endDate', 'endTime']);
       showToast('You can\'t select a future date.', 'error'); return;
     }
+    setActiveFieldErrors([]);
     const generalAlloc = allocations.find((a) => !a.project_code);
     if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
     if (generalAlloc) await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
@@ -950,6 +981,7 @@ export default function AttendancePage() {
         <div className="space-y-4">
           {rows.map((row, i) => {
             const rowError = validated && !row.code;
+            const hoursError = validated && !!row.code && !(parseFloat(row.hours) > 0);
             return (
             <div key={i} className="flex gap-3 items-start">
               <div className="flex-1 min-w-0">
@@ -962,11 +994,14 @@ export default function AttendancePage() {
                 />
                 {rowError && <p className="mt-1 text-xs text-red-500">* Complete this field</p>}
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <input type="number" min="0.1" step="0.1" value={row.hours}
-                  onChange={(e) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
-                  className="w-16 rounded-xl border-2 border-[#D1D5DB] bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                <span className="text-xs text-slate-400">hrs</span>
+              <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <input type="number" min="0.1" step="0.1" value={row.hours}
+                    onChange={(e) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
+                    className={`w-16 rounded-xl border-2 bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${hoursError ? 'border-red-400' : 'border-[#D1D5DB] focus:border-blue-500'}`} />
+                  <span className="text-xs text-slate-400">hrs</span>
+                </div>
+                {hoursError && <p className="text-[10px] text-red-500 whitespace-nowrap">* Invalid</p>}
               </div>
               {rows.length > 1 && (
                 <button type="button" onClick={() => removeRow(i)} title="Remove project"
@@ -1313,15 +1348,15 @@ export default function AttendancePage() {
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setActiveDateError(null); }}
-                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeDateError === 'date' ? 'border-red-400' : 'border-slate-300'}`} />
+                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setActiveFieldErrors([]); }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     End Time <span className="font-normal text-slate-400">(when you actually clocked off)</span>
                   </label>
-                  <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setActiveDateError(null); }}
-                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeDateError === 'time' ? 'border-red-400' : 'border-slate-300'}`} />
+                  <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setActiveFieldErrors([]); }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
               </div>
 
@@ -1357,26 +1392,26 @@ export default function AttendancePage() {
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                  <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => setManualClockInDate(e.target.value)}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => { setManualClockInDate(e.target.value); setManualFieldErrors([]); }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('startDate') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
-                  <input type="time" value={manualClockInTime} onChange={(e) => { setManualClockInTime(e.target.value); setManualClockInTouched(true); }}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="time" value={manualClockInTime} onChange={(e) => { setManualClockInTime(e.target.value); setManualClockInTouched(true); setManualFieldErrors([]); }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('startTime') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
               </div>
               {isPastManualEntry && (
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                    <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setManualDateError(null); }}
-                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDateError === 'date' ? 'border-red-400' : 'border-slate-300'}`} />
+                    <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setManualFieldErrors([]); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                    <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setManualDateError(null); }}
-                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDateError === 'time' ? 'border-red-400' : 'border-slate-300'}`} />
+                    <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setManualFieldErrors([]); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
               )}
@@ -1492,25 +1527,25 @@ export default function AttendancePage() {
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
-                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => { setEditStartDate(e.target.value); setEditDateError(null); }}
-                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => { setEditStartDate(e.target.value); setEditFieldErrors([]); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('startDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
-                    <input type="time" value={editStartTime} onChange={(e) => { setEditStartTime(e.target.value); setEditDateError(null); }}
-                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="time" value={editStartTime} onChange={(e) => { setEditStartTime(e.target.value); setEditFieldErrors([]); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('startTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
                 <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => { setEditEndDate(e.target.value); setEditDateError(null); }}
-                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editDateError === 'date' ? 'border-red-400' : 'border-slate-300'}`} />
+                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => { setEditEndDate(e.target.value); setEditFieldErrors([]); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                    <input type="time" value={editEndTime} onChange={(e) => { setEditEndTime(e.target.value); setEditDateError(null); }}
-                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editDateError === 'time' ? 'border-red-400' : 'border-slate-300'}`} />
+                    <input type="time" value={editEndTime} onChange={(e) => { setEditEndTime(e.target.value); setEditFieldErrors([]); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
                 <button type="submit" disabled={editSubmitting}
