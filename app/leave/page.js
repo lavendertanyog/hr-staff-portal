@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
@@ -124,13 +124,22 @@ export default function LeavePage() {
   const [balance, setBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
+
+  // Toast notifications — small auto-dismissing pill, matching attendance/progress pages.
+  const [toast, setToast] = useState(null); // { text, type }
+  const toastTimeoutRef = useRef(null);
+  const showToast = (text, type) => {
+    setToast({ text, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
+
   const [showForm, setShowForm] = useState(false);
 
   const [category, setCategory] = useState('ANNUAL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [dateFieldErrors, setDateFieldErrors] = useState([]); // 'startDate' | 'endDate'
   const [reason, setReason] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [mcFile, setMcFile] = useState(null);
@@ -162,6 +171,7 @@ export default function LeavePage() {
 
   // Calendar date click: first click = start, second click = end (must be >= start), third = reset
   const handleCalendarClick = (ymd) => {
+    setDateFieldErrors([]);
     if (!startDate || (startDate && endDate)) {
       setStartDate(ymd); setEndDate('');
     } else {
@@ -172,25 +182,36 @@ export default function LeavePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!startDate || !endDate) { setMessage('Please select a start and end date on the calendar.'); setMessageType('error'); return; }
-    setSubmitting(true); setMessage('');
+    const missing = [];
+    if (!startDate) missing.push('startDate');
+    if (!endDate) missing.push('endDate');
+    if (missing.length > 0) {
+      setDateFieldErrors(missing);
+      showToast(
+        missing.length === 2 ? 'Please select a start and end date.' : `Please select ${missing[0] === 'startDate' ? 'a start' : 'an end'} date.`,
+        'error'
+      );
+      return;
+    }
+    setDateFieldErrors([]);
+    setSubmitting(true);
     try {
       const mcFileUrl = mcFile ? await fileToBase64(mcFile) : undefined;
       if (editingId) {
         await axios.patch(`${API_BASE}/api/v1/leave/${editingId}`, {
           userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
         });
-        setMessage('Leave request updated successfully.'); setMessageType('success');
+        showToast('Leave request updated successfully.', 'success');
       } else {
         await axios.post(`${API_BASE}/api/v1/leave/apply`, {
           userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
         });
-        setMessage('Leave request submitted successfully.'); setMessageType('success');
+        showToast('Leave request submitted successfully.', 'success');
       }
       setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setEditingId(null);
       setMcFile(null); setMcFileError('');
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Submission failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -208,20 +229,20 @@ export default function LeavePage() {
     setEndDate(String(r.end_date).slice(0, 10));
     setReason(r.reason || '');
     setMcFile(null); setMcFileError('');
-    setMessage('');
+    setDateFieldErrors([]);
     setShowForm(true);
   };
 
   const handleMcUpload = async (leaveId, file) => {
     if (!file || !user?.user_id) return;
-    if (file.size > MC_MAX_BYTES) { setMessage('File is too large — max 5MB.'); setMessageType('error'); return; }
-    setUploadingMcId(leaveId); setMessage('');
+    if (file.size > MC_MAX_BYTES) { showToast('File is too large — max 5MB.', 'error'); return; }
+    setUploadingMcId(leaveId);
     try {
       const mcFileUrl = await fileToBase64(file);
       await axios.post(`${API_BASE}/api/v1/leave/${leaveId}/mc-upload`, { userId: user.user_id, mcFileUrl });
-      setMessage('MC document uploaded successfully.'); setMessageType('success');
+      showToast('MC document uploaded successfully.', 'success');
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'MC upload failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'MC upload failed.', 'error'); }
     finally { setUploadingMcId(null); }
   };
 
@@ -239,12 +260,10 @@ export default function LeavePage() {
       await axios.delete(`${API_BASE}/api/v1/leave/${leaveId}`, {
         data: { userId: user.user_id },
       });
-      setMessage('Leave request deleted successfully.');
-      setMessageType('success');
+      showToast('Leave request deleted successfully.', 'success');
       await fetchData(user.user_id);
     } catch (err) {
-      setMessage(err.response?.data?.error || 'Cancellation failed.');
-      setMessageType('error');
+      showToast(err.response?.data?.error || 'Cancellation failed.', 'error');
     }
   };
 
@@ -264,16 +283,20 @@ export default function LeavePage() {
         )}
       </div>
 
-      {message && (
-        <div className={`mb-6 rounded-2xl px-5 py-3.5 text-sm font-medium border ${
-          messageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
-        }`}>{message}</div>
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
+          <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
+            toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
+          }`}>
+            {toast.text}
+          </div>
+        </div>
       )}
 
       {showForm && (
         <>
           <div className="mb-4">
-            <button onClick={() => { setShowForm(false); setMessage(''); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setMcFile(null); setMcFileError(''); }}
+            <button onClick={() => { setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
               style={{ background: '#64748b' }}>
               ← Back
@@ -297,14 +320,18 @@ export default function LeavePage() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
                   <input type="date" value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${startDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-300 text-slate-700'}`} />
+                    onChange={(e) => { setStartDate(e.target.value); setDateFieldErrors([]); }}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      dateFieldErrors.includes('startDate') ? 'border-red-400' : startDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-300 text-slate-700'
+                    }`} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
                   <input type="date" value={endDate} min={startDate || undefined}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${endDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-300 text-slate-700'}`} />
+                    onChange={(e) => { setEndDate(e.target.value); setDateFieldErrors([]); }}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      dateFieldErrors.includes('endDate') ? 'border-red-400' : endDate ? 'border-[#0c3b8f] bg-[#EEF4FF] text-[#0c3b8f] font-semibold' : 'border-slate-300 text-slate-700'
+                    }`} />
                 </div>
                 <p className="col-span-2 text-xs text-slate-400">Type dates directly, or click them on the calendar →</p>
               </div>
@@ -326,7 +353,7 @@ export default function LeavePage() {
                 </div>
               )}
 
-              <button type="submit" disabled={submitting || !startDate || !endDate}
+              <button type="submit" disabled={submitting}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
                 {submitting ? 'Please wait…' : editingId ? 'SAVE CHANGES' : 'SUBMIT'}
               </button>
@@ -347,7 +374,7 @@ export default function LeavePage() {
         <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
           {!showForm && (
-            <button onClick={() => { setShowForm(true); setMessage(''); setEditingId(null); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); }}
+            <button onClick={() => { setShowForm(true); setEditingId(null); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
               style={{ background: '#0c3b8f' }}>
               + Apply for Leave
