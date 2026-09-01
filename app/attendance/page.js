@@ -245,6 +245,20 @@ export default function AttendancePage() {
     return `${dateStr}T${timeStr}:00+08:00`;
   };
 
+  // Distinguishes *why* an end comes before a start — picking an End Date earlier than the
+  // Start Date is a different mistake (and a different fix) than picking an End Time earlier
+  // than the Start Time on the same day, so each gets its own message and its own field
+  // highlighted red, instead of one generic "end must be after start" pointing at nothing.
+  const dateTimeOrderError = (startDate, startTime, endDate, endTime) => {
+    if (endDate < startDate) return 'date';
+    if (endDate === startDate) {
+      const start = new Date(combineDateTime(startDate, startTime));
+      const end = new Date(combineDateTime(endDate, endTime));
+      if (end <= start) return 'time';
+    }
+    return null;
+  };
+
   // Refresh the manual entry date/time to "now" whenever the fields are still at their
   // untouched defaults — so switching to the tab later in the day shows current time,
   // without clobbering a date/time the user already deliberately picked.
@@ -588,6 +602,8 @@ export default function AttendancePage() {
   const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
   const [manualClockOutTime, setManualClockOutTime] = useState(() => nowHHMM());
   const [manualClockOutTouched, setManualClockOutTouched] = useState(false); // true once staff edits End Time directly
+  const [manualDateError, setManualDateError] = useState(null); // null | 'date' | 'time'
+  const [activeDateError, setActiveDateError] = useState(null); // null | 'date' | 'time' — closing the real active session
   // The just-submitted entry's own allocations — kept so a correction/delete could reuse the
   // same tracker component again later, even though nothing currently renders it.
   const [manualAllocations, setManualAllocations] = useState([]);
@@ -608,6 +624,7 @@ export default function AttendancePage() {
   const [editEndDate, setEditEndDate] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editDateError, setEditDateError] = useState(null); // null | 'date' | 'time'
 
   // True if [newStart, newEnd) genuinely overlaps an existing entry's [clock_in_time, clock_out_time
   // or "still open" up to now) — used to hard-block a duplicate Manual Entry / clock-in on top of
@@ -630,6 +647,7 @@ export default function AttendancePage() {
     setEditStartTime(toTimeStr(start));
     setEditEndDate(toDateStr(end));
     setEditEndTime(toTimeStr(end));
+    setEditDateError(null);
   };
 
   const submitEditTimes = async (e) => {
@@ -638,11 +656,15 @@ export default function AttendancePage() {
     if (!editStartDate || !editStartTime || !editEndDate || !editEndTime) {
       showToast('Please fill in both start and end time.', 'error'); return;
     }
+    const orderError = dateTimeOrderError(editStartDate, editStartTime, editEndDate, editEndTime);
+    if (orderError) {
+      setEditDateError(orderError);
+      showToast(orderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
+      return;
+    }
+    setEditDateError(null);
     const clockInTime = combineDateTime(editStartDate, editStartTime);
     const clockOutTime = combineDateTime(editEndDate, editEndTime);
-    if (new Date(clockOutTime) <= new Date(clockInTime)) {
-      showToast('End time must be after the start time.', 'error'); return;
-    }
     if (new Date(clockInTime) > new Date()) {
       showToast('You can\'t select a future date.', 'error'); return;
     }
@@ -822,9 +844,13 @@ export default function AttendancePage() {
       // for this then, so General's description has to be collected right here.
       if (manualProjectRows.some((r) => r.code === GENERAL) && !manualDescription.trim()) { setManualDescriptionValidated(true); return; }
       if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
-      if (combineDateTime(manualClockOutDate, manualClockOutTime) <= combineDateTime(manualClockInDate, manualClockInTime)) {
-        showToast('End time must be after the start time.', 'error'); return;
+      const manualOrderError = dateTimeOrderError(manualClockInDate, manualClockInTime, manualClockOutDate, manualClockOutTime);
+      if (manualOrderError) {
+        setManualDateError(manualOrderError);
+        showToast(manualOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
+        return;
       }
+      setManualDateError(null);
       if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
         showToast('You can\'t select a future date.', 'error'); return;
       }
@@ -854,13 +880,18 @@ export default function AttendancePage() {
     if (!closingActiveEntry || !user?.user_id) return;
     if (!manualClockOutDate || !manualClockOutTime) { showToast('Please enter an end time.', 'error'); return; }
     // The End Time input only has minute precision, but a clock-in can land a few seconds into
-    // that same minute — compare against the start of the clock-in's minute (matching the
-    // backend's own clockInFloored check) so closing out in that same minute isn't rejected.
-    const clockInFloored = new Date(closingActiveEntry.clock_in_time);
-    clockInFloored.setSeconds(0, 0);
-    if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) < clockInFloored) {
-      showToast('End time must be after the start time.', 'error'); return;
+    // that same minute — combineDateTime forces :00 seconds on both sides, matching the
+    // backend's own clockInFloored check, so closing out in that same minute isn't rejected.
+    const clockInMoment = new Date(closingActiveEntry.clock_in_time);
+    const startDateStr = `${clockInMoment.getFullYear()}-${String(clockInMoment.getMonth() + 1).padStart(2, '0')}-${String(clockInMoment.getDate()).padStart(2, '0')}`;
+    const startTimeStr = `${String(clockInMoment.getHours()).padStart(2, '0')}:${String(clockInMoment.getMinutes()).padStart(2, '0')}`;
+    const activeOrderError = dateTimeOrderError(startDateStr, startTimeStr, manualClockOutDate, manualClockOutTime);
+    if (activeOrderError) {
+      setActiveDateError(activeOrderError);
+      showToast(activeOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
+      return;
     }
+    setActiveDateError(null);
     if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
       showToast('You can\'t select a future date.', 'error'); return;
     }
@@ -1282,15 +1313,15 @@ export default function AttendancePage() {
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setActiveDateError(null); }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeDateError === 'date' ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
                 <div className="min-w-0">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     End Time <span className="font-normal text-slate-400">(when you actually clocked off)</span>
                   </label>
-                  <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
-                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setActiveDateError(null); }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeDateError === 'time' ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
               </div>
 
@@ -1339,13 +1370,13 @@ export default function AttendancePage() {
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                    <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); }}
-                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setManualDateError(null); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDateError === 'date' ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                    <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); }}
-                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setManualDateError(null); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDateError === 'time' ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
               )}
@@ -1461,25 +1492,25 @@ export default function AttendancePage() {
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
-                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => setEditStartDate(e.target.value)}
+                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => { setEditStartDate(e.target.value); setEditDateError(null); }}
                       className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
-                    <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)}
+                    <input type="time" value={editStartTime} onChange={(e) => { setEditStartTime(e.target.value); setEditDateError(null); }}
                       className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
                 <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => setEditEndDate(e.target.value)}
-                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => { setEditEndDate(e.target.value); setEditDateError(null); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editDateError === 'date' ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                    <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)}
-                      className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="time" value={editEndTime} onChange={(e) => { setEditEndTime(e.target.value); setEditDateError(null); }}
+                      className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editDateError === 'time' ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
                 <button type="submit" disabled={editSubmitting}
