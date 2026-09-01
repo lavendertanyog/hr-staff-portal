@@ -582,7 +582,6 @@ function ProgressContent() {
                       <th className="px-6 py-4 whitespace-nowrap">Hours</th>
                       <th className="px-6 py-4 whitespace-nowrap">Status</th>
                       <th className="px-6 py-4">Reason</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Submitted</th>
                       <th className="px-6 py-4 whitespace-nowrap">Details</th>
                       <th className="px-6 py-4 whitespace-nowrap text-right">Actions</th>
                     </tr>
@@ -597,7 +596,6 @@ function ProgressContent() {
                             <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{r.requested_hours}</td>
                             <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.status} /></td>
                             <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.justification || '—'}</td>
-                            <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <button type="button" onClick={() => setExpandedBudgetId(isOpen ? null : r.request_id)}
                                 aria-label={isOpen ? 'Hide details' : 'View details'}
@@ -619,7 +617,7 @@ function ProgressContent() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50/60">
-                              <td colSpan={7} className="px-6 py-4">
+                              <td colSpan={6} className="px-6 py-4">
                                 <div className="grid gap-3 sm:grid-cols-3">
                                   <div>
                                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Justification</p>
