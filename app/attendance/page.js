@@ -179,9 +179,9 @@ export default function AttendancePage() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [clockRemark, setClockRemark] = useState('');
-  // General (non-project) work has no project name to explain what was done, so — unlike the
-  // optional remark — a description is required whenever General is one of the picked rows.
-  const [clockDescription, setClockDescription] = useState('');
+  // Each allocation card carries its own description (see renderAllocationTracker) — required
+  // for General (no project name to explain what was done), optional for a named project. This
+  // just tracks whether the staff member has attempted to clock out with General's left blank.
   const [clockDescriptionValidated, setClockDescriptionValidated] = useState(false);
   const [clockedIn, setClockedIn] = useState(false);
   const [attendanceId, setAttendanceId] = useState(null);
@@ -478,16 +478,30 @@ export default function AttendancePage() {
     finally { setLoading(false); }
   };
 
+  // Saves one allocation's description as soon as its field loses focus — independent of hours
+  // edits, and independent of the other project blocks on the same session.
+  const saveAllocationDescription = async (allocationId, value) => {
+    if (!user?.user_id) return;
+    try {
+      await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, {
+        userId: user.user_id, description: value,
+      });
+    } catch (e) { showToast(e.response?.data?.error || 'Failed to save description.', 'error'); }
+  };
+
   const handleClockOut = async () => {
     if (!attendanceId || !user?.user_id) return;
-    if (allocations.some((a) => !a.project_code) && !clockDescription.trim()) { setClockDescriptionValidated(true); return; }
+    const generalAlloc = allocations.find((a) => !a.project_code);
+    if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
+    // Guarantee the backend sees General's latest text even if the field's onBlur save hasn't
+    // resolved yet — awaiting it here beats racing an unsaved PATCH against the clock-out call.
+    if (generalAlloc) await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
     setLoading(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id, attendanceId, remark: clockRemark.trim() || undefined,
-        description: clockDescription.trim() || undefined,
       });
-      setClockedIn(false); setAttendanceId(null); setClockRemark(''); setClockDescription(''); setAllocations([]);
+      setClockedIn(false); setAttendanceId(null); setClockRemark(''); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
@@ -850,16 +864,17 @@ export default function AttendancePage() {
     if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
       showToast('You can\'t select a future date.', 'error'); return;
     }
-    if (allocations.some((a) => !a.project_code) && !clockDescription.trim()) { setClockDescriptionValidated(true); return; }
+    const generalAlloc = allocations.find((a) => !a.project_code);
+    if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
+    if (generalAlloc) await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
     setManualSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
         userId: user.user_id,
         attendanceId: closingActiveEntry.attendance_id,
         clockOutTime: combineDateTime(manualClockOutDate, manualClockOutTime),
-        description: clockDescription.trim() || undefined,
       });
-      setClockedIn(false); setAttendanceId(null); setAllocations([]); setClockDescription('');
+      setClockedIn(false); setAttendanceId(null); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
@@ -1034,16 +1049,28 @@ export default function AttendancePage() {
               {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· plan edited after completion</span>}
             </span>
 
-            {/* General has no project name to explain what was done, so ask for it here, right on
-                the card itself, once the work is actually underway — required before clocking out. */}
-            {source === 'live' && !a.project_code && (
+            {/* Every project block gets its own description, right on the card — required for
+                General (no project name to explain what was done), optional otherwise. Saved
+                per-allocation as soon as the field loses focus. */}
+            {source === 'live' && (
               <div className="mt-3">
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Description <span className="text-red-500">*</span></label>
-                <textarea rows={2} value={clockDescription}
-                  onChange={(e) => { setClockDescription(e.target.value); setClockDescriptionValidated(false); }}
-                  placeholder="Briefly describe your general work"
-                  className={`w-full rounded-xl border px-3 py-2 text-xs resize-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${clockDescriptionValidated && !clockDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
-                {clockDescriptionValidated && !clockDescription.trim() && <p className="mt-1 text-xs text-red-500">* Required before clocking out</p>}
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Description {!a.project_code && <span className="text-red-500">*</span>}
+                </label>
+                <textarea rows={2} value={a.description || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAllocs((prev) => prev.map((x) => x.allocation_id === a.allocation_id ? { ...x, description: val } : x));
+                    if (!a.project_code) setClockDescriptionValidated(false);
+                  }}
+                  onBlur={(e) => saveAllocationDescription(a.allocation_id, e.target.value)}
+                  placeholder={a.project_code ? 'Briefly describe your work' : 'Briefly describe your general work'}
+                  className={`w-full rounded-xl border px-3 py-2 text-xs resize-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    !a.project_code && clockDescriptionValidated && !(a.description || '').trim() ? 'border-red-400' : 'border-slate-300'
+                  }`} />
+                {!a.project_code && clockDescriptionValidated && !(a.description || '').trim() && (
+                  <p className="mt-1 text-xs text-red-500">* Required before clocking out</p>
+                )}
               </div>
             )}
           </div>
