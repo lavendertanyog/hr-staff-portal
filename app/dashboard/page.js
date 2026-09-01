@@ -206,8 +206,9 @@ export default function StaffDashboard() {
   // extended the end time past what was allocated to a project) shows as untracked "General".
   // Week shows 7 day-rows (Mon-Sun); Month shows one row per day in the fetched range. Sessions
   // can no longer overlap in time (the backend blocks that), but a day can still have more than
-  // one non-overlapping session — each gets its own independent stack group ("slot"), with a
-  // transparent leading segment that pushes the visible bar out to its real start time.
+  // one non-overlapping session — all of a day's sessions (and the transparent gaps between
+  // them) share a single stack, so every entry lands on the same straight line instead of each
+  // extra session spreading into its own sub-row.
   const { ganttLabels, ganttDatasets } = useMemo(() => {
     // Every calendar day from fetchStart to fetchEnd inclusive — 7 days for Week (which is
     // exactly that range's Monday..Sunday), up to a whole month's worth for Month.
@@ -243,36 +244,40 @@ export default function StaffDashboard() {
       return { startHour: startParts.hour, segments };
     };
 
-    const maxSlots = Math.max(1, ...Object.values(byDay).map((list) => list.length));
-    const datasets = [];
-    for (let slotIdx = 0; slotIdx < maxSlots; slotIdx++) {
-      const stack = `slot${slotIdx}`;
-      const perDayInfo = dayKeys.map((k) => {
-        const s = byDay[k][slotIdx];
-        return s ? { sessionId: s.attendance_id, ...sessionInfo(s) } : null;
-      });
-      const maxSegments = Math.max(0, ...perDayInfo.map((info) => info?.segments.length || 0));
-
-      // Transparent leading segment shifts this slot's visible bar out to its real start hour.
-      datasets.push({
-        label: `slot-${slotIdx}-offset`,
-        data: perDayInfo.map((info) => info?.startHour || 0),
-        backgroundColor: 'transparent',
-        hoverBackgroundColor: 'transparent',
-        stack,
-        _sessionIds: perDayInfo.map((info) => info?.sessionId || null),
-      });
-      for (let segIdx = 0; segIdx < maxSegments; segIdx++) {
-        datasets.push({
-          label: `slot-${slotIdx}-segment-${segIdx}`,
-          data: perDayInfo.map((info) => info?.segments[segIdx]?.hours || 0),
-          backgroundColor: perDayInfo.map((info) => info?.segments[segIdx] ? colorForProject(info.segments[segIdx].project_code) : 'transparent'),
-          borderRadius: 3,
-          borderSkipped: false,
-          stack,
-          _sessionIds: perDayInfo.map((info) => info?.sessionId || null),
+    // Flatten each day's sessions into one chronological sequence of "pieces" — a transparent
+    // gap wherever there's idle time (before the first session, and between sessions), and a
+    // colored piece per project segment — all destined for the same stack, so multiple sessions
+    // in a day render as one continuous line rather than parallel sub-bars.
+    const dayPieces = dayKeys.map((k) => {
+      const pieces = [];
+      let cursor = 0;
+      byDay[k].forEach((s) => {
+        const info = sessionInfo(s);
+        const gap = info.startHour - cursor;
+        if (gap > 0.01 || pieces.length === 0) {
+          pieces.push({ hours: Math.max(0, gap), color: 'transparent', sessionId: null });
+        }
+        info.segments.forEach((seg) => {
+          pieces.push({ hours: seg.hours, color: colorForProject(seg.project_code), sessionId: s.attendance_id });
         });
-      }
+        cursor = info.startHour + info.segments.reduce((sum, seg) => sum + seg.hours, 0);
+      });
+      return pieces;
+    });
+
+    const maxPieces = Math.max(0, ...dayPieces.map((pieces) => pieces.length));
+    const datasets = [];
+    for (let i = 0; i < maxPieces; i++) {
+      datasets.push({
+        label: `piece-${i}`,
+        data: dayPieces.map((pieces) => pieces[i]?.hours || 0),
+        backgroundColor: dayPieces.map((pieces) => pieces[i]?.color || 'transparent'),
+        hoverBackgroundColor: dayPieces.map((pieces) => pieces[i]?.color || 'transparent'),
+        borderRadius: 3,
+        borderSkipped: false,
+        stack: 'timeline',
+        _sessionIds: dayPieces.map((pieces) => pieces[i]?.sessionId || null),
+      });
     }
 
     return { ganttLabels: labelsForDays, ganttDatasets: datasets };
