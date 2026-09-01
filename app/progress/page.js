@@ -53,11 +53,13 @@ function ProgressContent() {
   const [progressProject, setProgressProject] = useState('');
   const [progressPct, setProgressPct] = useState('');
   const [progressSummary, setProgressSummary] = useState('');
+  const [progressFieldErrors, setProgressFieldErrors] = useState([]); // 'project' | 'pct'
 
   const [showBudgetForm, setShowBudgetForm] = useState(false);
   const [budgetProject, setBudgetProject] = useState('');
   const [budgetHours, setBudgetHours] = useState('');
   const [budgetJustification, setBudgetJustification] = useState('');
+  const [budgetFieldErrors, setBudgetFieldErrors] = useState([]); // 'project' | 'hours'
 
   // Editing/deleting an already-submitted progress entry (manual entries only — system-generated
   // "Auto-progress baseline" rows can't be touched, see isAutoEntry above).
@@ -119,9 +121,20 @@ function ProgressContent() {
 
   const handleProgressSubmit = async (e) => {
     e.preventDefault();
-    if (!progressProject || !progressPct) { showToast('Project and progress added are required.', 'error'); return; }
+    const missing = [];
+    if (!progressProject) missing.push('project');
+    if (!progressPct) missing.push('pct');
+    if (missing.length > 0) {
+      setProgressFieldErrors(missing);
+      showToast('Please fill in the highlighted field(s).', 'error');
+      return;
+    }
     const pct = parseFloat(progressPct);
-    if (isNaN(pct) || pct <= 0 || pct > 100) { showToast('Progress added must be greater than 0 and at most 100.', 'error'); return; }
+    if (isNaN(pct) || pct <= 0 || pct > 100) {
+      setProgressFieldErrors(['pct']);
+      showToast('Progress added must be greater than 0 and at most 100.', 'error'); return;
+    }
+    setProgressFieldErrors([]);
     setSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/projects/progress-log`, {
@@ -137,9 +150,20 @@ function ProgressContent() {
 
   const handleBudgetSubmit = async (e) => {
     e.preventDefault();
-    if (!budgetProject || !budgetHours) { showToast('Project and hours are required.', 'error'); return; }
+    const missing = [];
+    if (!budgetProject) missing.push('project');
+    if (!budgetHours) missing.push('hours');
+    if (missing.length > 0) {
+      setBudgetFieldErrors(missing);
+      showToast('Please fill in the highlighted field(s).', 'error');
+      return;
+    }
     const hrs = parseFloat(budgetHours);
-    if (isNaN(hrs) || hrs <= 0) { showToast('Hours must be a positive number.', 'error'); return; }
+    if (isNaN(hrs) || hrs <= 0) {
+      setBudgetFieldErrors(['hours']);
+      showToast('Hours must be a positive number.', 'error'); return;
+    }
+    setBudgetFieldErrors([]);
     setSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/projects/budget-request`, {
@@ -363,7 +387,7 @@ function ProgressContent() {
                       </button>
                     ) : (
                       <button type="button"
-                        onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); }}
+                        onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); setProgressFieldErrors([]); }}
                         className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
                         style={{ background: '#0c3b8f' }}>
                         + Update
@@ -392,8 +416,8 @@ function ProgressContent() {
                 <form onSubmit={handleProgressSubmit} className="space-y-5">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                    <select value={progressProject} onChange={(e) => setProgressProject(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <select value={progressProject} onChange={(e) => { setProgressProject(e.target.value); setProgressFieldErrors([]); }}
+                      className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${progressFieldErrors.includes('project') ? 'border-red-400' : 'border-slate-300'}`}>
                       <option value="">Select project…</option>
                       {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
                     </select>
@@ -404,8 +428,8 @@ function ProgressContent() {
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Progress Made <span className="font-normal text-slate-400">(added to your current progress)</span></label>
                     <input type="number" min="0.1" max={progressProject ? Math.max(0.1, 100 - getCurrentPct(progressProject)) : 100} step="0.1"
-                      value={progressPct} onChange={(e) => setProgressPct(e.target.value)} placeholder="e.g. 10"
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                      value={progressPct} onChange={(e) => { setProgressPct(e.target.value); setProgressFieldErrors([]); }} placeholder="e.g. 10"
+                      className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${progressFieldErrors.includes('pct') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Summary <span className="font-normal text-slate-400">(optional)</span></label>
@@ -516,16 +540,16 @@ function ProgressContent() {
                 <form onSubmit={handleBudgetSubmit} className="space-y-5">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-                    <select value={budgetProject} onChange={(e) => setBudgetProject(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <select value={budgetProject} onChange={(e) => { setBudgetProject(e.target.value); setBudgetFieldErrors([]); }}
+                      className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${budgetFieldErrors.includes('project') ? 'border-red-400' : 'border-slate-300'}`}>
                       <option value="">Select project…</option>
                       {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Additional Hours Requested</label>
-                    <input type="number" min="0.5" step="0.5" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                    <input type="number" min="0.5" step="0.5" value={budgetHours} onChange={(e) => { setBudgetHours(e.target.value); setBudgetFieldErrors([]); }}
+                      className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${budgetFieldErrors.includes('hours') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Justification <span className="font-normal text-slate-400">(optional)</span></label>
@@ -543,7 +567,7 @@ function ProgressContent() {
           <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 border-b border-slate-100">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
-              <button onClick={() => { setShowBudgetForm(!showBudgetForm); }}
+              <button onClick={() => { setShowBudgetForm(!showBudgetForm); setBudgetFieldErrors([]); }}
                 className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
                 style={{ background: showBudgetForm ? '#64748b' : '#0c3b8f' }}>
                 {showBudgetForm ? 'Cancel' : '+ Request Additional Hours'}
