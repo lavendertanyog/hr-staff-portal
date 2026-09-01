@@ -39,8 +39,15 @@ function ProgressContent() {
   const [tab, setTab] = useState(searchParams.get('tab') === 'budget' ? 'budget' : 'progress');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
+
+  // Toast notifications — small auto-dismissing pill, matching the attendance page's pattern.
+  const [toast, setToast] = useState(null); // { text, type }
+  const toastTimeoutRef = useRef(null);
+  const showToast = (text, type) => {
+    setToast({ text, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
 
   const [showProgressForm, setShowProgressForm] = useState(false);
   const [progressProject, setProgressProject] = useState('');
@@ -105,37 +112,37 @@ function ProgressContent() {
 
   const handleProgressSubmit = async (e) => {
     e.preventDefault();
-    if (!progressProject || !progressPct) { setMessage('Project and completion % are required.'); setMessageType('error'); return; }
+    if (!progressProject || !progressPct) { showToast('Project and completion % are required.', 'error'); return; }
     const pct = parseFloat(progressPct);
-    if (isNaN(pct) || pct < 0 || pct > 100) { setMessage('Completion % must be between 0 and 100.'); setMessageType('error'); return; }
-    setSubmitting(true); setMessage('');
+    if (isNaN(pct) || pct < 0 || pct > 100) { showToast('Completion % must be between 0 and 100.', 'error'); return; }
+    setSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/projects/progress-log`, {
         projectCode: progressProject, reporterId: user.user_id,
         completionPercentage: pct, progressSummary: progressSummary.trim() || `Progress update: ${pct}%`,
       });
-      setMessage('Progress logged successfully.'); setMessageType('success');
+      showToast('Progress logged successfully.', 'success');
       setShowProgressForm(false); setProgressPct(''); setProgressSummary(''); setProgressProject('');
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Submission failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
   const handleBudgetSubmit = async (e) => {
     e.preventDefault();
-    if (!budgetProject || !budgetHours) { setMessage('Project and hours are required.'); setMessageType('error'); return; }
+    if (!budgetProject || !budgetHours) { showToast('Project and hours are required.', 'error'); return; }
     const hrs = parseFloat(budgetHours);
-    if (isNaN(hrs) || hrs <= 0) { setMessage('Hours must be a positive number.'); setMessageType('error'); return; }
-    setSubmitting(true); setMessage('');
+    if (isNaN(hrs) || hrs <= 0) { showToast('Hours must be a positive number.', 'error'); return; }
+    setSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/projects/budget-request`, {
         userId: user.user_id, projectCode: budgetProject,
         requestedHours: hrs, justification: budgetJustification.trim() || undefined,
       });
-      setMessage('Budget request submitted successfully.'); setMessageType('success');
+      showToast('Budget request submitted successfully.', 'success');
       setShowBudgetForm(false); setBudgetHours(''); setBudgetJustification(''); setBudgetProject('');
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Submission failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -148,16 +155,16 @@ function ProgressContent() {
   const submitEditProgressLog = async (e) => {
     e.preventDefault();
     const pct = parseFloat(editProgressPct);
-    if (isNaN(pct) || pct < 0 || pct > 100) { setMessage('Completion % must be between 0 and 100.'); setMessageType('error'); return; }
-    setSubmitting(true); setMessage('');
+    if (isNaN(pct) || pct < 0 || pct > 100) { showToast('Completion % must be between 0 and 100.', 'error'); return; }
+    setSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/projects/progress-log/${editingProgressLog.log_id}`, {
         userId: user.user_id, completionPercentage: pct, progressSummary: editProgressSummary.trim(),
       });
-      setMessage('Progress entry updated.'); setMessageType('success');
+      showToast('Progress entry updated.', 'success');
       setEditingProgressLog(null);
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Update failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Update failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -166,10 +173,10 @@ function ProgressContent() {
     setSubmitting(true);
     try {
       await axios.delete(`${API_BASE}/api/v1/projects/progress-log/${deleteProgressConfirm.log_id}`, { data: { userId: user.user_id } });
-      setMessage('Progress entry deleted.'); setMessageType('success');
+      showToast('Progress entry deleted.', 'success');
       setDeleteProgressConfirm(null);
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Delete failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Delete failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -182,16 +189,16 @@ function ProgressContent() {
   const submitEditBudgetRequest = async (e) => {
     e.preventDefault();
     const hrs = parseFloat(editBudgetHours);
-    if (isNaN(hrs) || hrs <= 0) { setMessage('Hours must be a positive number.'); setMessageType('error'); return; }
-    setSubmitting(true); setMessage('');
+    if (isNaN(hrs) || hrs <= 0) { showToast('Hours must be a positive number.', 'error'); return; }
+    setSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/projects/budget-request/${editingBudgetRequest.request_id}`, {
         userId: user.user_id, requestedHours: hrs, justification: editBudgetJustification.trim() || undefined,
       });
-      setMessage('Budget request updated.'); setMessageType('success');
+      showToast('Budget request updated.', 'success');
       setEditingBudgetRequest(null);
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Update failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Update failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -200,10 +207,10 @@ function ProgressContent() {
     setSubmitting(true);
     try {
       await axios.delete(`${API_BASE}/api/v1/projects/budget-request/${deleteBudgetConfirm.request_id}`, { data: { userId: user.user_id } });
-      setMessage('Budget request deleted.'); setMessageType('success');
+      showToast('Budget request deleted.', 'success');
       setDeleteBudgetConfirm(null);
       await fetchData(user.user_id);
-    } catch (err) { setMessage(err.response?.data?.error || 'Delete failed.'); setMessageType('error'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Delete failed.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -249,10 +256,14 @@ function ProgressContent() {
         </button>
       </div>
 
-      {message && (
-        <div className={`mb-6 rounded-2xl px-5 py-3.5 text-sm font-medium border ${
-          messageType === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
-        }`}>{message}</div>
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
+          <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
+            toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
+          }`}>
+            {toast.text}
+          </div>
+        </div>
       )}
 
       {tab === 'progress' ? (
@@ -345,7 +356,7 @@ function ProgressContent() {
                       </button>
                     ) : (
                       <button type="button"
-                        onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); setMessage(''); }}
+                        onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); }}
                         className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
                         style={{ background: '#0c3b8f' }}>
                         + Update
@@ -359,12 +370,17 @@ function ProgressContent() {
 
           {showProgressForm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
-              onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowProgressForm(false); setMessage(''); } }}>
+              onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowProgressForm(false); } }}>
               <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="mb-5 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Progress Entry</p>
-                  <button type="button" onClick={() => { setShowProgressForm(false); setMessage(''); }}
-                    className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+                  <button type="button" onClick={() => { setShowProgressForm(false); }} aria-label="Close"
+                    className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
                 </div>
                 <form onSubmit={handleProgressSubmit} className="space-y-5">
                   <div>
@@ -474,12 +490,17 @@ function ProgressContent() {
         <>
           {showBudgetForm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
-              onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowBudgetForm(false); setMessage(''); } }}>
+              onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowBudgetForm(false); } }}>
               <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="mb-5 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Budget Request</p>
-                  <button type="button" onClick={() => { setShowBudgetForm(false); setMessage(''); }}
-                    className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+                  <button type="button" onClick={() => { setShowBudgetForm(false); }} aria-label="Close"
+                    className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
                 </div>
                 <form onSubmit={handleBudgetSubmit} className="space-y-5">
                   <div>
@@ -511,7 +532,7 @@ function ProgressContent() {
           <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 border-b border-slate-100">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
-              <button onClick={() => { setShowBudgetForm(!showBudgetForm); setMessage(''); }}
+              <button onClick={() => { setShowBudgetForm(!showBudgetForm); }}
                 className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
                 style={{ background: showBudgetForm ? '#64748b' : '#0c3b8f' }}>
                 {showBudgetForm ? 'Cancel' : '+ Request Additional Hours'}
@@ -568,8 +589,12 @@ function ProgressContent() {
                             <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <button type="button" onClick={() => setExpandedBudgetId(isOpen ? null : r.request_id)}
-                                className="text-xs font-semibold text-blue-600 hover:text-blue-800">
-                                {isOpen ? 'Hide' : 'View'}
+                                aria-label={isOpen ? 'Hide details' : 'View details'}
+                                className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                                  className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
                               </button>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -584,7 +609,7 @@ function ProgressContent() {
                           {isOpen && (
                             <tr className="bg-slate-50/60">
                               <td colSpan={7} className="px-6 py-4">
-                                <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="grid gap-3 sm:grid-cols-3">
                                   <div>
                                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Justification</p>
                                     <p className="mt-0.5 text-sm text-slate-700">{r.justification || '—'}</p>
@@ -592,6 +617,10 @@ function ProgressContent() {
                                   <div>
                                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Reviewer Remarks</p>
                                     <p className="mt-0.5 text-sm text-slate-700">{r.reviewer_remarks || '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Submitted</p>
+                                    <p className="mt-0.5 text-sm text-slate-700">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</p>
                                   </div>
                                 </div>
                               </td>
@@ -614,8 +643,13 @@ function ProgressContent() {
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="mb-5 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Edit Progress Entry</p>
-              <button type="button" onClick={() => setEditingProgressLog(null)}
-                className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+              <button type="button" onClick={() => setEditingProgressLog(null)} aria-label="Close"
+                className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
             </div>
             <form onSubmit={submitEditProgressLog} className="space-y-5">
               <div>
@@ -664,8 +698,13 @@ function ProgressContent() {
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="mb-5 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Edit Budget Request</p>
-              <button type="button" onClick={() => setEditingBudgetRequest(null)}
-                className="text-xs font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+              <button type="button" onClick={() => setEditingBudgetRequest(null)} aria-label="Close"
+                className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
             </div>
             <form onSubmit={submitEditBudgetRequest} className="space-y-5">
               <div>
