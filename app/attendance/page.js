@@ -314,7 +314,18 @@ export default function AttendancePage() {
           setActiveSessionClockInTime(active.clock_in_time);
           setSelectedProject(active.project_code || GENERAL);
           setClockedIn(true);
-          setAllocations(active.allocations || []);
+          // Merge rather than replace: this fires every 20s (and on window focus) while the
+          // user may be mid-typing a description that hasn't gone through onBlur's PATCH yet.
+          // Blindly overwriting with the server's still-stale value would silently blank out
+          // what they just typed — including right before a Clock Out, where the field could
+          // still show their text on screen while the (reverted) state behind it reads empty.
+          setAllocations((prev) => {
+            const prevById = new Map(prev.map((a) => [a.allocation_id, a]));
+            return (active.allocations || []).map((a) => {
+              const prevA = prevById.get(a.allocation_id);
+              return prevA && (prevA.description || '').trim() ? { ...a, description: prevA.description } : a;
+            });
+          });
           sessionStorage.setItem('staff_attendance_id', active.attendance_id);
           sessionStorage.setItem('staff_attendance_project', active.project_code || '');
           sessionStorage.setItem('staff_attendance_user_id', user.user_id);
@@ -493,12 +504,16 @@ export default function AttendancePage() {
   // Saves one allocation's description as soon as its field loses focus — independent of hours
   // edits, and independent of the other project blocks on the same session.
   const saveAllocationDescription = async (allocationId, value) => {
-    if (!user?.user_id) return;
+    if (!user?.user_id) return false;
     try {
       await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, {
         userId: user.user_id, description: value,
       });
-    } catch (e) { showToast(e.response?.data?.error || 'Failed to save description.', 'error'); }
+      return true;
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to save description.', 'error');
+      return false;
+    }
   };
 
   const handleClockOut = async () => {
@@ -507,7 +522,13 @@ export default function AttendancePage() {
     if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
     // Guarantee the backend sees General's latest text even if the field's onBlur save hasn't
     // resolved yet — awaiting it here beats racing an unsaved PATCH against the clock-out call.
-    if (generalAlloc) await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
+    // If the save itself fails, stop here with a clear error instead of letting the clock-out
+    // call go through and bounce back with a confusing "description is required" — the field
+    // isn't actually empty, the save to the backend just didn't happen.
+    if (generalAlloc) {
+      const saved = await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
+      if (!saved) { showMsg('Could not save your description — check your connection and try again.', 'error'); return; }
+    }
     setLoading(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
@@ -926,7 +947,10 @@ export default function AttendancePage() {
     setActiveFieldErrors([]);
     const generalAlloc = allocations.find((a) => !a.project_code);
     if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
-    if (generalAlloc) await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
+    if (generalAlloc) {
+      const saved = await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
+      if (!saved) { showToast('Could not save your description — check your connection and try again.', 'error'); return; }
+    }
     setManualSubmitting(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
