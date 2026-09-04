@@ -178,7 +178,6 @@ export default function AttendancePage() {
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState('');
-  const [clockRemark, setClockRemark] = useState('');
   // Each allocation card carries its own description (see renderAllocationTracker) — required
   // for General (no project name to explain what was done), optional for a named project. This
   // just tracks whether the staff member has attempted to clock out with General's left blank.
@@ -475,7 +474,6 @@ export default function AttendancePage() {
         isManualLocation: !coords.latitude,
         latitude: coords.latitude,
         longitude: coords.longitude,
-        remark: clockRemark.trim() || undefined,
         allocations: allocationsPayload,
       });
       const data = res.data?.data;
@@ -513,9 +511,9 @@ export default function AttendancePage() {
     setLoading(true);
     try {
       await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
-        userId: user.user_id, attendanceId, remark: clockRemark.trim() || undefined,
+        userId: user.user_id, attendanceId,
       });
-      setClockedIn(false); setAttendanceId(null); setClockRemark(''); setAllocations([]);
+      setClockedIn(false); setAttendanceId(null); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
@@ -1306,15 +1304,6 @@ export default function AttendancePage() {
               </div>
 
               {!clockedIn && projectSetupUI}
-
-              {!clockedIn && (
-                <div className="mb-6">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
-                  <textarea rows={2} value={clockRemark} onChange={(e) => setClockRemark(e.target.value)}
-                    placeholder="Add notes or specific tasks (optional)"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              )}
 
               {clockedIn && allocationTracker}
 
