@@ -505,15 +505,26 @@ export default function AttendancePage() {
   // edits, and independent of the other project blocks on the same session.
   const saveAllocationDescription = async (allocationId, value) => {
     if (!user?.user_id) return false;
-    try {
-      await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, {
-        userId: user.user_id, description: value,
-      });
-      return true;
-    } catch (e) {
-      showToast(e.response?.data?.error || 'Failed to save description.', 'error');
-      return false;
+    // One retry on transient failures (no response at all, or a 5xx) before giving up — we've
+    // seen brief cold-start/auth blips on the backend cause a single attempt to fail even though
+    // the field's contents were fine. A real validation error (4xx with a response) isn't retried.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, {
+          userId: user.user_id, description: value,
+        });
+        return true;
+      } catch (e) {
+        const transient = !e.response || e.response.status >= 500;
+        if (transient && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        showToast(e.response?.data?.error || 'Failed to save description.', 'error');
+        return false;
+      }
     }
+    return false;
   };
 
   const handleClockOut = async () => {
