@@ -54,13 +54,16 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder, error }) 
   return (
     <div className="relative">
       <div ref={ref} className="relative">
+        <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
         <input
           type="text"
           value={open ? query : (selected ? labelOf(selected) : '')}
           onFocus={() => { setOpen(true); setQuery(''); }}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           placeholder={placeholder}
-          className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 ${
+          className={`w-full rounded-xl border pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 ${
             error ? 'border-red-400 focus:ring-red-400' : 'border-slate-300 focus:ring-blue-500'
           }`}
         />
@@ -212,7 +215,14 @@ export default function AttendancePage() {
   const [addProjectBusy, setAddProjectBusy] = useState(false);
   const [modalAllocId, setModalAllocId] = useState(null);
   const [modalHoursVal, setModalHoursVal] = useState('');
+  const [modalProjectCode, setModalProjectCode] = useState(GENERAL);
   const notifiedRef = useRef(new Set());
+
+  // Real progress-log data (completion %), keyed by project code — same data the Progress page
+  // reads/writes, so a % logged from the Attendance card shows up there too and vice versa.
+  const [progressHistory, setProgressHistory] = useState([]);
+  const [progressInputs, setProgressInputs] = useState({}); // allocation_id -> draft input string
+  const [progressSubmitting, setProgressSubmitting] = useState({}); // allocation_id -> bool
 
   // Manual entry state — a single-shot, already-finished block of work. Submitting never opens
   // a live session: the end time is derived as the entered start time plus however many hours
@@ -382,7 +392,44 @@ export default function AttendancePage() {
     if (!user?.user_id) return;
     axios.get(`${API_BASE}/api/v1/projects/active-list?userId=${user.user_id}`)
       .then((r) => setProjects(r.data?.data || [])).catch(() => {});
+    fetchProgressHistory();
   }, [user?.user_id]);
+
+  const fetchProgressHistory = () => {
+    if (!user?.user_id) return;
+    axios.get(`${API_BASE}/api/v1/projects/progress-history/${user.user_id}`)
+      .then((r) => setProgressHistory(r.data?.data || [])).catch(() => {});
+  };
+
+  // Latest logged completion % for a project — same lookup the Progress page uses.
+  const getLatestProgressPct = (code) => {
+    const log = progressHistory.find((h) => h.project_code === code);
+    return log ? Math.min(100, Math.max(0, Number(log.completion_percentage || 0))) : 0;
+  };
+
+  const submitProgressUpdate = async (allocationId, projectCode) => {
+    const raw = progressInputs[allocationId];
+    const pct = parseFloat(raw);
+    const current = getLatestProgressPct(projectCode);
+    const cap = Math.max(0.1, 100 - current);
+    if (!raw || isNaN(pct) || pct <= 0 || pct > cap) {
+      showToast(`Enter a valid amount to add (0–${cap.toFixed(0)}%).`, 'error');
+      return;
+    }
+    setProgressSubmitting((prev) => ({ ...prev, [allocationId]: true }));
+    try {
+      await axios.post(`${API_BASE}/api/v1/projects/progress-log`, {
+        projectCode, reporterId: user.user_id, completionPercentage: pct,
+      });
+      setProgressInputs((prev) => ({ ...prev, [allocationId]: '' }));
+      fetchProgressHistory();
+      showToast('Progress logged.', 'success');
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to log progress.', 'error');
+    } finally {
+      setProgressSubmitting((prev) => ({ ...prev, [allocationId]: false }));
+    }
+  };
 
   // Sidebar (right column): "This week" stats + a recent-entries preview, both derived from a
   // single 180-day lookback fetch — also backs the full History panel, so there's only one
@@ -597,14 +644,27 @@ export default function AttendancePage() {
     const hrs = parseFloat(modalHoursVal);
     if (!user?.user_id || !modalAllocId || !hrs || hrs <= 0) { setModalAllocId(null); return; }
     const setTarget = modalSource === 'manual' ? setManualAllocations : setAllocations;
-    const payload = modalMode === 'corrected'
+    const sourceList = modalSource === 'manual' ? manualAllocations : allocations;
+    const currentAlloc = sourceList.find((a) => a.allocation_id === modalAllocId);
+    const normalizedNewCode = modalProjectCode === GENERAL ? null : modalProjectCode;
+    const projectCodeChanged = currentAlloc && (currentAlloc.project_code || null) !== normalizedNewCode;
+
+    const hoursPayload = modalMode === 'corrected'
       ? { userId: user.user_id, correctedHours: hrs }
       : { userId: user.user_id, allocatedHours: hrs };
     try {
-      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, payload);
-      setTarget((prev) => prev.map((a) => (a.allocation_id === modalAllocId ? res.data?.data : a)));
+      let latest = null;
+      if (projectCodeChanged) {
+        const codeRes = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, {
+          userId: user.user_id, projectCode: modalProjectCode,
+        });
+        latest = codeRes.data?.data;
+      }
+      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, hoursPayload);
+      latest = res.data?.data;
+      setTarget((prev) => prev.map((a) => (a.allocation_id === modalAllocId ? latest : a)));
       notifiedRef.current.delete(modalAllocId);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update allocation.', 'error'); }
     finally { setModalAllocId(null); }
   };
 
@@ -1068,25 +1128,6 @@ export default function AttendancePage() {
   // its own allocation list, but the card layout, edit/delete/correct controls, and the modal
   // work identically either way. `allowAdd` hides "+ Add Project" for Manual Entry, since you
   // can't add a project to an already-closed entry.
-  // Real (not fabricated) daily-hours history for one project, pulled from the same 180-day
-  // session lookback the sidebar's "This week"/Recent Entries already use — so "progress
-  // tracking" reflects actual past clock-outs, not an invented trend.
-  const projectDailyTrend = (projectCode) => {
-    const days = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      days.push(toISODateStr(d));
-    }
-    return days.map((day) => ({
-      day,
-      hours: pastSessions
-        .filter((s) => s.day === day)
-        .reduce((sum, s) => sum + (s.allocations || [])
-          .filter((a) => (a.project_code || null) === (projectCode || null))
-          .reduce((h, a) => h + Number(a.hours || 0), 0), 0),
-    }));
-  };
 
   const renderAllocationTracker = (allocs, setAllocs, source, allowAdd) => {
     return (
@@ -1106,25 +1147,6 @@ export default function AttendancePage() {
         const ringOffset = ringC * (1 - Math.min(100, pct) / 100);
         const ringColor = overBudget ? '#d97706' : '#2563eb';
 
-        // Progress-tracking trend — real history from pastSessions, with today's bucket topped
-        // up by this still-open session's own tracked hours (which won't be in pastSessions
-        // until it's clocked out).
-        let trend = [];
-        let avgPerDay = 0, paceLabel = '', paceClass = '';
-        if (!isCompleted && source === 'live') {
-          const todayStr = toISODateStr(new Date());
-          trend = projectDailyTrend(a.project_code).map((d) => d.day === todayStr ? { ...d, hours: d.hours + trackedHrs } : d);
-          const totalTrend = trend.reduce((sum, d) => sum + d.hours, 0);
-          avgPerDay = totalTrend / trend.length;
-          const recentAvg = trend.slice(3).reduce((sum, d) => sum + d.hours, 0) / 3;
-          const priorAvg = trend.slice(0, 3).reduce((sum, d) => sum + d.hours, 0) / 3;
-          if (recentAvg === 0 && priorAvg === 0) { paceLabel = 'No recent activity'; paceClass = 'text-slate-400'; }
-          else if (recentAvg > priorAvg * 1.15) { paceLabel = 'Picking up'; paceClass = 'text-green-600'; }
-          else if (recentAvg < priorAvg * 0.85) { paceLabel = 'Slowing down'; paceClass = 'text-amber-600'; }
-          else { paceLabel = 'Steady pace'; paceClass = 'text-blue-600'; }
-        }
-        const maxTrendHour = Math.max(1, ...trend.map((d) => d.hours));
-
         return (
           <div key={a.allocation_id}
             className={`rounded-2xl border p-4 ${isActive ? 'border-blue-300 bg-blue-50/40' : isCompleted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
@@ -1143,6 +1165,7 @@ export default function AttendancePage() {
                   onClick={() => {
                     setModalAllocId(a.allocation_id);
                     setModalSource(source);
+                    setModalProjectCode(a.project_code || GENERAL);
                     if (isCompleted) {
                       setModalMode('corrected');
                       setModalHoursVal(String(a.corrected_hours ?? a.accumulated_hours ?? a.allocated_hours));
@@ -1202,31 +1225,31 @@ export default function AttendancePage() {
                   {a.edited_after_completion && <span className="text-amber-600">{isPaused ? ' · ' : ''}Plan edited after completion</span>}
                 </p>
 
-                {source === 'live' && (
-                  <div className="mt-3 pt-3 border-t border-slate-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Progress tracking · last 6 days</p>
-                      {paceLabel && <span className={`text-[11px] font-semibold ${paceClass}`}>{paceLabel}</span>}
+                {source === 'live' && a.project_code && (() => {
+                  const lastPct = getLatestProgressPct(a.project_code);
+                  const cap = Math.max(0.1, 100 - lastPct);
+                  const draft = progressInputs[a.allocation_id] || '';
+                  const busy = !!progressSubmitting[a.allocation_id];
+                  return (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Progress tracking</p>
+                        <span className="text-xs font-semibold text-slate-700">Last recorded: {lastPct.toFixed(0)}% complete</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="number" min="0.1" max={cap} step="0.1" value={draft}
+                          onChange={(e) => setProgressInputs((prev) => ({ ...prev, [a.allocation_id]: e.target.value }))}
+                          placeholder={`Add % complete (up to ${cap.toFixed(0)})`}
+                          className="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <button type="button" disabled={busy || lastPct >= 100}
+                          onClick={() => submitProgressUpdate(a.allocation_id, a.project_code)}
+                          className="flex-shrink-0 rounded-xl bg-[#0c3b8f] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0a2f70] disabled:opacity-60 transition">
+                          {busy ? 'Saving…' : 'Log'}
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-end gap-1.5 h-10">
-                      {trend.map((d, i) => (
-                        <div key={d.day} className="flex-1 rounded-sm"
-                          style={{
-                            height: `${Math.max(4, (d.hours / maxTrendHour) * 40)}px`,
-                            background: i === trend.length - 1 ? '#2563eb' : '#93c5fd',
-                          }} />
-                      ))}
-                    </div>
-                    <div className="flex justify-between text-[9px] text-slate-400 mt-1">
-                      {trend.map((d, i) => (
-                        <span key={d.day} className={i === trend.length - 1 ? 'text-blue-600 font-semibold' : ''}>
-                          {i === trend.length - 1 ? 'Today' : new Date(d.day + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' })}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-2">{avgPerDay.toFixed(1)}h/day average this week</p>
-                  </div>
-                )}
+                  );
+                })()}
               </>
             )}
             {/* Every project block gets its own description, right on the card — required for
@@ -1311,7 +1334,13 @@ export default function AttendancePage() {
                   {isActive ? 'Active' : isCompletedModal ? 'Completed' : modalIsPaused ? 'Paused' : 'Pending'}
                 </span>
               </div>
-              <p className="text-sm font-medium text-slate-700">{projectLabel(modalAlloc.project_code, projects)}</p>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 mt-3">Project</label>
+              <ProjectSearchSelect
+                value={modalProjectCode}
+                onChange={setModalProjectCode}
+                projects={projects.filter((p) => !allocs.some((x) => x.allocation_id !== modalAllocId && x.project_code === p.project_code))}
+                placeholder="Select or search project…"
+              />
               {isCompletedModal ? (
                 <p className="text-[11px] text-slate-400 mt-1 mb-8">
                   System recorded {fmtHours(modalAlloc.accumulated_hours)}

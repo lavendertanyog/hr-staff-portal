@@ -461,9 +461,14 @@ function ProgressContent() {
                   </button>
                 ))}
               </div>
-              <input type="text" value={progressSearch} onChange={(e) => setProgressSearch(e.target.value)}
-                placeholder="Search project code or name…"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
+              <div className="relative w-64">
+                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" value={progressSearch} onChange={(e) => setProgressSearch(e.target.value)}
+                  placeholder="Search project code or name…"
+                  className="rounded-2xl border border-slate-200 bg-white pl-9 pr-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
+              </div>
             </div>
 
             {loading ? (
@@ -586,9 +591,14 @@ function ProgressContent() {
                   </button>
                 ))}
               </div>
-              <input type="text" value={budgetSearch} onChange={(e) => setBudgetSearch(e.target.value)}
-                placeholder="Search project code or name…"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
+              <div className="relative w-64">
+                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" value={budgetSearch} onChange={(e) => setBudgetSearch(e.target.value)}
+                  placeholder="Search project code or name…"
+                  className="rounded-2xl border border-slate-200 bg-white pl-9 pr-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
+              </div>
             </div>
 
             {loading ? (
