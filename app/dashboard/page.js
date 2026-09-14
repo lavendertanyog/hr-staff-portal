@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import Link from 'next/link';
@@ -155,15 +155,38 @@ export default function StaffDashboard() {
   // Earliest month navigable is January of the current year.
   const minMonthOffset = -new Date().getMonth();
 
-  useEffect(() => {
+  const refreshSessionRows = useCallback((opts) => {
     if (!user?.user_id) return;
-    setLogLoading(true);
+    if (!opts?.silent) setLogLoading(true);
     setSelectedSessionId(null);
     axios.get(`${API_BASE}/api/v1/attendance/sessions/${user.user_id}?start=${fetchStart}&end=${fetchEnd}`)
       .then((r) => setSessionRows(r.data?.data || []))
       .catch(() => setSessionRows([]))
       .finally(() => setLogLoading(false));
-  }, [user?.user_id, fetchStart, fetchEnd, logRange]);
+  }, [user?.user_id, fetchStart, fetchEnd]);
+
+  useEffect(() => { refreshSessionRows(); }, [refreshSessionRows, logRange]);
+
+  // The chart's data only refreshes on mount/range-change by default, so a session clocked in on
+  // the Attendance page (a separate route) wouldn't show up here until the next full navigation.
+  // Refetching on focus/visibility catches that — switching back to this tab, or returning here
+  // via back/forward, reflects a just-started session immediately instead of looking stale.
+  useEffect(() => {
+    if (!user?.user_id) return;
+    const onFocus = () => {
+      refreshSessionRows({ silent: true });
+      axios.get(`${API_BASE}/api/v1/attendance/active-session/${user.user_id}`)
+        .then((r) => setActiveSession(r.data?.data || null))
+        .catch(() => {});
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') onFocus(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user?.user_id, refreshSessionRows]);
 
   // Stable color per project across the whole loaded period, so the chart and legend always
   // agree regardless of which slot/segment a project happens to land in. Assigned in first-seen
@@ -209,6 +232,10 @@ export default function StaffDashboard() {
   // one non-overlapping session — all of a day's sessions (and the transparent gaps between
   // them) share a single stack, so every entry lands on the same straight line instead of each
   // extra session spreading into its own sub-row.
+  // Throttled to the minute (not the raw per-second nowTick) so an active session's bar still
+  // grows live without rebuilding the whole Chart.js instance every second.
+  const nowMinute = Math.floor(nowTick / 60000);
+
   const { ganttLabels, ganttDatasets } = useMemo(() => {
     // Every calendar day from fetchStart to fetchEnd inclusive — 7 days for Week (which is
     // exactly that range's Monday..Sunday), up to a whole month's worth for Month.
@@ -231,11 +258,19 @@ export default function StaffDashboard() {
 
     // Per day, work out this session's start hour and its ordered list of segments (each
     // project's real hours, plus a trailing "General" segment for any untracked leftover time).
+    const nowParts = sgtParts(nowMinute * 60000);
     const sessionInfo = (s) => {
       const startParts = sgtParts(s.clock_in_time);
       const endParts = s.clock_out_time ? sgtParts(s.clock_out_time) : null;
+      // A session still clocked in (no clock_out_time yet) hasn't reached the end of the day —
+      // its bar should stop at the current time, not stretch all the way to midnight as if the
+      // rest of the day were already worked. Only falls back to midnight for the rare stale case
+      // of an open session from a day that isn't today (auto-clock-out normally prevents this).
       const endHour = endParts && endParts.dateStr === startParts.dateStr && endParts.hour > startParts.hour
-        ? endParts.hour : 24;
+        ? endParts.hour
+        : !s.clock_out_time && startParts.dateStr === nowParts.dateStr
+          ? Math.max(nowParts.hour, startParts.hour)
+          : 24;
       const allocations = s.allocations || [];
       const allocatedTotal = allocations.reduce((sum, a) => sum + Number(a.hours || 0), 0);
       const leftover = Math.max(0, (endHour - startParts.hour) - allocatedTotal);
@@ -281,7 +316,7 @@ export default function StaffDashboard() {
     }
 
     return { ganttLabels: labelsForDays, ganttDatasets: datasets };
-  }, [logRange, fetchStart, fetchEnd, sessionRows, projectColorIndex]);
+  }, [logRange, fetchStart, fetchEnd, sessionRows, projectColorIndex, nowMinute]);
 
   useEffect(() => {
     if (!chartRef.current) return;

@@ -167,7 +167,7 @@ export default function AttendanceReminders() {
             notified.add(dueCheckpoint);
             notifiedCheckpointsRef.current.set(cycleKey, notified);
             playBeep();
-            showBrowserNotification('Still working?', "It's been 3.5 hours since your last check-in. Press Continue to keep working — you'll be automatically clocked out at 4 hours.");
+            showBrowserNotification('Still working?', "You'll be auto-clocked out in 30 minutes if you don't confirm.");
           }
         } else {
           setStillWorkingSession(null);
@@ -235,9 +235,7 @@ export default function AttendanceReminders() {
             </div>
             <h2 className="text-lg font-semibold text-slate-900 mb-2">Still working?</h2>
             <p className="text-sm text-slate-500 mb-6">
-              It's been 3.5 hours since your last check-in.<br />Press Continue to keep working — you'll be
-              automatically clocked out at 4 hours if you don't. This checks in again every few hours if you're
-              still working.
+              You'll be auto-clocked out in 30 minutes if you don't confirm.
             </p>
             <button type="button" onClick={confirmStillWorking} disabled={confirming}
               className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"

@@ -26,7 +26,7 @@ function requestLocationSilently() {
 const GENERAL = 'GENERAL';
 
 // Searchable project picker: type to filter, or just pick from the list — replaces a plain <select>
-function ProjectSearchSelect({ value, onChange, projects, placeholder, error }) {
+function ProjectSearchSelect({ value, onChange, projects, placeholder, error, compact }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -54,7 +54,8 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder, error }) 
   return (
     <div className="relative">
       <div ref={ref} className="relative">
-        <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ${compact ? 'left-2' : 'left-3'}`}
+          width={compact ? '12' : '15'} height={compact ? '12' : '15'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         <input
@@ -63,9 +64,10 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder, error }) 
           onFocus={() => { setOpen(true); setQuery(''); }}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           placeholder={placeholder}
-          className={`w-full rounded-xl border pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 ${
-            error ? 'border-red-400 focus:ring-red-400' : 'border-slate-300 focus:ring-blue-500'
-          }`}
+          className={compact
+            ? `w-full rounded-lg border pl-7 pr-2 py-1.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 ${error ? 'border-red-400 focus:ring-red-400' : 'border-slate-300 focus:ring-blue-500'}`
+            : `w-full rounded-xl border pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 ${error ? 'border-red-400 focus:ring-red-400' : 'border-slate-300 focus:ring-blue-500'}`
+          }
         />
         {open && (
           <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
@@ -87,6 +89,36 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder, error }) 
   );
 }
 
+// Small round pencil affordance next to any field that can be edited in place — used for
+// Project, Budget/Hours, and Progress Tracking, so each editable area is marked consistently.
+function EditIconButton({ onClick, title }) {
+  return (
+    <button type="button" title={title} onClick={onClick}
+      className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+    </button>
+  );
+}
+
+// Paired confirm (check) / cancel (x) buttons shown while a field is being edited in place.
+function InlineConfirmCancel({ onConfirm, onCancel }) {
+  return (
+    <>
+      <button type="button" title="Save" onClick={onConfirm}
+        className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#0c3b8f] text-white hover:bg-[#0a2f70] transition">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      </button>
+      <button type="button" title="Cancel" onClick={onCancel}
+        className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 transition">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
+    </>
+  );
+}
+
 // Today's date as "YYYY-MM-DD", for defaulting (but no longer locking) manual entry date fields
 function todayISOStr() {
   const today = new Date();
@@ -105,6 +137,7 @@ function nowHHMM() {
 function toISODateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
 function mondayOfThisWeekISO() {
   const now = new Date();
   const dow = (now.getDay() + 6) % 7; // 0 = Monday
@@ -213,10 +246,21 @@ export default function AttendancePage() {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addProjectCode, setAddProjectCode] = useState('');
   const [addProjectBusy, setAddProjectBusy] = useState(false);
-  const [modalAllocId, setModalAllocId] = useState(null);
-  const [modalHoursVal, setModalHoursVal] = useState('');
-  const [modalProjectCode, setModalProjectCode] = useState(GENERAL);
+  // Inline editing — one edit icon per card puts every editable area (project, hours, progress)
+  // into an editable state at once, right where it's displayed, rather than through a popup.
+  // `editingCardId` names the allocation currently in edit mode; each field's own draft holds its
+  // in-progress value until the card-level Save/Cancel commits or discards all of them together.
+  const [editingCardId, setEditingCardId] = useState(null);
+  const [projectDraft, setProjectDraft] = useState(GENERAL);
+  const [hoursDraft, setHoursDraft] = useState('');
+  // Progress's own edit toggle — independent of editingCardId, since once a percentage has been
+  // logged it's shown as a value (not a perpetual "add more" input) with its own edit icon.
+  const [editingProgressId, setEditingProgressId] = useState(null);
+  const [progressEditDraft, setProgressEditDraft] = useState('');
+  // Briefly shows a "Saved" confirmation next to Description right after an autosave succeeds.
+  const [descriptionSavedId, setDescriptionSavedId] = useState(null);
   const notifiedRef = useRef(new Set());
+  const descriptionSavedTimeoutRef = useRef(null);
 
   // Real progress-log data (completion %), keyed by project code — same data the Progress page
   // reads/writes, so a % logged from the Attendance card shows up there too and vice versa.
@@ -235,13 +279,6 @@ export default function AttendancePage() {
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
-  // Edit-allocation modal: 'allocated' edits the plan (not-yet-completed blocks); 'corrected'
-  // records a staff correction to a completed block's actual hours, kept separate from the
-  // original system-recorded value rather than overwriting it.
-  const [modalMode, setModalMode] = useState('allocated');
-  // Which allocation list the open modal is editing — the live Clock In/Out session's, or a
-  // Manual Entry's — since each keeps its own state and the modal needs to update the right one.
-  const [modalSource, setModalSource] = useState('live');
 
   const todayISO = todayISOStr();
 
@@ -401,10 +438,36 @@ export default function AttendancePage() {
       .then((r) => setProgressHistory(r.data?.data || [])).catch(() => {});
   };
 
-  // Latest logged completion % for a project — same lookup the Progress page uses.
+  // Latest logged progress entry for a project — same lookup the Progress page uses.
+  const getLatestProgressLog = (code) => progressHistory.find((h) => h.project_code === code) || null;
   const getLatestProgressPct = (code) => {
-    const log = progressHistory.find((h) => h.project_code === code);
+    const log = getLatestProgressLog(code);
     return log ? Math.min(100, Math.max(0, Number(log.completion_percentage || 0))) : 0;
+  };
+  // System-generated baseline entries (from the daily-progress-baseline job) can't be edited —
+  // matches the same rule the backend enforces.
+  const isAutoProgressEntry = (log) => String(log?.progress_summary || '').startsWith('Auto-progress baseline');
+
+  // Corrects the absolute completion % of the last logged entry, instead of adding to it — same
+  // semantics as editing an entry on the Progress page.
+  const saveEditProgress = async (allocationId, projectCode) => {
+    const log = getLatestProgressLog(projectCode);
+    if (!log || !user?.user_id) return;
+    if (!String(progressEditDraft).trim()) return; // left blank — nothing to change
+    const pct = parseFloat(progressEditDraft);
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      showToast('Enter a value between 0 and 100.', 'error');
+      return;
+    }
+    if (pct === getLatestProgressPct(projectCode)) return;
+    try {
+      await axios.patch(`${API_BASE}/api/v1/projects/progress-log/${log.log_id}`, {
+        userId: user.user_id, completionPercentage: pct,
+      });
+      fetchProgressHistory();
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to update progress.', 'error');
+    }
   };
 
   const submitProgressUpdate = async (allocationId, projectCode) => {
@@ -459,9 +522,21 @@ export default function AttendancePage() {
   // Recent Entries card — quick pill filters and a specific-date picker, right on the card.
   const [historyPill, setHistoryPill] = useState('all'); // 'all' | 'week' | 'month'
   const [historyDate, setHistoryDate] = useState(null); // overrides the pill when set
-  const [historyVisibleCount, setHistoryVisibleCount] = useState(5);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+
+  // Public holidays are managed by HR (Calendar page) and shared across every portal — keyed by
+  // "YYYY-MM-DD" here for a quick lookup while rendering the calendar grid below.
+  const [publicHolidays, setPublicHolidays] = useState({});
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/v1/public-holidays`)
+      .then((r) => {
+        const map = {};
+        (r.data?.data || []).forEach((h) => { map[h.holiday_date] = h.name; });
+        setPublicHolidays(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const filteredHistoryEntries = useMemo(() => {
     if (historyDate) return pastSessions.filter((s) => s.day === historyDate);
@@ -560,6 +635,9 @@ export default function AttendancePage() {
         await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, {
           userId: user.user_id, description: value,
         });
+        setDescriptionSavedId(allocationId);
+        if (descriptionSavedTimeoutRef.current) clearTimeout(descriptionSavedTimeoutRef.current);
+        descriptionSavedTimeoutRef.current = setTimeout(() => setDescriptionSavedId(null), 2500);
         return true;
       } catch (e) {
         const transient = !e.response || e.response.status >= 500;
@@ -578,6 +656,23 @@ export default function AttendancePage() {
     if (!attendanceId || !user?.user_id) return;
     const generalAlloc = allocations.find((a) => !a.project_code);
     if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
+
+    // Every named-project block worked on today needs its own completion-% entry logged today
+    // before clocking out — staff record what they finished as part of ending the session, using
+    // the "Add new completion percentage" input already on that project's card. An auto-generated
+    // baseline entry doesn't count — it isn't the staff member's own report.
+    const todayISO = todayISOStr();
+    const missingProgress = allocations.find((a) => {
+      if (!a.project_code) return false;
+      return !progressHistory.some((h) =>
+        h.project_code === a.project_code && sgtDateStr(h.logged_at) === todayISO && !isAutoProgressEntry(h)
+      );
+    });
+    if (missingProgress) {
+      showMsg(`Add today's completion % for ${projectLabel(missingProgress.project_code, projects)} before clocking out.`, 'error');
+      return;
+    }
+
     // Guarantee the backend sees General's latest text even if the field's onBlur save hasn't
     // resolved yet — awaiting it here beats racing an unsaved PATCH against the clock-out call.
     // If the save itself fails, stop here with a clear error instead of letting the clock-out
@@ -616,56 +711,59 @@ export default function AttendancePage() {
     finally { setAddProjectBusy(false); }
   };
 
-  const handleCompleteAllocation = async (allocationId) => {
+  const handleReopenAllocation = async (allocationId) => {
     if (!user?.user_id) return;
     try {
-      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/complete`, { userId: user.user_id });
+      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/reopen`, { userId: user.user_id });
       setAllocations(res.data?.data?.allocations || []);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to mark project complete.', 'error'); }
-  };
-
-  const handleModalMarkComplete = async () => {
-    if (!modalAllocId) return;
-    await handleCompleteAllocation(modalAllocId);
-    setModalAllocId(null);
-  };
-
-  const handleReopen = async () => {
-    if (!modalAllocId || !user?.user_id) return;
-    try {
-      const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}/reopen`, { userId: user.user_id });
-      setAllocations(res.data?.data?.allocations || []);
-      notifiedRef.current.delete(modalAllocId);
+      notifiedRef.current.delete(allocationId);
     } catch (e) { showMsg(e.response?.data?.error || 'Failed to reopen project.', 'error'); }
-    finally { setModalAllocId(null); }
   };
 
-  const handleSaveEditHours = async () => {
-    const hrs = parseFloat(modalHoursVal);
-    if (!user?.user_id || !modalAllocId || !hrs || hrs <= 0) { setModalAllocId(null); return; }
-    const setTarget = modalSource === 'manual' ? setManualAllocations : setAllocations;
-    const sourceList = modalSource === 'manual' ? manualAllocations : allocations;
-    const currentAlloc = sourceList.find((a) => a.allocation_id === modalAllocId);
-    const normalizedNewCode = modalProjectCode === GENERAL ? null : modalProjectCode;
-    const projectCodeChanged = currentAlloc && (currentAlloc.project_code || null) !== normalizedNewCode;
+  // Opens the whole card for editing — project, hours, and (if any) the latest logged progress %
+  // all become editable in place at once, prefilled with their current values.
+  const startCardEdit = (a) => {
+    setEditingCardId(a.allocation_id);
+    setProjectDraft(a.project_code || GENERAL);
+    setHoursDraft(String(a.status === 'COMPLETED' ? (a.corrected_hours ?? a.accumulated_hours ?? a.allocated_hours) : a.allocated_hours));
+    const log = getLatestProgressLog(a.project_code);
+    if (log && !isAutoProgressEntry(log)) setProgressEditDraft(String(getLatestProgressPct(a.project_code)));
+  };
+  const cancelCardEdit = () => setEditingCardId(null);
 
-    const hoursPayload = modalMode === 'corrected'
+  const saveEditProject = async (a, setAllocs) => {
+    if (!user?.user_id) return;
+    const normalizedNewCode = projectDraft === GENERAL ? null : projectDraft;
+    if ((a.project_code || null) === normalizedNewCode) return;
+    try {
+      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${a.allocation_id}`, {
+        userId: user.user_id, projectCode: projectDraft,
+      });
+      setAllocs((prev) => prev.map((x) => (x.allocation_id === a.allocation_id ? res.data?.data : x)));
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update project.', 'error'); }
+  };
+
+  // Plan (allocated_hours) for an open block, or a correction (corrected_hours) for a completed one.
+  const saveEditHours = async (a, setAllocs) => {
+    const hrs = parseFloat(hoursDraft);
+    if (!user?.user_id || !hrs || hrs <= 0) return;
+    const payload = a.status === 'COMPLETED'
       ? { userId: user.user_id, correctedHours: hrs }
       : { userId: user.user_id, allocatedHours: hrs };
     try {
-      let latest = null;
-      if (projectCodeChanged) {
-        const codeRes = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, {
-          userId: user.user_id, projectCode: modalProjectCode,
-        });
-        latest = codeRes.data?.data;
-      }
-      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${modalAllocId}`, hoursPayload);
-      latest = res.data?.data;
-      setTarget((prev) => prev.map((a) => (a.allocation_id === modalAllocId ? latest : a)));
-      notifiedRef.current.delete(modalAllocId);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update allocation.', 'error'); }
-    finally { setModalAllocId(null); }
+      const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${a.allocation_id}`, payload);
+      setAllocs((prev) => prev.map((x) => (x.allocation_id === a.allocation_id ? res.data?.data : x)));
+      notifiedRef.current.delete(a.allocation_id);
+    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
+  };
+
+  // Commits every editable field on the card in one action, then closes edit mode.
+  const saveCardEdit = async (a, setAllocs) => {
+    await saveEditProject(a, setAllocs);
+    await saveEditHours(a, setAllocs);
+    const log = getLatestProgressLog(a.project_code);
+    if (log && !isAutoProgressEntry(log)) await saveEditProgress(a.allocation_id, a.project_code);
+    setEditingCardId(null);
   };
 
   const handleDeleteAllocation = async (allocationId, source, currentList) => {
@@ -1041,6 +1139,8 @@ export default function AttendancePage() {
   };
 
   const fmtTimeSGT = (iso) => new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+  // "YYYY-MM-DD" for an instant's SGT calendar day — en-CA formats dates in that order directly.
+  const sgtDateStr = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
 
   // "28/8/2026" — used for the day-conflict warning. Only needs to represent whole SGT calendar
   // days, so a straight day/month/year split on the "YYYY-MM-DD" string is exact — no timezone
@@ -1048,6 +1148,13 @@ export default function AttendancePage() {
   const fmtSlashDate = (dateStr) => {
     const [y, m, d] = dateStr.split('-').map(Number);
     return `${d}/${m}/${y}`;
+  };
+
+  // "Tue, 8 Sep" — the Recent Entries day-group header. Same exact-day-split approach as
+  // fmtSlashDate (no timezone conversion needed, "YYYY-MM-DD" already names an SGT calendar day).
+  const fmtDayHeader = (dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
   };
 
   // Shared between Clock In/Out and Manual Entry — each keeps its own row state (so setting up
@@ -1147,39 +1254,37 @@ export default function AttendancePage() {
         const ringOffset = ringC * (1 - Math.min(100, pct) / 100);
         const ringColor = overBudget ? '#d97706' : '#2563eb';
 
+        const isEditingCard = editingCardId === a.allocation_id;
+
         return (
           <div key={a.allocation_id}
             className={`rounded-2xl border p-4 ${isActive ? 'border-blue-300 bg-blue-50/40' : isCompleted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'}`}>
             <div className="flex items-center justify-between gap-2 mb-2">
-              <span className={`text-sm font-semibold ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                {projectLabel(a.project_code, projects)}
-              </span>
-              <div className="flex items-center gap-2">
+              {isEditingCard ? (
+                <div className="flex-1 min-w-0">
+                  <ProjectSearchSelect
+                    value={projectDraft}
+                    onChange={setProjectDraft}
+                    projects={projects.filter((p) => !allocs.some((x) => x.allocation_id !== a.allocation_id && x.project_code === p.project_code))}
+                    placeholder="Select or search project…"
+                    compact
+                  />
+                </div>
+              ) : (
+                <span className={`text-sm font-semibold truncate min-w-0 flex-1 ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                  {projectLabel(a.project_code, projects)}
+                </span>
+              )}
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
                   isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
                   : isCompleted ? 'bg-slate-200 text-slate-500' : isPaused ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
                 }`}>
                   {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : isPaused ? 'Paused' : 'Pending'}
                 </span>
-                <button type="button" title={isCompleted ? 'Correct actual hours' : 'Edit'}
-                  onClick={() => {
-                    setModalAllocId(a.allocation_id);
-                    setModalSource(source);
-                    setModalProjectCode(a.project_code || GENERAL);
-                    if (isCompleted) {
-                      setModalMode('corrected');
-                      setModalHoursVal(String(a.corrected_hours ?? a.accumulated_hours ?? a.allocated_hours));
-                    } else {
-                      setModalMode('allocated');
-                      setModalHoursVal(String(a.allocated_hours));
-                    }
-                  }}
-                  className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
+                <span className={isEditingCard ? 'invisible pointer-events-none' : ''}>
+                  <EditIconButton title="Edit this project entry" onClick={() => startCardEdit(a)} />
+                </span>
                 {allocs.length > 1 && (
                   <button type="button" title="Delete project" onClick={() => handleDeleteAllocation(a.allocation_id, source, allocs)}
                     className="flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 transition">
@@ -1193,13 +1298,24 @@ export default function AttendancePage() {
             </div>
 
             {isCompleted ? (
-              <span className="text-xs text-slate-500">
-                {a.corrected_hours != null
-                  ? <>{fmtHours(a.corrected_hours)} actual <span className="text-slate-400">(system recorded {fmtHours(a.accumulated_hours)})</span></>
-                  : `${fmtHours(a.accumulated_hours)} actual`}
-                {a.edited_after_completion && <span className="ml-1.5 text-amber-600">· plan edited after completion</span>}
-              </span>
-            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500 flex items-center flex-wrap gap-x-1">
+                  {isEditingCard ? (
+                    <input type="number" min="0.1" step="0.1" autoFocus value={hoursDraft}
+                      onChange={(e) => setHoursDraft(e.target.value)}
+                      placeholder={String(a.corrected_hours ?? a.accumulated_hours ?? a.allocated_hours)}
+                      className="w-14 rounded border border-slate-300 px-1 py-0.5 text-xs text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  ) : (
+                    a.corrected_hours != null ? fmtHours(a.corrected_hours) : fmtHours(a.accumulated_hours)
+                  )}
+                  <span>actual</span>
+                  {!isEditingCard && a.corrected_hours != null && (
+                    <span className="text-slate-400">(system recorded {fmtHours(a.accumulated_hours)})</span>
+                  )}
+                  {a.edited_after_completion && <span className="text-amber-600">· plan edited after completion</span>}
+                </span>
+              </div>
+            ) : a.project_code ? (
               <>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-2">Budget utilisation</p>
                 <div className="flex items-center gap-4">
@@ -1213,10 +1329,20 @@ export default function AttendancePage() {
                   </svg>
                   <div className="flex-1 space-y-1 text-xs">
                     <div className="flex justify-between"><span className="text-slate-500">Used</span><span className="font-semibold text-slate-800">{fmtHours(trackedHrs)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Budget</span><span className="font-semibold text-slate-800">{fmtHours(a.allocated_hours)}</span></div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Budget</span>
+                      {isEditingCard ? (
+                        <input type="number" min="0.1" step="0.1" autoFocus value={hoursDraft}
+                          onChange={(e) => setHoursDraft(e.target.value)}
+                          placeholder={String(a.allocated_hours)}
+                          className="w-16 rounded border border-slate-300 px-1 py-0.5 text-xs text-right font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      ) : (
+                        <span className="font-semibold text-slate-800">{a.allocated_hours ? fmtHours(a.allocated_hours) : ''}</span>
+                      )}
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Remaining</span>
-                      <span className={`font-semibold ${overBudget ? 'text-amber-600' : 'text-green-600'}`}>{fmtHours(Math.max(0, a.allocated_hours - trackedHrs))}</span>
+                      <span className={`font-semibold ${overBudget ? 'text-amber-600' : 'text-green-600'}`}>{a.allocated_hours ? fmtHours(Math.max(0, a.allocated_hours - trackedHrs)) : ''}</span>
                     </div>
                   </div>
                 </div>
@@ -1225,41 +1351,104 @@ export default function AttendancePage() {
                   {a.edited_after_completion && <span className="text-amber-600">{isPaused ? ' · ' : ''}Plan edited after completion</span>}
                 </p>
 
-                {source === 'live' && a.project_code && (() => {
+                {source === 'live' && (() => {
+                  const log = getLatestProgressLog(a.project_code);
                   const lastPct = getLatestProgressPct(a.project_code);
-                  const cap = Math.max(0.1, 100 - lastPct);
                   const draft = progressInputs[a.allocation_id] || '';
                   const busy = !!progressSubmitting[a.allocation_id];
+                  const canEditLast = log && !isAutoProgressEntry(log);
+                  const isEditingProgress = editingProgressId === a.allocation_id;
+                  const showProgressInput = canEditLast && (isEditingCard || isEditingProgress);
                   return (
                     <div className="mt-3 pt-3 border-t border-slate-100">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Progress tracking</p>
-                        <span className="text-xs font-semibold text-slate-700">Last recorded: {lastPct.toFixed(0)}% complete</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input type="number" min="0.1" max={cap} step="0.1" value={draft}
-                          onChange={(e) => setProgressInputs((prev) => ({ ...prev, [a.allocation_id]: e.target.value }))}
-                          placeholder={`Add % complete (up to ${cap.toFixed(0)})`}
-                          className="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <button type="button" disabled={busy || lastPct >= 100}
-                          onClick={() => submitProgressUpdate(a.allocation_id, a.project_code)}
-                          className="flex-shrink-0 rounded-xl bg-[#0c3b8f] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0a2f70] disabled:opacity-60 transition">
-                          {busy ? 'Saving…' : 'Log'}
-                        </button>
-                      </div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-2">Progress tracking</p>
+                      {log ? (
+                        showProgressInput ? (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="0" max="100" step="0.1" autoFocus={isEditingProgress} value={progressEditDraft}
+                                onChange={(e) => setProgressEditDraft(e.target.value)}
+                                placeholder={lastPct.toFixed(0)}
+                                className="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                              <span className="text-xs text-slate-500">%</span>
+                            </div>
+                            {isEditingProgress && (
+                              <div className="flex items-center justify-end gap-2 mt-2">
+                                <InlineConfirmCancel
+                                  onConfirm={async () => { await saveEditProgress(a.allocation_id, a.project_code); setEditingProgressId(null); }}
+                                  onCancel={() => setEditingProgressId(null)} />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                              {lastPct.toFixed(0)}%
+                            </span>
+                            {canEditLast && (
+                              <EditIconButton title="Edit logged progress"
+                                onClick={() => { setEditingProgressId(a.allocation_id); setProgressEditDraft(String(lastPct)); }} />
+                            )}
+                          </div>
+                        )
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <input type="number" min="0.1" max="100" step="0.1" value={draft}
+                            onChange={(e) => setProgressInputs((prev) => ({ ...prev, [a.allocation_id]: e.target.value }))}
+                            placeholder="Add completion percentage"
+                            className="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <button type="button" disabled={busy}
+                            onClick={() => submitProgressUpdate(a.allocation_id, a.project_code)}
+                            className="flex-shrink-0 rounded-xl bg-[#0c3b8f] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0a2f70] disabled:opacity-60 transition">
+                            {busy ? 'Saving…' : 'Log'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
               </>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500 flex items-center flex-wrap gap-x-1">
+                  {(isActive || isPaused) && <span>{fmtHours(trackedHrs)} tracked of</span>}
+                  {isEditingCard ? (
+                    <input type="number" min="0.1" step="0.1" autoFocus value={hoursDraft}
+                      onChange={(e) => setHoursDraft(e.target.value)}
+                      placeholder={String(a.allocated_hours)}
+                      className="w-14 rounded border border-slate-300 px-1 py-0.5 text-xs text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  ) : (
+                    fmtHours(a.allocated_hours)
+                  )}
+                  <span>planned{isPaused ? ' (paused)' : ''}</span>
+                  {a.edited_after_completion && <span className="text-amber-600">· plan edited after completion</span>}
+                </span>
+              </div>
             )}
+
+            {source === 'live' && isCompleted && (
+              <button type="button" onClick={() => handleReopenAllocation(a.allocation_id)}
+                className="mt-2 text-xs font-semibold text-[#0c3b8f] hover:underline">
+                Reopen — I'm still working on this
+              </button>
+            )}
+
             {/* Every project block gets its own description, right on the card — required for
                 General (no project name to explain what was done), optional otherwise. Saved
                 per-allocation as soon as the field loses focus. */}
             {source === 'live' && (
               <div className="mt-3">
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Description {!a.project_code && <span className="text-red-500">*</span>}
-                </label>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Description {!a.project_code && <span className="text-red-500">*</span>}
+                  </label>
+                  {descriptionSavedId === a.allocation_id && (
+                    <span className="flex items-center gap-1 text-[11px] font-semibold text-green-600">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Saved
+                    </span>
+                  )}
+                </div>
                 <textarea rows={2} value={a.description || ''}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -1274,6 +1463,12 @@ export default function AttendancePage() {
                 {!a.project_code && clockDescriptionValidated && !(a.description || '').trim() && (
                   <p className="mt-1 text-xs text-red-500">* Please fill in this field</p>
                 )}
+              </div>
+            )}
+
+            {isEditingCard && (
+              <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-slate-100">
+                <InlineConfirmCancel onConfirm={() => saveCardEdit(a, setAllocs)} onCancel={cancelCardEdit} />
               </div>
             )}
           </div>
@@ -1301,93 +1496,6 @@ export default function AttendancePage() {
         </button>
       )}
 
-      {modalAllocId && modalSource === source && (() => {
-        const modalAlloc = allocs.find((a) => a.allocation_id === modalAllocId);
-        if (!modalAlloc) return null;
-        const isActive = modalAlloc.status === 'ACTIVE';
-        const isCompletedModal = modalAlloc.status === 'COMPLETED';
-        const modalAccumulated = Number(modalAlloc.accumulated_hours || 0);
-        const modalIsPaused = !isActive && !isCompletedModal && modalAccumulated > 0;
-        const modalLiveElapsedHrs = isActive && modalAlloc.started_at ? (nowTick - new Date(modalAlloc.started_at).getTime()) / 3600000 : 0;
-        const modalTrackedHrs = modalAccumulated + modalLiveElapsedHrs;
-        const stepHours = (delta) => {
-          const current = parseFloat(modalHoursVal) || 0;
-          setModalHoursVal(String(Math.max(0.1, Math.round((current + delta) * 100) / 100)));
-        };
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setModalAllocId(null)}>
-            <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <button type="button" onClick={() => setModalAllocId(null)} aria-label="Close"
-                className="absolute top-4 right-4 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-
-              {/* Header — surfaces the same status/progress context the card behind shows, since the modal covers it */}
-              <div className="flex items-center gap-2 mb-1.5 pr-8">
-                <p className="text-lg font-semibold text-slate-900">{isCompletedModal ? 'Correct Actual Hours' : 'Edit Allocation'}</p>
-                <span className={`flex-shrink-0 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                  isActive ? 'bg-blue-100 text-blue-700' : isCompletedModal ? 'bg-slate-200 text-slate-500' : modalIsPaused ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {isActive ? 'Active' : isCompletedModal ? 'Completed' : modalIsPaused ? 'Paused' : 'Pending'}
-                </span>
-              </div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2 mt-3">Project</label>
-              <ProjectSearchSelect
-                value={modalProjectCode}
-                onChange={setModalProjectCode}
-                projects={projects.filter((p) => !allocs.some((x) => x.allocation_id !== modalAllocId && x.project_code === p.project_code))}
-                placeholder="Select or search project…"
-              />
-              {isCompletedModal ? (
-                <p className="text-[11px] text-slate-400 mt-1 mb-8">
-                  System recorded {fmtHours(modalAlloc.accumulated_hours)}
-                  {modalAlloc.corrected_hours != null && <> · corrected to {fmtHours(modalAlloc.corrected_hours)}</>}
-                </p>
-              ) : (isActive || modalIsPaused) ? (
-                <p className="text-[11px] text-slate-400 mt-1 mb-8">
-                  {fmtHours(modalTrackedHrs)} tracked so far of {fmtHours(modalAlloc.allocated_hours)} planned{modalIsPaused ? ' (paused)' : ''}
-                </p>
-              ) : (
-                <div className="mb-8" />
-              )}
-
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                {isCompletedModal ? 'Actual Hours Worked' : 'Allocated Hours'}
-              </label>
-              <div className="flex items-center gap-2 mb-6">
-                <button type="button" onClick={() => stepHours(-0.1)}
-                  className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">−</button>
-                <input type="number" min="0.1" step="0.1" autoFocus value={modalHoursVal} placeholder="e.g. 2.5"
-                  onChange={(e) => setModalHoursVal(e.target.value)}
-                  className="w-full min-w-0 rounded-xl border-2 border-[#D1D5DB] px-4 py-3 text-sm text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                <button type="button" onClick={() => stepHours(0.1)}
-                  className="flex-shrink-0 w-11 h-11 rounded-xl border-2 border-[#D1D5DB] text-slate-600 text-lg font-semibold hover:bg-slate-50 transition">+</button>
-              </div>
-
-              <button type="button" onClick={handleSaveEditHours}
-                className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
-                Confirm
-              </button>
-              {isCompletedModal ? (
-                source === 'live' && (
-                  <button type="button" onClick={handleReopen}
-                    className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
-                    Reopen — I'm still working on this
-                  </button>
-                )
-              ) : (
-                <button type="button" onClick={handleModalMarkComplete}
-                  className="w-full mt-3 py-1 text-sm font-semibold text-[#0c3b8f] hover:underline text-center transition">
-                  Mark as Completed
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })()}
     </div>
     );
   };
@@ -1717,7 +1825,7 @@ export default function AttendancePage() {
               <div className="flex gap-1.5 flex-wrap">
                 {[{ k: 'all', l: 'All' }, { k: 'week', l: 'This week' }, { k: 'month', l: 'This month' }].map((p) => (
                   <button key={p.k} type="button"
-                    onClick={() => { setHistoryPill(p.k); setHistoryDate(null); setHistoryVisibleCount(5); }}
+                    onClick={() => { setHistoryPill(p.k); setHistoryDate(null); }}
                     className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
                       !historyDate && historyPill === p.k ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
@@ -1754,16 +1862,24 @@ export default function AttendancePage() {
                       const iso = toISODateStr(d);
                       const isFuture = iso > todayISOStr();
                       const isSelected = historyDate === iso;
+                      const holidayName = publicHolidays[iso];
                       return (
-                        <button key={i} type="button" disabled={isFuture}
-                          onClick={() => { setHistoryDate(iso); setHistoryVisibleCount(5); setCalendarOpen(false); }}
-                          className={`py-1 rounded-full transition ${isSelected ? 'text-white font-semibold' : isFuture ? 'text-slate-300' : 'hover:bg-slate-100'}`}
+                        <button key={i} type="button" disabled={isFuture} title={holidayName || undefined}
+                          onClick={() => { setHistoryDate(iso); setCalendarOpen(false); }}
+                          className={`relative py-1 rounded-full transition ${isSelected ? 'text-white font-semibold' : isFuture ? 'text-slate-300' : holidayName ? 'text-red-600 font-semibold hover:bg-red-50' : 'hover:bg-slate-100'}`}
                           style={isSelected ? { background: '#0c3b8f' } : undefined}>
                           {d.getDate()}
+                          {holidayName && !isSelected && (
+                            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-500" />
+                          )}
                         </button>
                       );
                     })}
                   </div>
+                  <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                    SG public holiday
+                  </p>
                 </div>
               )}
             </div>
@@ -1774,39 +1890,55 @@ export default function AttendancePage() {
               ) : filteredHistoryEntries.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-6">No attendance logged in this period.</p>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {filteredHistoryEntries.slice(0, historyVisibleCount).map((s) => (
-                    <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-3 py-2.5 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-900">{fmtSlashDate(s.day)}</p>
-                        <p className="text-[11px] text-slate-500">{fmtTimeSGT(s.clock_in_time)} – {s.clock_out_time ? fmtTimeSGT(s.clock_out_time) : 'still active'}</p>
+                <div className="flex flex-col gap-3">
+                  {(() => {
+                    // Group every filtered entry by calendar day — entries are already sorted
+                    // newest-first, so each new day encountered starts a fresh group. The whole
+                    // list renders at once; the panel's own overflow-y-auto handles scrolling.
+                    const groups = [];
+                    for (const s of filteredHistoryEntries) {
+                      const g = groups[groups.length - 1];
+                      if (g && g.day === s.day) g.entries.push(s);
+                      else groups.push({ day: s.day, entries: [s] });
+                    }
+                    return groups.map((g) => (
+                      <div key={g.day}>
+                        <p className="text-[11px] font-semibold text-slate-500 mb-1.5">{fmtDayHeader(g.day)}</p>
+                        <div className="flex flex-col gap-1.5">
+                          {g.entries.map((s) => (
+                            <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-3 py-2.5 flex items-center gap-3">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0c3b8f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                                <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14.5" />
+                              </svg>
+                              <p className="flex-1 min-w-0 text-xs font-semibold text-slate-800 truncate">
+                                {fmtTimeSGT(s.clock_in_time)} <span className="text-slate-400 font-normal">→</span> {s.clock_out_time ? fmtTimeSGT(s.clock_out_time) : 'still active'}
+                                {s.clock_out_time && sgtDateStr(s.clock_out_time) !== s.day && (
+                                  <span className="ml-1 text-[10px] font-bold text-amber-600 align-top">+1 day</span>
+                                )}
+                              </p>
+                              <div className="flex-shrink-0 flex items-center gap-1.5">
+                                <button type="button" onClick={() => openEditEntry(s)} aria-label="Edit entry"
+                                  className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                </button>
+                                <button type="button" onClick={() => setDeleteConfirmEntry(s)} aria-label="Delete entry"
+                                  className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                    <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex-shrink-0 flex items-center gap-1.5">
-                        <button type="button" onClick={() => openEditEntry(s)} aria-label="Edit entry"
-                          className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                        <button type="button" onClick={() => setDeleteConfirmEntry(s)} aria-label="Delete entry"
-                          className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
-              )}
-
-              {filteredHistoryEntries.length > historyVisibleCount && (
-                <button type="button" onClick={() => setHistoryVisibleCount((v) => v + 5)}
-                  className="w-full mt-2 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition">
-                  Load more
-                </button>
               )}
             </div>
           </div>
