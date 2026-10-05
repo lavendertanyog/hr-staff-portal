@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import axios from 'axios';
 
 // Short beep via Web Audio API — no audio asset needed.
@@ -75,6 +77,7 @@ export default function AttendanceReminders() {
   const [confirming, setConfirming] = useState(false);
   const notifiedCheckpointsRef = useRef(new Map()); // attendanceId -> Set of checkpoint hours already beeped for
   const autoClockingOutRef = useRef(new Set()); // attendanceId currently being auto-clocked-out (guards against double-fire)
+  const pathname = usePathname();
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -82,8 +85,7 @@ export default function AttendanceReminders() {
     }
   }, []);
 
-  useEffect(() => {
-    const check = async () => {
+  const check = useCallback(async () => {
       let user;
       try { user = JSON.parse(sessionStorage.getItem('staff_portal_user') || 'null'); } catch { user = null; }
       if (!user?.user_id) return;
@@ -173,12 +175,21 @@ export default function AttendanceReminders() {
           setStillWorkingSession(null);
         }
       } catch { /* offline/transient — try again next poll */ }
-    };
+  }, []);
 
+  useEffect(() => {
     check();
     const id = setInterval(check, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [check]);
+
+  // Clocking in happens on the Attendance page itself, which this component has no direct
+  // hook into — re-running the check on every navigation away from it (rather than waiting
+  // for the next 60s tick) is what makes the reminder disappear right after clocking in,
+  // instead of only after a manual refresh.
+  useEffect(() => {
+    check();
+  }, [pathname, check]);
 
   const dismissClockInReminder = () => {
     const sgt = sgtNow();
@@ -204,18 +215,31 @@ export default function AttendanceReminders() {
 
   return (
     <>
-      {clockInReminder && (
-        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-200 px-6 py-2.5">
-          <p className="text-sm font-semibold text-amber-800">
-            It's past 8:30am and you haven't clocked in yet today.{' '}
-            <a href="/attendance" className="underline">Clock in now</a>
-          </p>
-          <button type="button" onClick={dismissClockInReminder}
-            className="flex-shrink-0 text-amber-600 hover:text-amber-800" aria-label="Dismiss">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+      {clockInReminder && !pathname.startsWith('/attendance') && (
+        <div className="fixed bottom-6 right-6 z-50 w-80">
+          <div className="relative rounded-[10px] border-[1.5px] border-amber-200 bg-amber-50 shadow-lg p-7">
+            <button type="button" onClick={dismissClockInReminder}
+              className="absolute top-3 right-3 text-amber-500 hover:text-amber-700" aria-label="Dismiss">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <div className="flex items-center gap-4 mb-6">
+              <span className="w-12 h-12 rounded-[10px] bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" />
+                </svg>
+              </span>
+              <div>
+                <p className="text-[15px] font-bold text-amber-900 leading-snug">You haven't clocked in yet</p>
+                <p className="mt-1 text-xs text-amber-700">It's past 8:30am today</p>
+              </div>
+            </div>
+            <Link href="/attendance"
+              className="block w-full text-center rounded-md bg-amber-600 text-white text-sm font-bold py-3.5 hover:bg-amber-700 transition">
+              Clock in now
+            </Link>
+          </div>
         </div>
       )}
 

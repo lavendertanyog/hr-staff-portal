@@ -23,6 +23,27 @@ export default function StaffLoginPage() {
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [logoMissing, setLogoMissing] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [resending, setResending] = useState(false);
+
+  const handleResendVerification = async () => {
+    setResending(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: unverifiedEmail, portalUrl: window.location.origin }),
+      });
+      const payload = await res.json();
+      setInfoMessage(res.ok ? 'If an unverified account exists for that email, a new verification link has been sent.' : (payload.error || 'Failed to resend.'));
+      setUnverifiedEmail('');
+    } catch {
+      setError('Unable to reach server. Try again.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   useEffect(() => {
     try { sessionStorage.removeItem('staff_portal_user'); } catch {}
@@ -30,7 +51,7 @@ export default function StaffLoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setInfoMessage('');
+    setError(''); setInfoMessage(''); setUnverifiedEmail('');
     const norm = email.trim().toLowerCase();
     if (!norm.endsWith('@nextan.com.sg')) { setError('Only @nextan.com.sg emails are allowed.'); return; }
     if (mode !== 'reset' && (!password || password.length < 6)) { setError('Password must be at least 6 characters.'); return; }
@@ -44,7 +65,7 @@ export default function StaffLoginPage() {
       const body = mode === 'reset'
         ? { email: norm, portalUrl: window.location.origin }
         : mode === 'signup'
-          ? { email: norm, password, userRole: 'staff' }
+          ? { email: norm, password, userRole: 'staff', portalUrl: window.location.origin }
           : { email: norm, password };
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -53,16 +74,23 @@ export default function StaffLoginPage() {
         body: JSON.stringify(body),
       });
       const payload = await res.json();
-      if (!res.ok) { setError(payload.error || payload.detail || 'Authentication failed.'); setLoading(false); return; }
+      if (!res.ok) {
+        if (payload.unverified) {
+          setUnverifiedEmail(norm);
+        }
+        setError(payload.error || payload.detail || 'Authentication failed.');
+        setLoading(false);
+        return;
+      }
 
       if (mode === 'reset') {
         setMode('login'); setPassword(''); setConfirmPassword(''); setLoading(false);
-        setInfoMessage('If an account exists for that email, a reset link has been sent — check your inbox.');
+        setInfoMessage('If an account exists for that email, a temporary password has been sent — check your inbox and log in with it.');
         return;
       }
       if (mode === 'signup') {
         setMode('login'); setPassword(''); setConfirmPassword(''); setLoading(false);
-        setError('Account created. Awaiting admin approval from rebecca.lau@nextan.com.sg to approve before signing in.');
+        setInfoMessage('Account created. Check your email for a link to verify your account before signing in.');
         return;
       }
       const user = { ...payload.data, full_name: deriveNameFromEmail(norm) };
@@ -99,7 +127,7 @@ export default function StaffLoginPage() {
           </div>
           <div className="flex flex-col items-center justify-center h-full">
             <h2 className="text-3xl font-bold mb-3">Nextan Staff Portal</h2>
-            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfoMessage(''); }}
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}
               className="mt-8 px-5 py-2 rounded-full border border-white/40 text-sm font-medium hover:bg-white/10 transition">
               {mode === 'login' ? 'Create Account' : 'Back to Sign In'}
             </button>
@@ -112,7 +140,7 @@ export default function StaffLoginPage() {
             {mode === 'login' ? 'Hello Again!' : mode === 'signup' ? 'Create Account' : 'Forgot Password'}
           </h1>
           <p className="text-slate-500 text-base mb-8">
-            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Register with your Nextan email' : 'Enter your email and we’ll send you a reset link'}
+            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Register with your Nextan email' : 'Enter your email and we’ll send you a temporary password'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -175,39 +203,39 @@ export default function StaffLoginPage() {
                   Remember Me
                 </label>
                 <button type="button" className="text-cyan-700 hover:underline"
-                  onClick={() => { setMode('reset'); setError(''); setInfoMessage(''); }}>Forgot password</button>
+                  onClick={() => { setMode('reset'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Forgot password</button>
               </div>
             )}
 
             {error && <p className="text-red-500 text-xs">{error}</p>}
+            {unverifiedEmail && (
+              <button type="button" onClick={handleResendVerification} disabled={resending}
+                className="text-cyan-700 hover:underline text-xs disabled:opacity-60">
+                {resending ? 'Sending…' : 'Resend verification email'}
+              </button>
+            )}
 
             <button type="submit" disabled={loading}
               className="w-full py-3.5 rounded-xl font-bold text-white text-base transition"
               style={{ background: '#0c3b8f' }}>
-              {loading ? 'Please wait\u2026' : mode === 'login' ? 'LOGIN' : mode === 'signup' ? 'SIGN UP' : 'SEND RESET LINK'}
+              {loading ? 'Please wait\u2026' : mode === 'login' ? 'LOGIN' : mode === 'signup' ? 'SIGN UP' : 'SEND TEMPORARY PASSWORD'}
             </button>
           </form>
 
           {infoMessage && <p className="text-center text-emerald-700 text-sm mt-4">{infoMessage}</p>}
 
-          {mode === 'login' && (
-            <p className="text-center text-xs text-slate-400 mt-3">
-              If the button is stuck on &ldquo;Please wait&rdquo;, refresh the page and try again.
-            </p>
-          )}
-
           <p className="text-center text-base text-slate-700 mt-6">
             {mode === 'login' ? (
               <>No account?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('signup'); setError(''); setInfoMessage(''); }}>Sign up</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('signup'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Sign up</button>
               </>
             ) : mode === 'signup' ? (
               <>Already have an account?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); }}>Sign in</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Sign in</button>
               </>
             ) : (
               <>Remember your password?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); }}>Back to login</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Back to login</button>
               </>
             )}
           </p>

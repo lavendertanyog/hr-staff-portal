@@ -13,3 +13,81 @@
   --text-5xl: 3.0625rem;
   --text-6xl: 3.8125rem;
 }
+
+/* Native scrollbar hidden — AppShell renders its own fixed-height draggable thumb instead,
+   since a native scrollbar's thumb length can't be forced short (it always reflects the
+   content ratio). */
+.hide-native-scrollbar {
+  scrollbar-width: none;
+}
+.hide-native-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Scrollbar for small nested lists (e.g. Recent Entries) — same footprint as a native
+   scrollbar, but navy instead of gray, WITH the up/down arrow buttons kept. The whole bar
+   (buttons included) is inset from the container's top/bottom via padding on
+   .inner-scrollbar-pad, a wrapper around the actual overflow element, since scrollbar length
+   otherwise always matches the box's full height regardless of track styling. */
+.inner-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #16307a #f1f5f9;
+}
+.inner-scrollbar::-webkit-scrollbar {
+  width: 16px;
+}
+.inner-scrollbar::-webkit-scrollbar-button {
+  display: block;
+  height: 20px;
+  background-color: #f1f5f9;
+}
+/* Pure CSS triangles — no image/data-URI involved, so nothing can silently fail to render. */
+.inner-scrollbar::-webkit-scrollbar-button:vertical:start:decrement {
+  background-color: #16307a;
+  clip-path: polygon(50% 25%, 20% 75%, 80% 75%);
+  border-radius: 999px 999px 0 0;
+}
+.inner-scrollbar::-webkit-scrollbar-button:vertical:end:increment {
+  background-color: #16307a;
+  clip-path: polygon(50% 75%, 20% 25%, 80% 25%);
+  border-radius: 0 0 999px 999px;
+}
+.inner-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.inner-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #16307a;
+  border-radius: 999px;
+}
+.inner-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #1a3a8f;
+}
+.inner-scrollbar-pad {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Main page scrollbar — soft rounded track, no arrow buttons, thicker thumb. */
+.page-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #2f56b8 #e6ebf9;
+}
+.page-scrollbar::-webkit-scrollbar {
+  width: 20px;
+}
+.page-scrollbar::-webkit-scrollbar-button {
+  display: none;
+}
+.page-scrollbar::-webkit-scrollbar-track {
+  background: #e6ebf9;
+  border-radius: 12px;
+}
+.page-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #2f56b8;
+  border-radius: 12px;
+  border: 4px solid #e6ebf9;
+  background-clip: padding-box;
+}
+.page-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #1a3a8f;
+}

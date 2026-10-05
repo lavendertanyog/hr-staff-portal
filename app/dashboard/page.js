@@ -258,47 +258,77 @@ export default function StaffDashboard() {
 
     // Per day, work out this session's start hour and its ordered list of segments (each
     // project's real hours, plus a trailing "General" segment for any untracked leftover time).
+    // For a session that runs past midnight, `endHour`/`fullDuration` are measured in hours
+    // since the START day's midnight (so a 10:55pm-12:48am session has fullDuration ~1.88h,
+    // not the ~1.08h you'd get by clamping to that day's own 24h axis) — segments are then
+    // split at the midnight boundary below, so the portion after 12am lands on the next day's
+    // row instead of silently vanishing off the end of the start day's bar.
     const nowParts = sgtParts(nowMinute * 60000);
     const sessionInfo = (s) => {
       const startParts = sgtParts(s.clock_in_time);
       const endParts = s.clock_out_time ? sgtParts(s.clock_out_time) : null;
+      const crossesMidnight = !!(endParts && endParts.dateStr !== startParts.dateStr);
       // A session still clocked in (no clock_out_time yet) hasn't reached the end of the day —
       // its bar should stop at the current time, not stretch all the way to midnight as if the
       // rest of the day were already worked. Only falls back to midnight for the rare stale case
       // of an open session from a day that isn't today (auto-clock-out normally prevents this).
-      const endHour = endParts && endParts.dateStr === startParts.dateStr && endParts.hour > startParts.hour
-        ? endParts.hour
-        : !s.clock_out_time && startParts.dateStr === nowParts.dateStr
-          ? Math.max(nowParts.hour, startParts.hour)
-          : 24;
+      const endHour = crossesMidnight
+        ? 24 + endParts.hour
+        : endParts && endParts.hour > startParts.hour
+          ? endParts.hour
+          : !s.clock_out_time && startParts.dateStr === nowParts.dateStr
+            ? Math.max(nowParts.hour, startParts.hour)
+            : 24;
       const allocations = s.allocations || [];
       const allocatedTotal = allocations.reduce((sum, a) => sum + Number(a.hours || 0), 0);
       const leftover = Math.max(0, (endHour - startParts.hour) - allocatedTotal);
       const segments = allocations.map((a) => ({ project_code: a.project_code || 'General', hours: Number(a.hours || 0) }));
       if (leftover > 0.01) segments.push({ project_code: 'General', hours: leftover });
-      return { startHour: startParts.hour, segments };
+      return { startHour: startParts.hour, segments, crossesMidnight, endDay: crossesMidnight ? endParts.dateStr : startParts.dateStr };
     };
 
     // Flatten each day's sessions into one chronological sequence of "pieces" — a transparent
     // gap wherever there's idle time (before the first session, and between sessions), and a
     // colored piece per project segment — all destined for the same stack, so multiple sessions
-    // in a day render as one continuous line rather than parallel sub-bars.
-    const dayPieces = dayKeys.map((k) => {
-      const pieces = [];
-      let cursor = 0;
+    // in a day render as one continuous line rather than parallel sub-bars. Built as a day->state
+    // map (not a plain array) so a session that crosses midnight can push its after-midnight
+    // segments straight onto the NEXT day's entry, even before that day is otherwise visited.
+    const dayState = {};
+    dayKeys.forEach((k) => { dayState[k] = { pieces: [], cursor: 0 }; });
+    dayKeys.forEach((k) => {
       byDay[k].forEach((s) => {
         const info = sessionInfo(s);
-        const gap = info.startHour - cursor;
-        if (gap > 0.01 || pieces.length === 0) {
-          pieces.push({ hours: Math.max(0, gap), color: 'transparent', sessionId: null });
+        const dp = dayState[k];
+        const gap = info.startHour - dp.cursor;
+        if (gap > 0.01 || dp.pieces.length === 0) {
+          dp.pieces.push({ hours: Math.max(0, gap), color: 'transparent', sessionId: null });
         }
+        let remainingUntilMidnight = info.crossesMidnight ? 24 - info.startHour : Infinity;
+        let crossed = false;
         info.segments.forEach((seg) => {
-          pieces.push({ hours: seg.hours, color: colorForProject(seg.project_code), sessionId: s.attendance_id });
+          const color = colorForProject(seg.project_code);
+          if (crossed) {
+            const next = dayState[info.endDay];
+            if (next) { next.pieces.push({ hours: seg.hours, color, sessionId: s.attendance_id }); next.cursor += seg.hours; }
+            return;
+          }
+          if (info.crossesMidnight && seg.hours > remainingUntilMidnight + 0.001) {
+            const beforeHours = remainingUntilMidnight;
+            const afterHours = seg.hours - beforeHours;
+            if (beforeHours > 0.001) dp.pieces.push({ hours: beforeHours, color, sessionId: s.attendance_id });
+            const next = dayState[info.endDay];
+            if (next) { next.pieces.push({ hours: afterHours, color, sessionId: s.attendance_id }); next.cursor += afterHours; }
+            crossed = true;
+            remainingUntilMidnight = 0;
+          } else {
+            dp.pieces.push({ hours: seg.hours, color, sessionId: s.attendance_id });
+            remainingUntilMidnight -= seg.hours;
+          }
         });
-        cursor = info.startHour + info.segments.reduce((sum, seg) => sum + seg.hours, 0);
+        dp.cursor = info.crossesMidnight ? 24 : info.startHour + info.segments.reduce((sum, seg) => sum + seg.hours, 0);
       });
-      return pieces;
     });
+    const dayPieces = dayKeys.map((k) => dayState[k].pieces);
 
     const maxPieces = Math.max(0, ...dayPieces.map((pieces) => pieces.length));
     const datasets = [];
@@ -377,7 +407,7 @@ export default function StaffDashboard() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-10">
+      <div className="mb-10 pl-3">
         <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {staffName}</h1>
         <p className="mt-2 text-sm text-slate-500">Manage your attendance, leave, and project progress in one place.</p>

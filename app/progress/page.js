@@ -269,7 +269,7 @@ function ProgressContent() {
 
   return (
     <div className="p-8">
-      <div className="mb-10">
+      <div className="mb-10 pl-3">
         <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Progress & Budget</h1>
         <p className="mt-2 text-sm text-slate-500">Log project progress updates and request additional budget hours.</p>
