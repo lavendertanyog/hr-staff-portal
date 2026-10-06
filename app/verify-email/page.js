@@ -29,7 +29,7 @@ function VerifyEmailForm() {
         if (!res.ok) { setStatus('error'); setMessage(payload.error || 'Failed to verify email.'); return; }
         setStatus('done'); setMessage(payload.message || 'Email verified. You can now log in.');
       } catch {
-        setStatus('error'); setMessage(`Unable to reach server (${API_BASE}). Check backend status and try again.`);
+        setStatus('error'); setMessage("Unable to reach server.");
       }
     })();
   }, [token]);
@@ -47,7 +47,7 @@ function VerifyEmailForm() {
       await res.json();
       setResendDone(true);
     } catch {
-      setMessage(`Unable to reach server (${API_BASE}). Check backend status and try again.`);
+      setMessage("Unable to reach server.");
     } finally {
       setResending(false);
     }

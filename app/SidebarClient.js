@@ -245,25 +245,27 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
 
         {/* Settings / profile — a half pill flush against the bottom edge: rounded top,
             flat bottom, no gap, so it reads as cut off by the screen's edge. */}
-        <div ref={menuRef} style={{ position: 'absolute', bottom: 0, left: (RAIL_W - 72) / 2, width: 72 }}>
-          <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
-            className="flex items-center justify-center"
-            style={{
-              width: 72, height: 93, borderRadius: '36px 36px 0 0',
-              background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
-            }}>
-            <NavIcon name="settings" size={18} />
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
-            style={{ bottom: 101, left: (RAIL_W - 72) / 2, width: 150 }}>
-            <Link href="/profile" onClick={() => setMenuOpen(false)}
-              className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
-            <button type="button" onClick={handleLogout}
-              className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Log out</button>
+        <div ref={menuRef}>
+          <div style={{ position: 'absolute', bottom: 0, left: (RAIL_W - 72) / 2, width: 72 }}>
+            <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
+              className="flex items-center justify-center"
+              style={{
+                width: 72, height: 93, borderRadius: '36px 36px 0 0',
+                background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
+              }}>
+              <NavIcon name="settings" size={18} />
+            </button>
           </div>
-        )}
+          {menuOpen && (
+            <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
+              style={{ bottom: 101, left: (RAIL_W - 72) / 2, width: 150 }}>
+              <Link href="/profile" onClick={() => setMenuOpen(false)}
+                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
+              <button type="button" onClick={handleLogout}
+                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Log out</button>
+            </div>
+          )}
+        </div>
       </aside>
     </div>
   );

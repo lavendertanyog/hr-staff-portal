@@ -211,21 +211,6 @@ function sessionTotalHours(session) {
   return (session.allocations || []).reduce((sum, a) => sum + Number(a.hours || 0), 0);
 }
 
-const STANDARD_WORKDAY_HOURS = 8;
-
-// Splits the workday into values on the same 0.25h grid as the hour input's `step`, so every
-// row is always a value the browser accepts — a plain 8/count division (e.g. 8/3 = 2.67) lands
-// off-grid and trips the input's native step validation. Any leftover quarter-hours from the
-// division go to the first few rows so the total always comes out to exactly 8.
-function evenSplitHours(count) {
-  const STEP = 0.25;
-  const n = Math.max(count, 1);
-  const totalSteps = Math.round(STANDARD_WORKDAY_HOURS / STEP);
-  const base = Math.floor(totalSteps / n);
-  const remainder = totalSteps - base * n;
-  return Array.from({ length: n }, (_, i) => Math.round((base + (i < remainder ? 1 : 0)) * STEP * 100) / 100);
-}
-
 function fmtHours(h) {
   const n = Number(h || 0);
   return n % 1 === 0 ? `${n}h` : `${n.toFixed(2)}h`;
@@ -293,7 +278,7 @@ export default function AttendancePage() {
 
   // Multi-project clock-in setup (before clocking in) — defaults to a single General row;
   // General is just another option in the project picker, not a separate mode.
-  const [projectRows, setProjectRows] = useState([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
+  const [projectRows, setProjectRows] = useState([{ code: GENERAL, hours: '' }]);
   const [projectRowsValidated, setProjectRowsValidated] = useState(false);
 
   // Active session allocation tracking (after clocking in)
@@ -661,26 +646,13 @@ export default function AttendancePage() {
 
   const showMsg = (text, type) => showToast(text, type);
 
-  // Re-split the standard 8h workday evenly across however many rows exist, keeping any codes
-  // already picked. Used whenever a row is added or removed.
-  const resplitProjectRows = (rows) => {
-    const hours = evenSplitHours(rows.length);
-    return rows.map((r, i) => ({ ...r, hours: hours[i] }));
-  };
-
   const addProjectRow = () => {
     setProjectRowsValidated(false);
-    setProjectRows((prev) => {
-      if (prev.length >= 8) return prev;
-      return resplitProjectRows([...prev, { code: '', hours: 0 }]);
-    });
+    setProjectRows((prev) => (prev.length >= 8 ? prev : [...prev, { code: '', hours: '' }]));
   };
 
   const removeProjectRow = (index) => {
-    setProjectRows((prev) => {
-      if (prev.length <= 1) return prev;
-      return resplitProjectRows(prev.filter((_, i) => i !== index));
-    });
+    setProjectRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
   const handleClockIn = async () => {
@@ -897,7 +869,7 @@ export default function AttendancePage() {
   // directly — e.g. clocked in 8:30am, the project only took 8 hours, but didn't actually clock
   // off until 6pm. Every allocation still records COMPLETED with its full planned hours either
   // way; nothing here ever goes "live."
-  const [manualProjectRows, setManualProjectRows] = useState([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
+  const [manualProjectRows, setManualProjectRows] = useState([{ code: GENERAL, hours: '' }]);
   const [manualProjectRowsValidated, setManualProjectRowsValidated] = useState(false);
   const [manualClockInTouched, setManualClockInTouched] = useState(false); // true once staff edits Start Time directly
   const [manualClockOutDate, setManualClockOutDate] = useState(() => todayISOStr());
@@ -926,6 +898,10 @@ export default function AttendancePage() {
   const [editEndTime, setEditEndTime] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editFieldErrors, setEditFieldErrors] = useState([]); // any of 'startDate'|'startTime'|'endDate'|'endTime'
+  // The entry's projects, editable alongside its times. `null` when the entry's project breakdown
+  // isn't available (then only the times are saved, leaving its projects untouched).
+  const [editProjectRows, setEditProjectRows] = useState(null);
+  const [editRowsValidated, setEditRowsValidated] = useState(false);
 
   // True if [newStart, newEnd) genuinely overlaps an existing entry's [clock_in_time, clock_out_time
   // or "still open" up to now) — used to hard-block a duplicate Manual Entry / clock-in on top of
@@ -949,6 +925,32 @@ export default function AttendancePage() {
     setEditEndDate(toDateStr(end));
     setEditEndTime(toTimeStr(end));
     setEditFieldErrors([]);
+    const full = entry.allocations ? entry : pastSessions.find((s) => s.attendance_id === entry.attendance_id);
+    const allocs = full?.allocations;
+    setEditProjectRows(Array.isArray(allocs) && allocs.length > 0
+      ? allocs.map((a) => ({
+          code: !a.project_code || a.project_code === 'General' ? GENERAL : a.project_code,
+          hours: Math.round(Number(a.hours || 0) * 100) / 100,
+        }))
+      : null);
+    setEditRowsValidated(false);
+  };
+
+  // When the times change, project hours follow the new window (keeping their current
+  // proportions) so the entry never ends up with hours that disagree with its start and end.
+  const syncEditRowsToWindow = (sd, st, ed, et) => {
+    if (!editProjectRows || !sd || !st || !ed || !et) return;
+    const windowHours = (new Date(combineDateTime(ed, et)) - new Date(combineDateTime(sd, st))) / 3600000;
+    if (!(windowHours > 0)) return;
+    setEditProjectRows((prev) => {
+      if (!prev) return prev;
+      const currentTotal = prev.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+      if (Math.abs(currentTotal - windowHours) < 0.005) return prev;
+      return prev.map((r) => {
+        const ratio = currentTotal > 0.005 ? (parseFloat(r.hours) || 0) / currentTotal : 1 / prev.length;
+        return { ...r, hours: Number((windowHours * ratio).toFixed(2)) };
+      });
+    });
   };
 
   const submitEditTimes = async (e) => {
@@ -976,11 +978,28 @@ export default function AttendancePage() {
       setEditFieldErrors(['startDate', 'startTime']);
       showToast('You can\'t select a future date.', 'error'); return;
     }
+    let allocationsPayload;
+    if (editProjectRows) {
+      if (editProjectRows.some((r) => !r.code)) { setEditRowsValidated(true); return; }
+      if (editProjectRows.some((r) => !(parseFloat(r.hours) > 0))) {
+        setEditRowsValidated(true);
+        showToast('Please enter valid hours for every project.', 'error');
+        return;
+      }
+      const windowHours = (new Date(clockOutTime) - new Date(clockInTime)) / 3600000;
+      const totalRowHours = editProjectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+      if (Math.abs(totalRowHours - windowHours) > 0.05) {
+        setEditFieldErrors(['endDate', 'endTime']);
+        showToast(`Project hours (${totalRowHours.toFixed(2)}h) don't match the time entered (${windowHours.toFixed(2)}h) — adjust one to match the other.`, 'error');
+        return;
+      }
+      allocationsPayload = editProjectRows.map((r) => ({ projectCode: r.code, hours: parseFloat(r.hours) }));
+    }
     setEditFieldErrors([]);
     setEditSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/attendance/${editingEntry.attendance_id}/edit-times`, {
-        userId: user.user_id, clockInTime, clockOutTime,
+        userId: user.user_id, clockInTime, clockOutTime, allocations: allocationsPayload,
       });
       showToast('Entry updated successfully.', 'success');
       setEditingEntry(null);
@@ -1113,7 +1132,7 @@ export default function AttendancePage() {
       setManualAllocations(data?.allocations || []);
       showToast(`Entry logged — ${fmtHours(totalHours)} recorded.`, 'success');
       setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark(''); setManualDescription('');
-      setManualProjectRows([{ code: GENERAL, hours: STANDARD_WORKDAY_HOURS }]);
+      setManualProjectRows([{ code: GENERAL, hours: '' }]);
       setManualProjectRowsValidated(false);
       setManualDescriptionValidated(false);
       setManualClockInTouched(false);
@@ -1323,21 +1342,16 @@ export default function AttendancePage() {
   // each project picker, not a separate mode.
   const renderProjectSetupUI = (rows, setRows, validated, setValidated, extraContent) => {
     const totalRowHours = rows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
-    const overAllocated = totalRowHours > STANDARD_WORKDAY_HOURS + 0.01;
-    const resplit = (nextRows) => {
-      const hours = evenSplitHours(nextRows.length);
-      return nextRows.map((r, i) => ({ ...r, hours: hours[i] }));
-    };
     const addRow = () => {
       setValidated(false);
-      setRows((prev) => (prev.length >= 8 ? prev : resplit([...prev, { code: '', hours: 0 }])));
+      setRows((prev) => (prev.length >= 8 ? prev : [...prev, { code: '', hours: '' }]));
     };
     const removeRow = (index) => {
-      setRows((prev) => (prev.length <= 1 ? prev : resplit(prev.filter((_, i) => i !== index))));
+      setRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
     };
     return (
       <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
-        <p className="text-xs text-slate-400 mb-4">Hours auto-split across projects. Adjust as needed.</p>
+        <p className="text-xs text-slate-400 mb-4">Enter the hours you plan to spend on each project.</p>
         <div className="space-y-4">
           {rows.map((row, i) => {
             const rowError = validated && !row.code;
@@ -1356,7 +1370,7 @@ export default function AttendancePage() {
               </div>
               <div className="flex flex-col items-center gap-1 flex-shrink-0">
                 <div className="flex items-center gap-1.5">
-                  <input type="number" min="0.1" step="0.1" value={row.hours}
+                  <input type="number" min="0.1" step="0.1" value={row.hours} placeholder="0"
                     onChange={(e) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
                     className={`w-16 rounded-xl border-2 bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${hoursError ? 'border-red-400' : 'border-[#D1D5DB] focus:border-blue-500'}`} />
                   <span className="text-xs text-slate-400">hrs</span>
@@ -1376,8 +1390,8 @@ export default function AttendancePage() {
             );
           })}
         </div>
-        <p className={`mt-3 text-xs font-semibold ${overAllocated ? 'text-amber-600' : 'text-slate-400'}`}>
-          Total: {totalRowHours.toFixed(2)} / {STANDARD_WORKDAY_HOURS} hrs
+        <p className="mt-3 text-xs font-semibold text-slate-400">
+          Total: {totalRowHours.toFixed(2)} hrs
         </p>
         {rows.length < 8 && (
           <button type="button" onClick={addRow}
@@ -1912,7 +1926,7 @@ export default function AttendancePage() {
 
           {editingEntry && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setEditingEntry(null)}>
-              <form onSubmit={submitEditTimes} noValidate className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <form onSubmit={submitEditTimes} noValidate className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 <button type="button" onClick={() => setEditingEntry(null)} aria-label="Close"
                   className="absolute top-4 right-4 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1921,28 +1935,29 @@ export default function AttendancePage() {
                   </svg>
                 </button>
                 <p className="text-lg font-semibold text-slate-900 mb-1 pr-8">Edit Entry</p>
-                <p className="text-xs text-slate-400 mb-6">Correcting the clock-in/out times for this entry.</p>
+                <p className="text-xs text-slate-400 mb-6">{editProjectRows ? 'Change the projects, hours and clock-in/out times for this entry.' : 'Correcting the clock-in/out times for this entry.'}</p>
+                {editProjectRows && renderProjectSetupUI(editProjectRows, setEditProjectRows, editRowsValidated, setEditRowsValidated)}
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
-                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => { setEditStartDate(e.target.value); setEditFieldErrors([]); }}
+                    <input type="date" value={editStartDate} max={todayISO} onChange={(e) => { setEditStartDate(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(e.target.value, editStartTime, editEndDate, editEndTime); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('startDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
-                    <input type="time" value={editStartTime} onChange={(e) => { setEditStartTime(e.target.value); setEditFieldErrors([]); }}
+                    <input type="time" value={editStartTime} onChange={(e) => { setEditStartTime(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(editStartDate, e.target.value, editEndDate, editEndTime); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('startTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
                 <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
-                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => { setEditEndDate(e.target.value); setEditFieldErrors([]); }}
+                    <input type="date" value={editEndDate} max={todayISO} onChange={(e) => { setEditEndDate(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(editStartDate, editStartTime, e.target.value, editEndTime); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
-                    <input type="time" value={editEndTime} onChange={(e) => { setEditEndTime(e.target.value); setEditFieldErrors([]); }}
+                    <input type="time" value={editEndTime} onChange={(e) => { setEditEndTime(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(editStartDate, editStartTime, editEndDate, e.target.value); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>

@@ -53,7 +53,7 @@ export default function StaffLoginPage() {
     e.preventDefault();
     setError(''); setInfoMessage(''); setUnverifiedEmail('');
     const norm = email.trim().toLowerCase();
-    if (!norm.endsWith('@nextan.com.sg')) { setError('Only @nextan.com.sg emails are allowed.'); return; }
+    if (!norm.endsWith('@nextan.com.sg')) { setError(mode === 'login' ? 'Invalid email or password.' : 'Please enter a valid email address.'); return; }
     if (mode !== 'reset' && (!password || password.length < 6)) { setError('Password must be at least 6 characters.'); return; }
     if (mode === 'signup' && password !== confirmPassword) { setError('Passwords do not match.'); return; }
 
@@ -105,7 +105,7 @@ export default function StaffLoginPage() {
       sessionStorage.removeItem('staff_attendance_user_id');
       router.push('/dashboard');
     } catch {
-      setError(`Unable to reach server (${API_BASE}). Check backend status and try again.`);
+      setError("Unable to reach server.");
       setLoading(false);
     }
   };
