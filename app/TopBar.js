@@ -42,6 +42,7 @@ const SEARCH_INDEX = [
   { label: 'Dashboard', href: '/dashboard', section: 'Page', keywords: 'home overview welcome' },
   { label: 'Attendance', href: '/attendance', section: 'Page', keywords: 'clock in out logs timesheet' },
   { label: 'Leave', href: '/leave', section: 'Page', keywords: 'apply leave calendar time off' },
+  { label: 'Calendar', href: '/calendar', section: 'Page', keywords: 'public holidays who is on leave team out of office' },
   { label: 'Progress', href: '/progress', section: 'Page', keywords: 'weekly log budget project' },
   { label: 'Inbox', href: '/inbox', section: 'Page', keywords: 'notifications messages' },
   { label: 'Profile', href: '/profile', section: 'Page', keywords: 'account settings password change' },
