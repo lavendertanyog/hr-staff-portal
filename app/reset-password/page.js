@@ -35,7 +35,7 @@ function ResetPasswordForm() {
       setDone(true);
       setLoading(false);
     } catch {
-      setError(`Unable to reach server (${API_BASE}). Check backend status and try again.`);
+      setError("Unable to reach server.");
       setLoading(false);
     }
   };
