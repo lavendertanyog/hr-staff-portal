@@ -1176,6 +1176,9 @@ export default function AttendancePage() {
   };
 
   const isPastManualEntry = manualClockInDate && manualClockInDate < todayISOStr();
+  // A past day always has an end time. Today's end time is optional: filled in, the entry is saved
+  // as a finished shift (staff who log after a site visit); left blank, it clocks in live as before.
+  const hasManualEnd = Boolean(isPastManualEntry || manualClockOutTouched);
   // A shift can legitimately cross midnight (e.g. clocked in 8pm, out 4am), so End Date is
   // allowed up to one day past Start Date — never further.
   const manualEndDateMax = addHoursToClock(manualClockInDate || todayISOStr(), '00:00', 24).date;
@@ -1197,8 +1200,8 @@ export default function AttendancePage() {
       setManualFieldErrors(['startDate', 'startTime']);
       showToast('You can\'t select a future date.', 'error'); return;
     }
-    if (isPastManualEntry) {
-      // A past entry is submitted whole in one step — there's no later "closing" moment to ask
+    if (hasManualEnd) {
+      // A finished entry is submitted whole in one step — there's no later "closing" moment to ask
       // for this then, so General's description has to be collected right here.
       if (manualProjectRows.some((r) => r.code === GENERAL) && !manualDescription.trim()) { setManualDescriptionValidated(true); return; }
       if (!manualClockOutDate || !manualClockOutTime) {
@@ -1240,12 +1243,12 @@ export default function AttendancePage() {
     } catch { /* if the check itself fails, fall through and let the flow proceed */ }
 
     const newStart = new Date(combineDateTime(manualClockInDate, manualClockInTime));
-    const newEnd = isPastManualEntry ? new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) : newStart;
+    const newEnd = hasManualEnd ? new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) : newStart;
     const overlap = findOverlap(existing, newStart, newEnd);
     if (overlap) { setOverlapEntry(overlap); return; }
     if (existing.length > 0) { setDayConflictEntries(existing); return; }
 
-    if (isPastManualEntry) submitManualEntry(); else submitManualClockIn();
+    if (hasManualEnd) submitManualEntry(); else submitManualClockIn();
   };
 
   // Closes the staff member's real live session (started via Clock In/Out) using the End Time
@@ -1403,7 +1406,7 @@ export default function AttendancePage() {
       </div>
     );
   };
-  const manualDescriptionUI = isPastManualEntry && hasGeneralManual ? (
+  const manualDescriptionUI = hasManualEnd && hasGeneralManual ? (
     <>
       <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
       <textarea rows={2} value={manualDescription}
@@ -1827,6 +1830,20 @@ export default function AttendancePage() {
                   </div>
                 </div>
               )}
+              {!isPastManualEntry && (
+                <div className="mb-5">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">End Time <span className="font-normal text-slate-400">(optional)</span></label>
+                  <input type="time" value={manualClockOutTouched ? manualClockOutTime : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (!v) { setManualClockOutTouched(false); }
+                      else { setManualClockOutDate(manualClockInDate); setManualClockOutTime(v); setManualClockOutTouched(true); }
+                      setManualFieldErrors([]);
+                    }}
+                    className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
+                  <p className="mt-1 text-xs text-slate-400">Leave blank to clock in now and clock out later. Fill in to log a shift that has already finished.</p>
+                </div>
+              )}
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
                 <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
@@ -1839,7 +1856,7 @@ export default function AttendancePage() {
               <button type="submit" disabled={manualSubmitting || !manualClockInTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                 style={{ background: '#0c3b8f' }}>
-                {manualSubmitting ? 'Please wait…' : (isPastManualEntry ? 'Submit' : 'Clock In')}
+                {manualSubmitting ? 'Please wait…' : (hasManualEnd ? 'Submit' : 'Clock In')}
               </button>
 
               {dayConflictEntries && (() => {
@@ -1875,7 +1892,7 @@ export default function AttendancePage() {
                       </button>
                       <button type="button" onClick={() => {
                         setDayConflictEntries(null);
-                        if (isPastManualEntry) submitManualEntry(); else submitManualClockIn();
+                        if (hasManualEnd) submitManualEntry(); else submitManualClockIn();
                       }} disabled={manualSubmitting}
                         className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
                         {manualSubmitting ? 'Please wait…' : 'Confirm'}
