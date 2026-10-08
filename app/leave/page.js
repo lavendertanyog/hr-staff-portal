@@ -3,6 +3,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { formatLeaveDate, openMcFile } from '../leaveFormat';
+import { useConfirm } from '../ConfirmDialog';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 const CATEGORIES = ['ANNUAL', 'EMERGENCY', 'SICK'];
@@ -178,13 +180,13 @@ function MiniCalendar({ startDate, endDate, onDateClick, onClear }) {
         {startDate && (
           <p className="flex items-center gap-1.5">
             <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: START_COLOR }} />
-            <span className="font-semibold text-slate-600">Start:</span> {startDate}
+            <span className="font-semibold text-slate-600">Start:</span> {formatLeaveDate(startDate)}
           </p>
         )}
         {endDate && (
           <p className="flex items-center gap-1.5">
             <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: END_COLOR }} />
-            <span className="font-semibold text-slate-600">End:</span> {endDate}
+            <span className="font-semibold text-slate-600">End:</span> {formatLeaveDate(endDate)}
           </p>
         )}
         {!startDate && <p>Click a date to set start, then click another for end.</p>}
@@ -375,6 +377,9 @@ export default function LeavePage() {
   const [mcFileError, setMcFileError] = useState('');
   const [uploadingMcId, setUploadingMcId] = useState(null);
   const [leaveCategoryFilter, setLeaveCategoryFilter] = useState('ALL');
+  const [confirm, confirmDialog] = useConfirm();
+  // The MC already attached to the request being edited (a file field can't be pre-filled).
+  const editingMcUrl = editingId ? requests.find((r) => r.leave_id === editingId)?.mc_file_url : null;
 
   useEffect(() => {
     try {
@@ -510,7 +515,12 @@ export default function LeavePage() {
 
   const handleCancelLeave = async (leaveId) => {
     if (!user?.user_id) return;
-    const confirmed = window.confirm('Delete this pending leave request?');
+    const confirmed = await confirm({
+      title: 'Delete leave request',
+      message: 'Delete this pending leave request?',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
     if (!confirmed) return;
 
     try {
@@ -531,6 +541,8 @@ export default function LeavePage() {
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Leave</h1>
         <p className="mt-2 text-sm text-slate-500">Apply for leave and track your request history.</p>
       </div>
+
+      {confirmDialog}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
@@ -709,7 +721,14 @@ export default function LeavePage() {
                   </label>
                   <input type="file" accept={MC_ACCEPT} onChange={(e) => handleMcFileChange(e.target.files?.[0] || null)}
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#EEF4FF] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#0c3b8f]" />
-                  {mcFile && <p className="mt-1.5 text-xs font-medium text-[#0c3b8f]">Selected: {mcFile.name}</p>}
+                  {editingMcUrl && !mcFile && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      MC already attached.{' '}
+                      <button type="button" onClick={() => openMcFile(editingMcUrl)} className="font-semibold text-[#0c3b8f] hover:underline">View current MC</button>
+                      {' '}· Choose a file only if you want to replace it.
+                    </p>
+                  )}
+                  {mcFile && <p className="mt-1.5 text-xs font-medium text-[#0c3b8f]">Selected: {mcFile.name}{editingMcUrl ? ' (replaces the current MC)' : ''}</p>}
                   {mcFileError && <p className="mt-1.5 text-xs font-medium text-red-600">{mcFileError}</p>}
                 </div>
               )}
@@ -782,11 +801,11 @@ export default function LeavePage() {
                 {filteredRequests.map((r) => (
                   <tr key={r.leave_id} className="hover:bg-slate-50 transition">
                     <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.category}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.start_date).slice(0, 10)}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{String(r.end_date).slice(0, 10)}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatLeaveDate(String(r.start_date).slice(0, 10))}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatLeaveDate(String(r.end_date).slice(0, 10))}</td>
                     <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.workflow_status} /></td>
                     <td className="px-6 py-4 text-slate-500 max-w-[180px] truncate">{r.reviewer_remarks || '—'}</td>
-                    <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{String(r.created_at).slice(0, 10)}</td>
+                    <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{formatLeaveDate(r.created_at)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-wrap items-center gap-2">
                         {r.workflow_status === 'PENDING' && (
@@ -803,10 +822,10 @@ export default function LeavePage() {
                         )}
                         {r.category === 'SICK' && (
                           r.mc_file_url ? (
-                            <a href={r.mc_file_url} target="_blank" rel="noreferrer"
+                            <button type="button" onClick={() => openMcFile(r.mc_file_url)}
                               className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
                               View MC
-                            </a>
+                            </button>
                           ) : (
                             <label className={`rounded-xl border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 cursor-pointer ${uploadingMcId === r.leave_id ? 'opacity-60 cursor-not-allowed' : ''}`}>
                               {uploadingMcId === r.leave_id ? 'Uploading…' : 'Upload MC'}
