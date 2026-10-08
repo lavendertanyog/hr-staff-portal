@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { endSession } from './authSession';
 
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
@@ -121,6 +122,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   }, []);
 
   const handleLogout = () => {
+    endSession();
     // Clear user session AND any stale clock-in state so the next login starts clean
     sessionStorage.removeItem('staff_portal_user');
     sessionStorage.removeItem('staff_attendance_id');

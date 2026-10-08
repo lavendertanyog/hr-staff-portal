@@ -2,6 +2,19 @@
 // jargon). Newest first. `id` just needs to increase; it's what "seen" is tracked against.
 export const WHATS_NEW = [
   {
+    id: 5,
+    date: '8 Oct 2026',
+    title: 'Remember me on this device',
+    body: 'Tick "Remember me on this device" when you log in and you’ll stay signed in on that browser for 30 days (1 day for HR accounts). Next time, the portal signs you straight in without your password.',
+    points: [
+      'Log out ends the sign-in but keeps your email filled in, partly hidden (e.g. ju•••@nextan.com.sg)',
+      'Click "Not you?" on the login page to forget the email and use a different account',
+      'See and sign out your remembered devices from your Profile page',
+      'Changing your password signs out your other devices',
+      'Don’t tick it on a shared or public computer',
+    ],
+  },
+  {
     id: 4,
     date: '18 Sept 2026',
     title: 'Find anything faster',

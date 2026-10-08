@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { endSession } from './authSession';
 import { WHATS_NEW_LATEST_ID, WHATS_NEW_SEEN_KEY } from './whatsNewData';
 
 function deriveNameFromEmail(email) {
@@ -173,6 +174,7 @@ export default function TopBar({ onMenuClick }) {
   }, []);
 
   const handleLogout = () => {
+    endSession();
     sessionStorage.removeItem('staff_portal_user');
     sessionStorage.removeItem('staff_attendance_id');
     sessionStorage.removeItem('staff_attendance_project');
