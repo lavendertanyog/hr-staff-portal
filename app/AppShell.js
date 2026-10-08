@@ -6,7 +6,7 @@ import SidebarClient from './SidebarClient';
 import AttendanceReminders from './AttendanceReminders';
 import TopBar from './TopBar';
 
-const SIDEBAR_PREFIXES = ['/dashboard', '/attendance', '/leave', '/progress', '/inbox', '/profile', '/whats-new'];
+const SIDEBAR_PREFIXES = ['/dashboard', '/attendance', '/leave', '/calendar', '/progress', '/inbox', '/profile', '/whats-new'];
 const MOBILE_MEDIA_QUERY = '(max-width: 860px)';
 
 export default function AppShell({ children }) {

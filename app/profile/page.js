@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import { authHeaders } from '../authSession';
+import RememberedDevices from './RememberedDevices';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -21,6 +23,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [devicesRefreshKey, setDevicesRefreshKey] = useState(0);
 
   useEffect(() => {
     try {
@@ -51,7 +54,7 @@ export default function ProfilePage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/change-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ userId: user?.user_id, currentPassword, newPassword }),
       });
       const payload = await res.json();
@@ -60,7 +63,8 @@ export default function ProfilePage() {
         setLoading(false);
         return;
       }
-      setSuccess('Password updated successfully.');
+      setSuccess('Password updated successfully. Your other devices have been signed out.');
+      setDevicesRefreshKey((k) => k + 1);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -81,7 +85,7 @@ export default function ProfilePage() {
       <div className="mb-10 pl-3">
         <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Account</p>
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Profile</h1>
-        <p className="mt-2 text-sm text-slate-500">Manage your account details and password.</p>
+        <p className="mt-2 text-sm text-slate-500">Manage your account details, password and remembered devices.</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -146,6 +150,8 @@ export default function ProfilePage() {
             </button>
           </form>
         </div>
+
+        <RememberedDevices refreshKey={devicesRefreshKey} />
       </div>
     </div>
   );

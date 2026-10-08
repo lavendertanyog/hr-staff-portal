@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { authHeaders, endSession } from './authSession';
 
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
@@ -13,6 +14,7 @@ const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: 'grid' },
   { label: 'Attendance', href: '/attendance', icon: 'clock' },
   { label: 'Leave', href: '/leave', icon: 'calendar' },
+  { label: 'Calendar', href: '/calendar', icon: 'calendar-days' },
   { label: 'Progress', href: '/progress', icon: 'trending' },
   { label: 'Inbox', href: '/inbox', icon: 'inbox' },
 ];
@@ -26,6 +28,8 @@ function NavIcon({ name, size = 20 }) {
       return <svg {...common}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>;
     case 'calendar':
       return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
+    case 'calendar-days':
+      return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" /></svg>;
     case 'trending':
       return <svg {...common}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>;
     case 'inbox':
@@ -46,6 +50,15 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoMissing, setLogoMissing] = useState(false);
+  // Desktop rail can collapse to icons only; the choice is remembered in this browser.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return typeof window !== 'undefined' && localStorage.getItem('sidebar_collapsed') === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem('sidebar_collapsed', next ? '1' : '0'); } catch {}
+    return next;
+  });
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -63,7 +76,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
     if (!u?.user_id) return;
     if (Date.now() - _staff_lastVerified < 3 * 60 * 1000) return;
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
-    fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`)
+    fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((payload) => {
         if (!payload.success) { handleLogout(); return; }
@@ -86,7 +99,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
       if (!stored) return;
       const u = JSON.parse(stored);
       if (!u?.user_id) return;
-      fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`)
+      fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`, { headers: authHeaders() })
         .then((r) => r.json())
         .then((payload) => {
           if (!payload.success) { handleLogout(); return; }
@@ -109,6 +122,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   }, []);
 
   const handleLogout = () => {
+    endSession();
     // Clear user session AND any stale clock-in state so the next login starts clean
     sessionStorage.removeItem('staff_portal_user');
     sessionStorage.removeItem('staff_attendance_id');
@@ -195,23 +209,39 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   // the very bottom of this SAME element so the navy always shows behind/around it, clipped by
   // its own overflow wrapper so only the top half is visible.
   const PAGE_BG = '#ffffff';
-  const RAIL_W = 140;
+  const RAIL_W = collapsed ? 64 : 140;
   const MARGIN = 10;
+  const PILL_W = collapsed ? 48 : 72;
 
   return (
-    <div style={{ width: MARGIN + RAIL_W, flexShrink: 0, position: 'relative' }}>
+    <div style={{ width: MARGIN + RAIL_W, flexShrink: 0, position: 'relative', transition: 'width 200ms ease' }}>
       {/* No background of its own — the page behind it is already navy (see AppShell),
           so there's no seam between this rail and the rest of the backdrop to misalign. */}
       <aside
         className="flex flex-col"
         style={{
-          position: 'fixed', top: MARGIN, bottom: MARGIN, left: MARGIN, width: RAIL_W,
+          position: 'fixed', top: MARGIN, bottom: MARGIN, left: MARGIN, width: RAIL_W, transition: 'width 200ms ease',
           zIndex: 30,
         }}
       >
+        {/* Collapse / expand the rail (icons only when collapsed) — remembered per browser */}
+        <button type="button" onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          className="absolute flex items-center justify-center rounded-lg text-[#aab8e0] transition hover:bg-white/10 hover:text-white"
+          style={{ top: 12, right: collapsed ? (RAIL_W - 32) / 2 : 8, width: 32, height: 32, zIndex: 31 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            aria-hidden="true" style={{ transform: collapsed ? 'scaleX(-1)' : 'none', transition: 'transform 200ms ease' }}>
+            <line x1="11" y1="6" x2="21" y2="6" /><line x1="11" y1="12" x2="21" y2="12" /><line x1="11" y1="18" x2="21" y2="18" /><polyline points="7 8 3 12 7 16" />
+          </svg>
+        </button>
+
         {/* Logo */}
-        <div className="flex items-center justify-center" style={{ paddingTop: 28, paddingBottom: 4 }}>
-          {!logoMissing ? (
+        <div className="flex items-center justify-center" style={{ paddingTop: collapsed ? 28 : 50, paddingBottom: 4 }}>
+          {collapsed ? (
+            <span aria-hidden="true" style={{ display: 'block', height: 20 }} />
+          ) : !logoMissing ? (
             <img src="/nextan-logo.png" alt="Nextan" width={156} height={48}
               className="object-contain brightness-0 invert"
               onError={() => setLogoMissing(true)} />
@@ -226,18 +256,19 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
             return (
               <Link key={item.href} href={item.href}
                 title={item.label}
+                aria-label={item.label}
                 className="flex flex-col items-center justify-center transition-all"
                 style={{
-                  width: active ? 80 : 69,
-                  height: active ? 132 : 69,
-                  borderRadius: active ? 40 : 18,
-                  margin: active ? '18px 0' : '6px 0',
+                  width: collapsed ? (active ? 44 : 40) : (active ? 80 : 69),
+                  height: collapsed ? (active ? 44 : 40) : (active ? 132 : 69),
+                  borderRadius: collapsed ? (active ? 14 : 12) : (active ? 40 : 18),
+                  margin: collapsed ? (active ? '6px 0' : '4px 0') : (active ? '18px 0' : '6px 0'),
                   gap: 7,
                   background: active ? PAGE_BG : 'transparent',
                   color: active ? '#16307a' : '#aab8e0',
                 }}>
                 <NavIcon name={item.icon} size={active ? 20 : 18} />
-                <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, lineHeight: 1 }}>{item.label}</span>
+                {!collapsed && <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, lineHeight: 1 }}>{item.label}</span>}
               </Link>
             );
           })}
@@ -246,11 +277,11 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
         {/* Settings / profile — a half pill flush against the bottom edge: rounded top,
             flat bottom, no gap, so it reads as cut off by the screen's edge. */}
         <div ref={menuRef}>
-          <div style={{ position: 'absolute', bottom: 0, left: (RAIL_W - 72) / 2, width: 72 }}>
+          <div style={{ position: 'absolute', bottom: 0, left: (RAIL_W - PILL_W) / 2, width: PILL_W }}>
             <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
               className="flex items-center justify-center"
               style={{
-                width: 72, height: 93, borderRadius: '36px 36px 0 0',
+                width: PILL_W, height: collapsed ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
                 background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
               }}>
               <NavIcon name="settings" size={18} />
@@ -258,7 +289,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
           </div>
           {menuOpen && (
             <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
-              style={{ bottom: 101, left: (RAIL_W - 72) / 2, width: 150 }}>
+              style={{ bottom: collapsed ? 72 : 101, left: (RAIL_W - PILL_W) / 2, width: 150 }}>
               <Link href="/profile" onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
               <button type="button" onClick={handleLogout}
