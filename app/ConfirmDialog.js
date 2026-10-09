@@ -1,7 +1,7 @@
 "use client";
 
 // App-style confirmation window, used instead of the browser's window.confirm pop-up.
-// This file is identical in the Staff and Manager portals — change every copy together.
+// This file is identical in the Staff, Manager and Account Manager portals — change every copy together.
 //
 //   const [confirm, confirmDialog] = useConfirm();
 //   if (!(await confirm({ title: 'Delete leave request', message: '…', confirmLabel: 'Delete', danger: true }))) return;
