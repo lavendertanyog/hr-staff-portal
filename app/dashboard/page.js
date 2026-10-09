@@ -83,6 +83,8 @@ export default function StaffDashboard() {
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
   const [inbox, setInbox] = useState([]);
+  // Counted over the whole inbox feed (same as the Inbox page), not just the 6 shown here
+  const [unreadCount, setUnreadCount] = useState(0);
   const [leaveBalance, setLeaveBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(null);
@@ -120,7 +122,9 @@ export default function StaffDashboard() {
       axios.get(`${API_BASE}/api/v1/attendance/active-session/${uid}`).catch(() => null),
     ]).then(([projRes, inboxRes, balRes, sessionRes]) => {
       setProjects(projRes?.data?.data || []);
-      setInbox(inboxRes?.data?.data?.slice(0, 6) || []);
+      const inboxItems = inboxRes?.data?.data || [];
+      setInbox(inboxItems.slice(0, 6));
+      setUnreadCount(inboxItems.filter((i) => i.status === 'UNREAD').length);
       setLeaveBalance(balRes?.data?.data || null);
       setActiveSession(sessionRes?.data?.data || null);
     }).finally(() => setLoading(false));
@@ -390,7 +394,6 @@ export default function StaffDashboard() {
   }, [selectedSessionId, sessionRows]);
 
   const staffName = deriveNameFromEmail(user?.email) || user?.full_name || 'Staff';
-  const unreadCount = inbox.filter((i) => i.status === 'UNREAD').length;
   const leaveDate = new Date().toLocaleDateString('en-SG', { day: 'numeric', month: 'long' });
 
   const stats = [
