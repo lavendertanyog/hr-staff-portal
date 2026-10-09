@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import Link from 'next/link';
 import Chart from 'chart.js/auto';
+import { authHeaders } from '../authSession';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -117,7 +118,7 @@ export default function StaffDashboard() {
     setLoading(true);
     Promise.all([
       axios.get(`${API_BASE}/api/v1/projects/active-list?userId=${uid}`).catch(() => null),
-      axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`).catch(() => null),
+      axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`, { headers: authHeaders() }).catch(() => null),
       axios.get(`${API_BASE}/api/v1/leave/balance/${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/attendance/active-session/${uid}`).catch(() => null),
     ]).then(([projRes, inboxRes, balRes, sessionRes]) => {

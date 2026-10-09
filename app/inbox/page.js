@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { authHeaders } from '../authSession';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -36,6 +37,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'LEAVE' | 'BUDGET' | 'NOTIFICATION'
   const [selectedItem, setSelectedItem] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     try {
@@ -47,10 +49,16 @@ export default function InboxPage() {
 
   const fetchInbox = useCallback(async (uid) => {
     setLoading(true);
+    setLoadError('');
     try {
-      const res = await axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`);
+      const res = await axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`, { headers: authHeaders() });
       setItems(res.data?.data || []);
-    } catch { setItems([]); }
+    } catch (err) {
+      setItems([]);
+      // The inbox needs this tab's session token; a tab signed in before sessions existed, or
+      // whose session has ended, gets 401 and is told to log in again.
+      setLoadError(err.response?.data?.error || 'Failed to load your inbox.');
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -59,7 +67,7 @@ export default function InboxPage() {
   const markRead = async (notifId) => {
     if (!notifId) return;
     try {
-      await axios.patch(`${API_BASE}/api/v1/notifications/${notifId}/read`);
+      await axios.patch(`${API_BASE}/api/v1/notifications/${notifId}/read`, null, { headers: authHeaders() });
       setItems((prev) => prev.map((i) => i.notification_id === notifId ? { ...i, status: 'READ' } : i));
     } catch {}
   };
@@ -104,6 +112,8 @@ export default function InboxPage() {
 
         {loading ? (
           <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
+        ) : loadError ? (
+          <p className="px-6 py-8 text-sm text-red-600">{loadError}</p>
         ) : filtered.length === 0 ? (
           <p className="px-6 py-8 text-sm text-slate-400">No items to display.</p>
         ) : (
