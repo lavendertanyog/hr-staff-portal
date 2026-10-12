@@ -63,6 +63,12 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
     return next;
   });
   const menuRef = useRef(null);
+  const navRef = useRef(null);
+
+  // Keep the open page's tab in view when the tab list has to scroll.
+  useEffect(() => {
+    navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
+  }, [pathname]);
 
   useEffect(() => {
     try {
@@ -253,14 +259,17 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
           )}
         </div>
 
-        <nav className="flex flex-col items-center" style={{ paddingTop: 20 }}>
+        {/* The tabs scroll in the space above the settings pill when they don't all fit,
+            so none of them ends up hidden behind it on a shorter screen. */}
+        <nav ref={navRef} className="flex flex-col items-center overflow-y-auto hide-native-scrollbar" style={{ paddingTop: 20, flex: 1, minHeight: 0 }}>
           {NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}
                 title={item.label}
                 aria-label={item.label}
-                className="flex flex-col items-center justify-center transition-all"
+                aria-current={active ? 'page' : undefined}
+                className="flex flex-col items-center justify-center transition-all flex-shrink-0"
                 style={{
                   width: collapsed ? (active ? 44 : 40) : (active ? 80 : 69),
                   height: collapsed ? (active ? 44 : 40) : (active ? 132 : 69),
@@ -279,20 +288,18 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
 
         {/* Settings / profile — a half pill flush against the bottom edge: rounded top,
             flat bottom, no gap, so it reads as cut off by the screen's edge. */}
-        <div ref={menuRef}>
-          <div style={{ position: 'absolute', bottom: 0, left: (RAIL_W - PILL_W) / 2, width: PILL_W }}>
-            <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
-              className="flex items-center justify-center"
-              style={{
-                width: PILL_W, height: collapsed ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
-                background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
-              }}>
-              <NavIcon name="settings" size={18} />
-            </button>
-          </div>
+        <div ref={menuRef} style={{ position: 'relative', flexShrink: 0, left: (RAIL_W - PILL_W) / 2, width: PILL_W }}>
+          <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
+            className="flex items-center justify-center"
+            style={{
+              width: PILL_W, height: collapsed ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
+              background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
+            }}>
+            <NavIcon name="settings" size={18} />
+          </button>
           {menuOpen && (
             <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
-              style={{ bottom: collapsed ? 72 : 101, left: (RAIL_W - PILL_W) / 2, width: 150 }}>
+              style={{ bottom: collapsed ? 72 : 101, left: 0, width: 150 }}>
               <Link href="/profile" onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
               <button type="button" onClick={handleLogout}
