@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { authHeaders, endSession } from './authSession';
 
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
@@ -75,7 +76,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
     if (!u?.user_id) return;
     if (Date.now() - _staff_lastVerified < 3 * 60 * 1000) return;
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
-    fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`)
+    fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((payload) => {
         if (!payload.success) { handleLogout(); return; }
@@ -98,7 +99,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
       if (!stored) return;
       const u = JSON.parse(stored);
       if (!u?.user_id) return;
-      fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`)
+      fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`, { headers: authHeaders() })
         .then((r) => r.json())
         .then((payload) => {
           if (!payload.success) { handleLogout(); return; }
@@ -121,6 +122,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   }, []);
 
   const handleLogout = () => {
+    endSession();
     // Clear user session AND any stale clock-in state so the next login starts clean
     sessionStorage.removeItem('staff_portal_user');
     sessionStorage.removeItem('staff_attendance_id');
