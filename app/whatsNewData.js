@@ -2,6 +2,41 @@
 // jargon). Newest first. `id` just needs to increase; it's what "seen" is tracked against.
 export const WHATS_NEW = [
   {
+    id: 8,
+    date: '12 Oct 2026',
+    title: 'Manual entry: add your end time',
+    body: 'When you enter today’s hours by hand, you can now add the end time at the same time instead of clocking out later.',
+    points: [
+      'Fill in "End Time (optional)" on the Manual Entry tab',
+      'Leave it empty to clock in now and clock out as usual',
+      'The button reads "Submit" when an end time is set, and "Clock In" when it is not',
+    ],
+  },
+  {
+    id: 7,
+    date: '12 Oct 2026',
+    title: 'Company calendar, and a more accurate dashboard',
+    body: 'See who is on leave and when the public holidays are, and trust the numbers on your dashboard.',
+    points: [
+      'New Calendar page in the sidebar shows approved leave by name, in Month or List view, plus public holidays (leave type and reason stay private)',
+      'The Unread Notifications card on the Dashboard now counts your whole Inbox, not just the latest 6',
+      'Your Inbox is now private to you. If you see "Your sign-in has ended", log in again once',
+    ],
+  },
+  {
+    id: 6,
+    date: '12 Oct 2026',
+    title: 'Leave page improvements',
+    body: 'Several things that were awkward on the Leave page now work the way you’d expect.',
+    points: [
+      'View MC now opens the photo or PDF properly',
+      'Editing a leave request keeps your reason, and shows the MC you already attached',
+      'Dates read like 31-Oct-2026 everywhere on the Leave page',
+      '"Submitted" shows the correct Singapore date',
+      'Deleting a request asks you in a proper window instead of a browser pop-up',
+    ],
+  },
+  {
     id: 5,
     date: '8 Oct 2026',
     title: 'Remember me on this device',
