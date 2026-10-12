@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { authHeaders } from '../authSession';
@@ -10,6 +10,7 @@ import { receiptFileToDataUrl } from '../receiptImage';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 const PAGE_SIZE = 6;
+const MAX_RECEIPTS = 10; // per upload; each one is scanned, and scans are limited per person per day
 
 const STATUS_LABEL = {
   PENDING: 'Waiting for manager',
@@ -40,8 +41,157 @@ const emptyForm = () => ({
   purchaseDate: '', merchant: '', category: '', currency: 'SGD', totalAmount: '',
   projectCode: '', notes: '', items: [emptyItem()],
 });
+let draftSeq = 0;
+// One receipt being prepared. claimId is set when it edits a claim already submitted.
+const newDraft = (receipt, extra = {}) => ({
+  key: `d${++draftSeq}`, claimId: null, receipt, receiptChanged: true, scanning: false,
+  scanNote: null, scanId: null, form: emptyForm(), invalid: {}, error: '', ...extra,
+});
 
 const inputCls = (bad) => `w-full rounded-xl border ${bad ? 'border-red-400' : 'border-slate-300'} px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500`;
+const smallInputCls = 'rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+
+function toPayload(form) {
+  return {
+    purchaseDate: form.purchaseDate,
+    merchant: form.merchant.trim(),
+    category: form.category,
+    currency: form.currency.trim().toUpperCase() || 'SGD',
+    totalAmount: Number(form.totalAmount),
+    projectCode: form.projectCode || undefined,
+    notes: form.notes.trim() || undefined,
+    items: form.items
+      .filter((it) => it.description.trim())
+      .map((it) => ({ description: it.description.trim(), quantity: it.quantity === '' ? null : Number(it.quantity), amount: it.amount === '' ? null : Number(it.amount) })),
+  };
+}
+
+function invalidFields(d) {
+  const f = d.form;
+  return {
+    receipt: !d.receipt,
+    purchaseDate: !f.purchaseDate,
+    merchant: !f.merchant.trim(),
+    category: !f.category,
+    totalAmount: !(Number(f.totalAmount) > 0),
+  };
+}
+
+function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onReplacePhoto, onRescan, onRemove }) {
+  const fileRef = useRef(null);
+  const { form, invalid } = draft;
+  const itemsTotal = form.items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  const total = Number(form.totalAmount);
+  const itemsMismatch = form.items.some((it) => it.amount !== '') && Number.isFinite(total) && total > 0 && Math.abs(itemsTotal - total) >= 0.01;
+
+  return (
+    <div className={`rounded-2xl border ${draft.error ? 'border-red-300' : 'border-slate-200'} bg-slate-50 p-5`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+          {draft.claimId ? 'Editing claim' : count > 1 ? `Receipt ${index + 1} of ${count}` : 'Receipt'}
+        </p>
+        <button type="button" onClick={onRemove} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
+          {draft.claimId ? 'Cancel edit' : 'Remove'}
+        </button>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
+        {/* Photo */}
+        <div>
+          <div className={`flex min-h-[200px] items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed ${invalid.receipt ? 'border-red-400' : 'border-slate-300'} bg-white`}>
+            {draft.receipt
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={draft.receipt} alt="Receipt" className="max-h-[320px] w-full cursor-zoom-in object-contain" onClick={() => openMcFile(draft.receipt)} />
+              : <p className="px-6 text-center text-sm text-slate-400">No photo</p>}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onReplacePhoto(e.target.files?.[0] || null); e.target.value = ''; }} />
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={draft.scanning}
+              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+              Change photo
+            </button>
+            {draft.receipt && (
+              <button type="button" onClick={onRescan} disabled={draft.scanning}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+                Read again
+              </button>
+            )}
+          </div>
+          {draft.scanning && <p className="mt-3 rounded-xl bg-[#EAF0FF] px-3 py-2 text-xs font-medium text-[#1a3a8f]">Reading receipt…</p>}
+          {!draft.scanning && draft.scanNote && (
+            <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium ${draft.scanNote.type === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>{draft.scanNote.text}</p>
+          )}
+        </div>
+
+        {/* Fields */}
+        <div className={`grid gap-4 sm:grid-cols-2 ${draft.scanning ? 'pointer-events-none opacity-50' : ''}`}>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Date of purchase</label>
+            <input type="date" max={sgtToday()} value={form.purchaseDate} onChange={(e) => onField('purchaseDate', e.target.value)} className={inputCls(invalid.purchaseDate)} />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Shop, restaurant or company</label>
+            <input value={form.merchant} onChange={(e) => onField('merchant', e.target.value)} maxLength={200} className={inputCls(invalid.merchant)} placeholder="e.g. Kopitiam" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Category</label>
+            <select value={form.category} onChange={(e) => onField('category', e.target.value)} className={inputCls(invalid.category)}>
+              <option value="">Choose a category</option>
+              {categories.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-[96px_1fr] gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Currency</label>
+              <input value={form.currency} onChange={(e) => onField('currency', e.target.value.toUpperCase().slice(0, 3))} className={inputCls(false)} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Amount paid</label>
+              <input type="number" min="0.01" step="0.01" inputMode="decimal" value={form.totalAmount} onChange={(e) => onField('totalAmount', e.target.value)} className={inputCls(invalid.totalAmount)} placeholder="0.00" />
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Project (optional)</label>
+            <select value={form.projectCode} onChange={(e) => onField('projectCode', e.target.value)} className={inputCls(false)}>
+              <option value="">Not for a project</option>
+              {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} · {p.project_name}</option>)}
+            </select>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Items purchased</label>
+            <div className="space-y-2">
+              {form.items.map((it, i) => (
+                <div key={i} className="grid grid-cols-[1fr_72px_110px_auto] gap-2">
+                  <input value={it.description} onChange={(e) => onItem(i, 'description', e.target.value)} maxLength={200} placeholder="Item" className={smallInputCls} />
+                  <input type="number" min="0" step="1" value={it.quantity} onChange={(e) => onItem(i, 'quantity', e.target.value)} placeholder="Qty" className={smallInputCls} />
+                  <input type="number" step="0.01" value={it.amount} onChange={(e) => onItem(i, 'amount', e.target.value)} placeholder="Amount" className={smallInputCls} />
+                  <button type="button" onClick={() => onRemoveItem(i)} aria-label="Remove item"
+                    className="flex h-9 w-9 items-center justify-center self-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <button type="button" onClick={onAddItem} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">+ Add item</button>
+              {itemsMismatch && (
+                <p className="text-xs text-amber-700">Items add up to {money(form.currency || 'SGD', itemsTotal)}; the amount paid is {money(form.currency || 'SGD', total)}. That's fine if tax, service charge or a discount explains it.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Notes (optional)</label>
+            <textarea rows={2} value={form.notes} onChange={(e) => onField('notes', e.target.value)} maxLength={1000}
+              className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="What was it for? e.g. client lunch with ABC Pte Ltd" />
+          </div>
+          {draft.error && <p className="sm:col-span-2 text-sm font-medium text-red-600">{draft.error}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ClaimsPage() {
   const router = useRouter();
@@ -55,18 +205,13 @@ export default function ClaimsPage() {
   const toastTimer = useRef(null);
   const [confirm, confirmDialog] = useConfirm();
 
-  // Form
-  const [form, setForm] = useState(emptyForm);
-  const [invalid, setInvalid] = useState({});
-  const [receipt, setReceipt] = useState(null); // data URL of the (resized) photo
-  const [receiptChanged, setReceiptChanged] = useState(false);
-  const [scanId, setScanId] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanNote, setScanNote] = useState(null); // { type: 'info' | 'warn', text }
-  const [editingId, setEditingId] = useState(null);
+  // Receipts being prepared (one claim each)
+  const [drafts, setDrafts] = useState([]);
+  const [scanProgress, setScanProgress] = useState(null); // { done, total }
   const [submitting, setSubmitting] = useState(false);
-  const fileInputRef = useRef(null);
+  const addInputRef = useRef(null);
   const formRef = useRef(null);
+  const editing = drafts.some((d) => d.claimId);
 
   // List
   const [filter, setFilter] = useState('ALL');
@@ -108,128 +253,146 @@ export default function ClaimsPage() {
   }, [user?.user_id, loadClaims]);
 
   const categoryLabel = (code) => categories.find((c) => c.code === code)?.label || code;
-  const setField = (key, value) => {
-    setForm((f) => ({ ...f, [key]: value }));
-    if (invalid[key]) setInvalid((v) => ({ ...v, [key]: false }));
-  };
-  const setItem = (i, key, value) => setForm((f) => ({ ...f, items: f.items.map((it, j) => (j === i ? { ...it, [key]: value } : it)) }));
-  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
-  const removeItem = (i) => setForm((f) => ({ ...f, items: f.items.length > 1 ? f.items.filter((_, j) => j !== i) : [emptyItem()] }));
 
-  const resetForm = () => {
-    setForm(emptyForm());
-    setInvalid({});
-    setReceipt(null);
-    setReceiptChanged(false);
-    setScanId(null);
-    setScanNote(null);
-    setEditingId(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  // ── Draft helpers ──
+  const updateDraft = (key, fn) => setDrafts((list) => list.map((d) => (d.key === key ? fn(d) : d)));
+  const setField = (key, field, value) => updateDraft(key, (d) => ({
+    ...d, error: '', form: { ...d.form, [field]: value }, invalid: { ...d.invalid, [field]: false },
+  }));
+  const setItem = (key, i, field, value) => updateDraft(key, (d) => ({
+    ...d, form: { ...d.form, items: d.form.items.map((it, j) => (j === i ? { ...it, [field]: value } : it)) },
+  }));
+  const addItem = (key) => updateDraft(key, (d) => ({ ...d, form: { ...d.form, items: [...d.form.items, emptyItem()] } }));
+  const removeItem = (key, i) => updateDraft(key, (d) => ({
+    ...d, form: { ...d.form, items: d.form.items.length > 1 ? d.form.items.filter((_, j) => j !== i) : [emptyItem()] },
+  }));
 
-  const scanReceipt = async (dataUrl) => {
-    setScanning(true);
-    setScanNote(null);
+  const scanDraft = async (key, dataUrl) => {
+    updateDraft(key, (d) => ({ ...d, scanning: true, scanNote: null }));
     try {
       const res = await axios.post(`${API_BASE}/api/v1/claims/scan`, { receiptImage: dataUrl }, { headers: authHeaders() });
       const body = res.data || {};
       if (!body.available) {
-        setScanNote({ type: 'warn', text: body.message || 'Receipt scanning is unavailable. Please fill in the details yourself.' });
+        updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: body.message || 'Receipt scanning is unavailable. Please fill in the details yourself.' } }));
         return;
       }
-      const d = body.data || {};
-      setScanId(body.scanId || null);
-      setForm((f) => ({
-        ...f,
-        purchaseDate: d.purchaseDate || f.purchaseDate,
-        merchant: d.merchant || f.merchant,
-        category: d.category || f.category,
-        currency: d.currency || f.currency,
-        totalAmount: d.totalAmount != null ? String(d.totalAmount) : f.totalAmount,
-        items: d.items?.length
-          ? d.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' }))
-          : f.items,
+      const s = body.data || {};
+      updateDraft(key, (d) => ({
+        ...d,
+        scanning: false,
+        scanId: body.scanId || null,
+        invalid: {},
+        scanNote: body.message ? { type: 'warn', text: body.message } : { type: 'info', text: 'Filled in from the receipt. Check every field before you submit.' },
+        form: {
+          ...d.form,
+          purchaseDate: s.purchaseDate || d.form.purchaseDate,
+          merchant: s.merchant || d.form.merchant,
+          category: s.category || d.form.category,
+          currency: s.currency || d.form.currency,
+          totalAmount: s.totalAmount != null ? String(s.totalAmount) : d.form.totalAmount,
+          items: s.items?.length
+            ? s.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' }))
+            : d.form.items,
+        },
       }));
-      setInvalid({});
-      setScanNote(body.message
-        ? { type: 'warn', text: body.message }
-        : { type: 'info', text: 'Filled in from the receipt. Check every field before you submit.' });
     } catch (err) {
-      setScanNote({ type: 'warn', text: err.response?.data?.error || "We couldn't read the receipt. Please fill in the details yourself." });
-    } finally {
-      setScanning(false);
+      updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: err.response?.data?.error || "We couldn't read the receipt. Please fill in the details yourself." } }));
     }
   };
 
-  const handlePhoto = async (file) => {
+  // Several photos at once: each becomes its own card, read one after another.
+  const addPhotos = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    const room = MAX_RECEIPTS - drafts.length;
+    if (room <= 0) { showToast(`You can add up to ${MAX_RECEIPTS} receipts at a time.`, 'error'); return; }
+    if (files.length > room) showToast(`Only the first ${room} photo(s) were added (${MAX_RECEIPTS} at a time).`, 'error');
+    const added = [];
+    for (const file of files.slice(0, room)) {
+      try {
+        added.push(newDraft(await receiptFileToDataUrl(file)));
+      } catch (err) {
+        showToast(err.message || 'A photo could not be used.', 'error');
+      }
+    }
+    if (added.length === 0) return;
+    setDrafts((list) => [...list, ...added]);
+    setScanProgress({ done: 0, total: added.length });
+    for (let i = 0; i < added.length; i += 1) {
+      await scanDraft(added[i].key, added[i].receipt);
+      setScanProgress({ done: i + 1, total: added.length });
+    }
+    setScanProgress(null);
+  };
+
+  const replacePhoto = async (key, file) => {
     if (!file) return;
     try {
       const dataUrl = await receiptFileToDataUrl(file);
-      setReceipt(dataUrl);
-      setReceiptChanged(true);
-      if (invalid.receipt) setInvalid((v) => ({ ...v, receipt: false }));
-      // A new claim is scanned straight away; on an edit, the fields already filled in are kept.
-      if (!editingId) await scanReceipt(dataUrl);
+      const draft = drafts.find((d) => d.key === key);
+      updateDraft(key, (d) => ({ ...d, receipt: dataUrl, receiptChanged: true, invalid: { ...d.invalid, receipt: false } }));
+      // A new receipt is read straight away; when editing, the details already entered are kept.
+      if (draft && !draft.claimId) await scanDraft(key, dataUrl);
     } catch (err) {
       showToast(err.message || 'This photo could not be used.', 'error');
     }
   };
 
-  const itemsTotal = useMemo(() => form.items.reduce((s, it) => s + (Number(it.amount) || 0), 0), [form.items]);
-  const totalNumber = Number(form.totalAmount);
-  const itemsMismatch = form.items.some((it) => it.amount !== '') && Number.isFinite(totalNumber) && totalNumber > 0
-    && Math.abs(itemsTotal - totalNumber) >= 0.01;
+  const removeDraft = (key) => setDrafts((list) => list.filter((d) => d.key !== key));
 
-  const submit = async (confirmDuplicate = false) => {
-    const bad = {
-      receipt: !receipt,
-      purchaseDate: !form.purchaseDate,
-      merchant: !form.merchant.trim(),
-      category: !form.category,
-      totalAmount: !(Number(form.totalAmount) > 0),
-    };
-    if (Object.values(bad).some(Boolean)) {
-      setInvalid(bad);
+  const clearDrafts = async () => {
+    if (drafts.length > 1 && !(await confirm({ title: 'Clear receipts', message: `Remove all ${drafts.length} receipts you haven't submitted?`, confirmLabel: 'Clear', danger: true }))) return;
+    setDrafts([]);
+  };
+
+  // Submits each card as its own claim. Cards that go through are removed; any that fail stay
+  // with their error so nothing typed is lost.
+  const submitAll = async () => {
+    if (drafts.length === 0) return;
+    let anyInvalid = false;
+    setDrafts((list) => list.map((d) => {
+      const bad = invalidFields(d);
+      if (Object.values(bad).some(Boolean)) anyInvalid = true;
+      return { ...d, invalid: bad };
+    }));
+    if (drafts.some((d) => Object.values(invalidFields(d)).some(Boolean)) || anyInvalid) {
       showToast('Please fill in the highlighted field(s).', 'error');
       return;
     }
-    const payload = {
-      purchaseDate: form.purchaseDate,
-      merchant: form.merchant.trim(),
-      category: form.category,
-      currency: form.currency.trim().toUpperCase() || 'SGD',
-      totalAmount: Number(form.totalAmount),
-      projectCode: form.projectCode || undefined,
-      notes: form.notes.trim() || undefined,
-      items: form.items
-        .filter((it) => it.description.trim())
-        .map((it) => ({ description: it.description.trim(), quantity: it.quantity === '' ? null : Number(it.quantity), amount: it.amount === '' ? null : Number(it.amount) })),
-    };
     setSubmitting(true);
-    try {
-      if (editingId) {
-        await axios.patch(`${API_BASE}/api/v1/claims/${editingId}`, { ...payload, receiptImage: receiptChanged ? receipt : undefined }, { headers: authHeaders() });
-        showToast('Claim updated.', 'success');
-      } else {
-        await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: receipt, scanId: scanId || undefined, confirmDuplicate }, { headers: authHeaders() });
-        showToast('Claim submitted.', 'success');
+    let submitted = 0;
+    let updated = 0;
+    const done = new Set();
+    for (const d of drafts) {
+      const payload = toPayload(d.form);
+      try {
+        if (d.claimId) {
+          await axios.patch(`${API_BASE}/api/v1/claims/${d.claimId}`, { ...payload, receiptImage: d.receiptChanged ? d.receipt : undefined }, { headers: authHeaders() });
+          updated += 1;
+        } else {
+          try {
+            await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined }, { headers: authHeaders() });
+          } catch (err) {
+            if (err.response?.status !== 409 || !err.response?.data?.duplicate) throw err;
+            const again = await confirm({ title: 'Possible duplicate', message: err.response.data.error, confirmLabel: 'Submit anyway' });
+            if (!again) {
+              updateDraft(d.key, (x) => ({ ...x, error: 'Not submitted: possible duplicate of a claim you already made.' }));
+              continue;
+            }
+            await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined, confirmDuplicate: true }, { headers: authHeaders() });
+          }
+          submitted += 1;
+        }
+        done.add(d.key);
+      } catch (err) {
+        updateDraft(d.key, (x) => ({ ...x, error: err.response?.data?.error || 'This receipt could not be submitted.' }));
       }
-      resetForm();
+    }
+    setDrafts((list) => list.filter((d) => !done.has(d.key)));
+    setSubmitting(false);
+    if (submitted || updated) {
+      showToast(updated ? 'Claim updated.' : `Submitted ${submitted} claim${submitted === 1 ? '' : 's'}.`, 'success');
       loadClaims();
-    } catch (err) {
-      if (err.response?.status === 409 && err.response?.data?.duplicate) {
-        setSubmitting(false);
-        const again = await confirm({
-          title: 'Possible duplicate',
-          message: err.response.data.error,
-          confirmLabel: 'Submit anyway',
-        });
-        if (again) await submit(true);
-        return;
-      }
-      showToast(err.response?.data?.error || 'Failed to save the claim.', 'error');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -243,29 +406,26 @@ export default function ClaimsPage() {
   };
 
   const startEdit = async (c) => {
+    if (drafts.length > 0 && !(await confirm({ title: 'Edit claim', message: "Remove the receipts you haven't submitted and edit this claim instead?", confirmLabel: 'Edit claim' }))) return;
+    let receipt = null;
     try {
       const res = await axios.get(`${API_BASE}/api/v1/claims/${c.claim_id}/receipt`, { headers: authHeaders() });
-      setReceipt(res.data?.data?.receiptImage || null);
-    } catch {
-      setReceipt(null);
-    }
-    setEditingId(c.claim_id);
-    setReceiptChanged(false);
-    setScanId(null);
-    setScanNote(null);
-    setInvalid({});
-    setForm({
-      purchaseDate: c.purchase_date,
-      merchant: c.merchant,
-      category: c.category,
-      currency: c.currency,
-      totalAmount: String(Number(c.total_amount)),
-      projectCode: c.project_code || '',
-      notes: c.notes || '',
-      items: c.items?.length
-        ? c.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' }))
-        : [emptyItem()],
-    });
+      receipt = res.data?.data?.receiptImage || null;
+    } catch { /* the photo stays as it is unless replaced */ }
+    setDrafts([newDraft(receipt, {
+      claimId: c.claim_id,
+      receiptChanged: false,
+      form: {
+        purchaseDate: c.purchase_date,
+        merchant: c.merchant,
+        category: c.category,
+        currency: c.currency,
+        totalAmount: String(Number(c.total_amount)),
+        projectCode: c.project_code || '',
+        notes: c.notes || '',
+        items: c.items?.length ? c.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' })) : [emptyItem()],
+      },
+    })]);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -279,7 +439,7 @@ export default function ClaimsPage() {
     if (!ok) return;
     try {
       await axios.delete(`${API_BASE}/api/v1/claims/${c.claim_id}`, { headers: authHeaders() });
-      if (editingId === c.claim_id) resetForm();
+      setDrafts((list) => list.filter((d) => d.claimId !== c.claim_id));
       showToast('Claim deleted.', 'success');
       loadClaims();
     } catch (err) {
@@ -298,13 +458,14 @@ export default function ClaimsPage() {
 
   const inReview = claims.filter((c) => c.status === 'PENDING' || c.status === 'MANAGER_APPROVED');
   const approvedUnpaid = claims.filter((c) => c.status === 'APPROVED');
+  const anyScanning = drafts.some((d) => d.scanning);
 
   return (
     <div className="p-8">
       <div className="mb-8 pl-3">
         <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Claims</h1>
-        <p className="mt-2 text-sm text-slate-500">Photograph a receipt to claim an expense. Your manager, then HR, approve it, and it is paid with your salary.</p>
+        <p className="mt-2 text-sm text-slate-500">Add photos of your receipts. Each one is read for you; check the details and submit. Your manager, then HR, approve each claim, and it is paid with your salary.</p>
       </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
@@ -318,115 +479,57 @@ export default function ClaimsPage() {
         </div>
       </div>
 
-      {/* New / edit claim */}
+      {/* New claims from receipt photos */}
       <div ref={formRef} className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-5 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{editingId ? 'Edit claim' : 'New claim'}</p>
-          {editingId && (
-            <button type="button" onClick={resetForm} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel edit</button>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{editing ? 'Edit claim' : 'New claims'}</p>
+          {drafts.length > 0 && !editing && (
+            <div className="flex flex-wrap items-center gap-2">
+              {scanProgress && <span className="text-xs font-medium text-[#1a3a8f]">Reading receipt {Math.min(scanProgress.done + 1, scanProgress.total)} of {scanProgress.total}…</span>}
+              <button type="button" onClick={() => addInputRef.current?.click()} disabled={drafts.length >= MAX_RECEIPTS || anyScanning}
+                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+                + Add more receipts
+              </button>
+              <button type="button" onClick={clearDrafts} disabled={submitting}
+                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+                Clear
+              </button>
+            </div>
           )}
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          {/* Receipt photo */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Receipt photo</label>
-            <div className={`flex min-h-[220px] items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed ${invalid.receipt ? 'border-red-400' : 'border-slate-300'} bg-slate-50`}>
-              {receipt
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={receipt} alt="Receipt" className="max-h-[360px] w-full object-contain" />
-                : <p className="px-6 text-center text-sm text-slate-400">Take or choose a photo of the whole receipt.</p>}
-            </div>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => handlePhoto(e.target.files?.[0] || null)} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={scanning}
-              className="mt-3 w-full rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F] disabled:opacity-60">
-              {scanning ? 'Reading receipt…' : receipt ? 'Change photo' : 'Add receipt photo'}
-            </button>
-            {receipt && editingId && receiptChanged && (
-              <button type="button" onClick={() => scanReceipt(receipt)} disabled={scanning}
-                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-                Fill in from this photo
-              </button>
-            )}
-            {scanNote && (
-              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium ${scanNote.type === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>{scanNote.text}</p>
-            )}
-          </div>
+        <input ref={addInputRef} type="file" accept="image/*" multiple className="hidden"
+          onChange={(e) => { addPhotos(e.target.files); e.target.value = ''; }} />
 
-          {/* Fields */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Date of purchase</label>
-              <input type="date" max={sgtToday()} value={form.purchaseDate} onChange={(e) => setField('purchaseDate', e.target.value)} className={inputCls(invalid.purchaseDate)} />
+        {drafts.length === 0 ? (
+          <button type="button" onClick={() => addInputRef.current?.click()}
+            className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center hover:border-[#1540A8] hover:bg-[#EAF0FF] transition">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1540A8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" /></svg>
+            <span className="text-sm font-semibold text-[#1540A8]">Add receipt photos</span>
+            <span className="text-xs text-slate-500">Take photos or choose up to {MAX_RECEIPTS} at once. Each receipt becomes its own claim.</span>
+          </button>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {drafts.map((d, i) => (
+                <ReceiptCard key={d.key} draft={d} index={i} count={drafts.length} categories={categories} projects={projects}
+                  onField={(field, value) => setField(d.key, field, value)}
+                  onItem={(idx, field, value) => setItem(d.key, idx, field, value)}
+                  onAddItem={() => addItem(d.key)}
+                  onRemoveItem={(idx) => removeItem(d.key, idx)}
+                  onReplacePhoto={(file) => replacePhoto(d.key, file)}
+                  onRescan={() => scanDraft(d.key, d.receipt)}
+                  onRemove={() => removeDraft(d.key)} />
+              ))}
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Shop, restaurant or company</label>
-              <input value={form.merchant} onChange={(e) => setField('merchant', e.target.value)} maxLength={200} className={inputCls(invalid.merchant)} placeholder="e.g. Kopitiam" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Category</label>
-              <select value={form.category} onChange={(e) => setField('category', e.target.value)} className={inputCls(invalid.category)}>
-                <option value="">Choose a category</option>
-                {categories.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-[96px_1fr] gap-3">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Currency</label>
-                <input value={form.currency} onChange={(e) => setField('currency', e.target.value.toUpperCase().slice(0, 3))} className={inputCls(false)} />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Amount paid</label>
-                <input type="number" min="0.01" step="0.01" inputMode="decimal" value={form.totalAmount} onChange={(e) => setField('totalAmount', e.target.value)} className={inputCls(invalid.totalAmount)} placeholder="0.00" />
-              </div>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Project (optional)</label>
-              <select value={form.projectCode} onChange={(e) => setField('projectCode', e.target.value)} className={inputCls(false)}>
-                <option value="">Not for a project</option>
-                {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} · {p.project_name}</option>)}
-              </select>
-            </div>
-
-            {/* Items */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Items purchased</label>
-              <div className="space-y-2">
-                {form.items.map((it, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_72px_110px_auto] gap-2">
-                    <input value={it.description} onChange={(e) => setItem(i, 'description', e.target.value)} maxLength={200} placeholder="Item" className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <input type="number" min="0" step="1" value={it.quantity} onChange={(e) => setItem(i, 'quantity', e.target.value)} placeholder="Qty" className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <input type="number" step="0.01" value={it.amount} onChange={(e) => setItem(i, 'amount', e.target.value)} placeholder="Amount" className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <button type="button" onClick={() => removeItem(i)} aria-label="Remove item"
-                      className="flex h-9 w-9 items-center justify-center self-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <button type="button" onClick={addItem} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">+ Add item</button>
-                {itemsMismatch && (
-                  <p className="text-xs text-amber-700">Items add up to {money(form.currency || 'SGD', itemsTotal)}; the amount paid is {money(form.currency || 'SGD', totalNumber)}. That's fine if tax, service charge or a discount explains the difference.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Notes (optional)</label>
-              <textarea rows={2} value={form.notes} onChange={(e) => setField('notes', e.target.value)} maxLength={1000}
-                className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="What was it for? e.g. client lunch with ABC Pte Ltd" />
-            </div>
-
-            <div className="sm:col-span-2 flex justify-end">
-              <button type="button" onClick={() => submit(false)} disabled={submitting || scanning}
+            <div className="mt-5 flex justify-end">
+              <button type="button" onClick={submitAll} disabled={submitting || anyScanning}
                 className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F] disabled:opacity-60">
-                {submitting ? 'Saving…' : editingId ? 'Save changes' : 'Submit claim'}
+                {submitting ? 'Submitting…' : editing ? 'Save changes' : drafts.length > 1 ? `Submit all (${drafts.length})` : 'Submit claim'}
               </button>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* My claims */}
