@@ -65,6 +65,17 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   const menuRef = useRef(null);
   const navRef = useRef(null);
 
+  // On a shorter screen (most laptops) the full-size tabs don't all fit above the settings
+  // button, so the rail switches to a compact size; the tab list still scrolls if even that
+  // doesn't fit.
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const check = () => setCompact(window.innerHeight < 900);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   // Keep the open page's tab in view when the tab list has to scroll.
   useEffect(() => {
     navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
@@ -247,11 +258,11 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
         </button>
 
         {/* Logo */}
-        <div className="flex items-center justify-center" style={{ paddingTop: collapsed ? 28 : 50, paddingBottom: 4 }}>
+        <div className="flex items-center justify-center" style={{ paddingTop: collapsed ? 28 : compact ? 36 : 50, paddingBottom: 4 }}>
           {collapsed ? (
             <span aria-hidden="true" style={{ display: 'block', height: 20 }} />
           ) : !logoMissing ? (
-            <img src="/nextan-logo.png" alt="Nextan" width={156} height={48}
+            <img src="/nextan-logo.png" alt="Nextan" width={compact ? 120 : 156} height={compact ? 36 : 48}
               className="object-contain brightness-0 invert"
               onError={() => setLogoMissing(true)} />
           ) : (
@@ -271,11 +282,11 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
                 aria-current={active ? 'page' : undefined}
                 className="flex flex-col items-center justify-center transition-all flex-shrink-0"
                 style={{
-                  width: collapsed ? (active ? 44 : 40) : (active ? 80 : 69),
-                  height: collapsed ? (active ? 44 : 40) : (active ? 132 : 69),
-                  borderRadius: collapsed ? (active ? 14 : 12) : (active ? 40 : 18),
-                  margin: collapsed ? (active ? '6px 0' : '4px 0') : (active ? '18px 0' : '6px 0'),
-                  gap: 7,
+                  width: collapsed ? (active ? 44 : 40) : compact ? (active ? 76 : 64) : (active ? 80 : 69),
+                  height: collapsed ? (active ? 44 : 40) : compact ? (active ? 70 : 50) : (active ? 132 : 69),
+                  borderRadius: collapsed ? (active ? 14 : 12) : compact ? (active ? 28 : 16) : (active ? 40 : 18),
+                  margin: collapsed ? (active ? '6px 0' : '4px 0') : compact ? (active ? '8px 0' : '3px 0') : (active ? '18px 0' : '6px 0'),
+                  gap: compact ? 5 : 7,
                   background: active ? PAGE_BG : 'transparent',
                   color: active ? '#16307a' : '#aab8e0',
                 }}>
@@ -292,14 +303,14 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
           <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
             className="flex items-center justify-center"
             style={{
-              width: PILL_W, height: collapsed ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
+              width: PILL_W, height: collapsed ? 64 : compact ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
               background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
             }}>
             <NavIcon name="settings" size={18} />
           </button>
           {menuOpen && (
             <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
-              style={{ bottom: collapsed ? 72 : 101, left: 0, width: 150 }}>
+              style={{ bottom: collapsed || compact ? 72 : 101, left: 0, width: 150 }}>
               <Link href="/profile" onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
               <button type="button" onClick={handleLogout}
