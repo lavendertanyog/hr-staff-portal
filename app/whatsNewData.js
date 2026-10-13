@@ -1,11 +1,11 @@
 // What's New feed — plain-language, user-facing entries only (no internal bug/ticket
 // jargon). Newest first. `id` just needs to increase; it's what "seen" is tracked against.
-// `version` labels the release an entry shipped in (1.0, 1.1, …); entries of one release share it.
+// `version` numbers the updates from the oldest (1.0) upward; give a new entry the next number.
 export const WHATS_NEW = [
   {
     id: 8,
     date: '12 Oct 2026',
-    version: '1.1',
+    version: '1.7',
     title: 'Manual entry: add your end time',
     summary: "Add the end time when you enter today’s hours by hand",
     chips: ['Optional end time','Clock in and out in one go','Clearer button'],
@@ -19,7 +19,7 @@ export const WHATS_NEW = [
   {
     id: 7,
     date: '12 Oct 2026',
-    version: '1.1',
+    version: '1.6',
     title: 'Company calendar, and a more accurate dashboard',
     summary: "See who is on leave, and a Dashboard count you can trust",
     chips: ['New Calendar page','Accurate unread count','Private Inbox'],
@@ -34,7 +34,7 @@ export const WHATS_NEW = [
   {
     id: 6,
     date: '12 Oct 2026',
-    version: '1.1',
+    version: '1.5',
     title: 'Leave page improvements',
     summary: "View MC, editing and dates all work the way you’d expect",
     chips: ['View MC opens','Edit keeps your reason','Dates as 31-Oct-2026'],
@@ -50,7 +50,7 @@ export const WHATS_NEW = [
   {
     id: 5,
     date: '8 Oct 2026',
-    version: '1.1',
+    version: '1.4',
     title: 'Remember me on this device',
     body: 'Tick "Remember me on this device" when you log in and you’ll stay signed in on that browser for 30 days (1 day for HR accounts). Next time, the portal signs you straight in without your password.',
     points: [
@@ -64,7 +64,7 @@ export const WHATS_NEW = [
   {
     id: 4,
     date: '18 Sept 2026',
-    version: '1.0',
+    version: '1.3',
     title: 'Find anything faster',
     body: 'The search bar in the top bar now actually works — type a page name or an action like "clock in" or "budget" and jump straight there.',
     points: [
@@ -76,7 +76,7 @@ export const WHATS_NEW = [
   {
     id: 3,
     date: '18 Sept 2026',
-    version: '1.0',
+    version: '1.2',
     title: 'Clearer attendance history',
     body: 'Recent Entries now shows how long each session lasted, and overnight shifts get a clear "Ends <date>" label instead of a confusing "+1 day".',
     points: [
@@ -88,7 +88,7 @@ export const WHATS_NEW = [
   {
     id: 2,
     date: '17 Sept 2026',
-    version: '1.0',
+    version: '1.1',
     title: 'Leave calendar improvements',
     body: 'Hover any marked date to see what it is. Approved and pending are now easier to tell apart, and Sick Leave no longer uses an alarming red.',
     points: [
