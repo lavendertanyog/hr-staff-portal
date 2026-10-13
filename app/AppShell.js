@@ -14,6 +14,15 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // The desktop rail can collapse to icons only (TopBar hamburger); remembered in this browser.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return typeof window !== 'undefined' && localStorage.getItem('sidebar_collapsed') === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem('sidebar_collapsed', next ? '1' : '0'); } catch {}
+    return next;
+  });
   const scrollRef = useRef(null);
 
   // The content lives in its own scrollable div (not the window), so Next.js's
@@ -60,7 +69,7 @@ export default function AppShell({ children }) {
       )}
 
       {(!isMobile || sidebarOpen) && (
-        <SidebarClient isDrawer={isMobile} onClose={() => setSidebarOpen(false)} />
+        <SidebarClient isDrawer={isMobile} onClose={() => setSidebarOpen(false)} collapsed={collapsed} />
       )}
 
       <UpdateNotice sessionKey="staff_portal_user" />
@@ -82,7 +91,7 @@ export default function AppShell({ children }) {
         <div className="flex-1 flex flex-col" style={{ minHeight: 0, padding: isMobile ? 0 : '24px 0' }}>
           <div ref={scrollRef} className={`flex-1 overflow-y-auto${isMobile ? '' : ' page-scrollbar'}`} style={isMobile ? undefined : { paddingLeft: 20, paddingRight: 16 }}>
             <AttendanceReminders />
-            <TopBar onMenuClick={() => setSidebarOpen(true)} />
+            <TopBar onMenuClick={isMobile ? () => setSidebarOpen(true) : toggleCollapsed} menuLabel={isMobile ? 'Open menu' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'} />
             {children}
           </div>
         </div>

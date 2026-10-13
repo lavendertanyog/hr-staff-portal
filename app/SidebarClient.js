@@ -44,21 +44,12 @@ function NavIcon({ name, size = 20 }) {
 // Module-level: resets on every full page reload.
 let _staff_lastVerified = 0;
 
-export default function SidebarClient({ isDrawer = false, onClose }) {
+export default function SidebarClient({ isDrawer = false, onClose, collapsed = false }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoMissing, setLogoMissing] = useState(false);
-  // Desktop rail can collapse to icons only; the choice is remembered in this browser.
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return typeof window !== 'undefined' && localStorage.getItem('sidebar_collapsed') === '1'; } catch { return false; }
-  });
-  const toggleCollapsed = () => setCollapsed((c) => {
-    const next = !c;
-    try { localStorage.setItem('sidebar_collapsed', next ? '1' : '0'); } catch {}
-    return next;
-  });
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -224,19 +215,6 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
           zIndex: 30,
         }}
       >
-        {/* Collapse / expand the rail (icons only when collapsed) — remembered per browser */}
-        <button type="button" onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-expanded={!collapsed}
-          className="absolute flex items-center justify-center rounded-lg text-[#aab8e0] transition hover:bg-white/10 hover:text-white"
-          style={{ top: 12, right: collapsed ? (RAIL_W - 32) / 2 : 8, width: 32, height: 32, zIndex: 31 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            aria-hidden="true" style={{ transform: collapsed ? 'scaleX(-1)' : 'none', transition: 'transform 200ms ease' }}>
-            <line x1="11" y1="6" x2="21" y2="6" /><line x1="11" y1="12" x2="21" y2="12" /><line x1="11" y1="18" x2="21" y2="18" /><polyline points="7 8 3 12 7 16" />
-          </svg>
-        </button>
-
         {/* Logo */}
         <div className="flex items-center justify-center" style={{ paddingTop: collapsed ? 28 : 50, paddingBottom: 4 }}>
           {collapsed ? (
