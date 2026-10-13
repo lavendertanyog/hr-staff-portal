@@ -95,3 +95,14 @@ export const WHATS_NEW = [
 ];
 export const WHATS_NEW_LATEST_ID = WHATS_NEW[0].id;
 export const WHATS_NEW_SEEN_KEY = 'staff_portal_whats_new_seen';
+
+// Short summary shown in the one-time update notice after login (see UpdateNotice.js). Keep it to
+// three lines and update it with each release; the full list stays in WHATS_NEW above.
+export const WHATS_NEW_NOTICE = {
+  portal: "Staff portal",
+  highlights: [
+    { icon: "calendar", lead: "Company calendar", text: "shows who is on leave and the public holidays" },
+    { icon: "file", lead: "Leave page fixes:", text: "View MC opens, and editing keeps your reason" },
+    { icon: "clock", lead: "Manual entry", text: "now takes an optional end time" },
+  ],
+};

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import SidebarClient from './SidebarClient';
+import UpdateNotice from './UpdateNotice';
 import AttendanceReminders from './AttendanceReminders';
 import TopBar from './TopBar';
 
@@ -61,6 +62,8 @@ export default function AppShell({ children }) {
       {(!isMobile || sidebarOpen) && (
         <SidebarClient isDrawer={isMobile} onClose={() => setSidebarOpen(false)} />
       )}
+
+      <UpdateNotice sessionKey="staff_portal_user" />
 
       <main
         className="flex-1 flex flex-col"
