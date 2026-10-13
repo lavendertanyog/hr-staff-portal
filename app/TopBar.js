@@ -27,8 +27,8 @@ function WhatsNewButton() {
 
   return (
     <Link href="/whats-new" onClick={markSeen} aria-label="What's new"
-      className="relative flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-      style={{ width: 36, height: 36 }}>
+      className="relative flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+      style={{ width: 40, height: 40 }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z" />
       </svg>
@@ -119,17 +119,17 @@ function SearchBox() {
 
   return (
     <div className="relative" ref={boxRef}>
-      <div className="flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 max-w-md">
+      <div className="flex items-center gap-3 rounded-2xl bg-white border border-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.03)] px-4 max-w-xl focus-within:ring-2 focus-within:ring-blue-500" style={{ height: 48 }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 flex-shrink-0">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <input type="text" placeholder="Search"
+        <input type="text" placeholder="Search pages and actions, e.g. clock in" aria-label="Search"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 focus:outline-none" />
+          className="w-full bg-transparent text-sm text-slate-900 placeholder-slate-400 focus:outline-none" />
       </div>
       {open && q && (
         <div className="absolute left-0 top-full mt-2 w-80 rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30 max-h-80 overflow-y-auto">
@@ -151,7 +151,7 @@ function SearchBox() {
   );
 }
 
-export default function TopBar({ onMenuClick }) {
+export default function TopBar({ onMenuClick, menuExpanded }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -188,11 +188,11 @@ export default function TopBar({ onMenuClick }) {
   const initials = displayName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join('') || 'ST';
 
   return (
-    <div className="sticky top-0 z-20 px-8 pt-4 pb-2 bg-white">
-      <div className="flex items-center gap-3 rounded-full bg-white border border-slate-200 shadow-sm px-4 py-2.5">
-        {/* Hamburger */}
-        <button type="button" onClick={onMenuClick} aria-label="Toggle menu"
-          className="flex-shrink-0 flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
+    <div className="sticky top-0 z-20 px-6 pt-4 pb-3 sm:px-8" style={{ background: '#F7F9FD' }}>
+      <div className="flex items-center gap-3">
+        {/* Menu: collapses/expands the rail on desktop, opens the drawer on small screens */}
+        <button type="button" onClick={onMenuClick} aria-label="Toggle menu" aria-expanded={menuExpanded}
+          className="flex-shrink-0 flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
           style={{ width: 36, height: 36 }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 6h16M4 12h16M4 18h16" />
@@ -210,8 +210,8 @@ export default function TopBar({ onMenuClick }) {
           {/* Notification bell */}
           <div className="relative" ref={notifRef}>
             <button type="button" onClick={() => setNotifOpen((v) => !v)} aria-label="Notifications"
-              className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-              style={{ width: 36, height: 36 }}>
+              className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+              style={{ width: 40, height: 40 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
@@ -231,8 +231,8 @@ export default function TopBar({ onMenuClick }) {
 
           {/* Calendar / leave shortcut */}
           <Link href="/leave" aria-label="Leave calendar"
-            className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-            style={{ width: 36, height: 36 }}>
+            className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+            style={{ width: 40, height: 40 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" />
               <line x1="16" y1="2" x2="16" y2="6" />
@@ -241,14 +241,14 @@ export default function TopBar({ onMenuClick }) {
             </svg>
           </Link>
 
-          <div className="w-px self-stretch bg-slate-200 mx-1" />
+          <div className="w-px h-6 bg-slate-200 mx-2" />
 
           {/* Avatar + name dropdown */}
           <div className="relative" ref={menuRef}>
             <button type="button" onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-2 rounded-full pl-1 pr-2 py-1 transition hover:bg-slate-100">
+              className="flex items-center gap-2.5 rounded-full pl-1 pr-2 py-1 transition hover:bg-white">
               <div className="flex items-center justify-center rounded-full text-white text-xs font-bold flex-shrink-0"
-                style={{ width: 30, height: 30, background: '#1a3a8f' }}>
+                style={{ width: 36, height: 36, background: '#1a3a8f', boxShadow: '0 0 0 3px #f0c9dc' }}>
                 {initials}
               </div>
               <span className="hidden sm:block text-sm font-semibold text-slate-800 truncate max-w-[120px]">{displayName}</span>
