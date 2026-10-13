@@ -7,9 +7,9 @@ export const WHATS_NEW = [
     title: 'Manual entry: add your end time',
     body: 'When you enter today’s hours by hand, you can now add the end time at the same time instead of clocking out later.',
     points: [
-      'Fill in "End Time (optional)" on the Manual Entry tab',
-      'Leave it empty to clock in now and clock out as usual',
-      'The button reads "Submit" when an end time is set, and "Clock In" when it is not',
+      { icon: "clock", lead: "End Time (optional)", text: "on the Manual Entry tab sets today’s clock-out in one go" },
+      { icon: "check", lead: "Leave it empty", text: "to clock in now and clock out as usual" },
+      { icon: "sparkles", lead: "The button", text: "reads \"Submit\" when an end time is set, and \"Clock In\" when it is not" },
     ],
   },
   {
@@ -18,9 +18,10 @@ export const WHATS_NEW = [
     title: 'Company calendar, and a more accurate dashboard',
     body: 'See who is on leave and when the public holidays are, and trust the numbers on your dashboard.',
     points: [
-      'New Calendar page in the sidebar shows approved leave by name, in Month or List view, plus public holidays (leave type and reason stay private)',
-      'The Unread Notifications card on the Dashboard now counts your whole Inbox, not just the latest 6',
-      'Your Inbox is now private to you. If you see "Your sign-in has ended", log in again once',
+      { icon: "calendar", lead: "New Calendar page", text: "in the sidebar shows approved leave by name, in Month or List view, plus public holidays" },
+      { icon: "lock", lead: "Leave type and reason", text: "stay private" },
+      { icon: "bell", lead: "Unread Notifications", text: "on the Dashboard now counts your whole Inbox, not just the latest 6" },
+      { icon: "shield", lead: "Your Inbox is now private", text: "to you. If you see \"Your sign-in has ended\", log in again once" },
     ],
   },
   {
@@ -29,11 +30,11 @@ export const WHATS_NEW = [
     title: 'Leave page improvements',
     body: 'Several things that were awkward on the Leave page now work the way you’d expect.',
     points: [
-      'View MC now opens the photo or PDF properly',
-      'Editing a leave request keeps your reason, and shows the MC you already attached',
-      'Dates read like 31-Oct-2026 everywhere on the Leave page',
-      '"Submitted" shows the correct Singapore date',
-      'Deleting a request asks you in a proper window instead of a browser pop-up',
+      { icon: "file", lead: "View MC", text: "now opens the photo or PDF properly" },
+      { icon: "edit", lead: "Editing a leave request", text: "keeps your reason, and shows the MC you already attached" },
+      { icon: "calendar", lead: "Dates", text: "read like 31-Oct-2026 everywhere on the Leave page" },
+      { icon: "clock", lead: "\"Submitted\"", text: "shows the correct Singapore date" },
+      { icon: "window", lead: "Deleting a request", text: "asks you in a proper window instead of a browser pop-up" },
     ],
   },
   {
