@@ -5,6 +5,9 @@ export const WHATS_NEW = [
     id: 8,
     date: '12 Oct 2026',
     title: 'Manual entry: add your end time',
+    icon: "clock",
+    summary: "Add the end time when you enter today’s hours by hand",
+    chips: ['Optional end time','Clock in and out in one go','Clearer button'],
     body: 'When you enter today’s hours by hand, you can now add the end time at the same time instead of clocking out later.',
     points: [
       { icon: "clock", lead: "End Time (optional)", text: "on the Manual Entry tab sets today’s clock-out in one go" },
@@ -16,6 +19,9 @@ export const WHATS_NEW = [
     id: 7,
     date: '12 Oct 2026',
     title: 'Company calendar, and a more accurate dashboard',
+    icon: "calendar",
+    summary: "See who is on leave, and a Dashboard count you can trust",
+    chips: ['New Calendar page','Accurate unread count','Private Inbox'],
     body: 'See who is on leave and when the public holidays are, and trust the numbers on your dashboard.',
     points: [
       { icon: "calendar", lead: "New Calendar page", text: "in the sidebar shows approved leave by name, in Month or List view, plus public holidays" },
@@ -28,6 +34,9 @@ export const WHATS_NEW = [
     id: 6,
     date: '12 Oct 2026',
     title: 'Leave page improvements',
+    icon: "file",
+    summary: "View MC, editing and dates all work the way you’d expect",
+    chips: ['View MC opens','Edit keeps your reason','Dates as 31-Oct-2026'],
     body: 'Several things that were awkward on the Leave page now work the way you’d expect.',
     points: [
       { icon: "file", lead: "View MC", text: "now opens the photo or PDF properly" },

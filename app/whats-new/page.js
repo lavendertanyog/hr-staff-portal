@@ -24,6 +24,17 @@ export default function WhatsNewPage() {
     ? { icon: 'check', lead: '', text: point }
     : { icon: point.icon || 'check', lead: point.lead || '', text: point.text || '' });
 
+  // Header icon, one-line summary and highlight chips for an entry. Entries can set `icon` and
+  // `summary`; otherwise they fall back to the first point's icon and the first sentence of the body.
+  const entryIcon = (e) => e.icon || (e.points && typeof e.points[0] === 'object' && e.points[0].icon) || 'sparkles';
+  const clip = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+  const entrySummary = (e) => e.summary || clip((e.body || '').split(/(?<=[.!?])\s/)[0], 110);
+  const chipsFor = (e) => (Array.isArray(e.chips) && e.chips.length > 0
+    ? e.chips.slice(0, 3).map((label, i) => ({ icon: (e.points && typeof e.points[i] === 'object' && e.points[i].icon) || 'check', label }))
+    : (e.points || []).slice(0, 3).map((p) => (typeof p === 'string'
+      ? { icon: 'check', label: clip(p, 36) }
+      : { icon: p.icon || 'check', label: clip(p.lead || p.text || '', 36) })));
+
   return (
     <div className="p-8">
       <div className="mb-10 pl-3">
@@ -32,7 +43,7 @@ export default function WhatsNewPage() {
         <p className="mt-2 text-sm text-slate-500">Recent updates to the staff portal.</p>
       </div>
 
-      <div className="max-w-4xl">
+      <div>
         {latest && (
           <button type="button" onClick={() => setActive(latest)}
             className="w-full text-left rounded-3xl p-6 hover:brightness-[0.98] transition" style={{ background: '#EEF4FF' }}>
@@ -41,7 +52,18 @@ export default function WhatsNewPage() {
             </span>
             <p className="mt-3 text-xl font-semibold text-slate-900">{latest.title}</p>
             <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{latest.body}</p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{latest.date}</p>
+            {chipsFor(latest).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {chipsFor(latest).map((chip, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-medium" style={{ color: '#0c447c' }}>
+                    <Icon name={chip.icon} size={13} />{chip.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {latest.date}{Array.isArray(latest.points) && latest.points.length > 0 ? ` · ${latest.points.length} changes` : ''}
+            </p>
           </button>
         )}
 
@@ -49,8 +71,12 @@ export default function WhatsNewPage() {
           <div className="mt-2 border-t border-slate-100">
             {older.map((item) => (
               <button type="button" key={item.id} onClick={() => setActive(item)}
-                className="w-full flex items-center justify-between gap-4 py-3 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-2 -mx-2">
-                <span className="text-sm text-slate-700">{item.title}</span>
+                className="w-full flex items-center gap-4 py-3.5 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-2 -mx-2">
+                <span className="flex-shrink-0" style={{ color: '#1a3a8f' }}><Icon name={entryIcon(item)} size={18} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-slate-800">{item.title}</span>
+                  <span className="block truncate text-xs text-slate-500">{entrySummary(item)}</span>
+                </span>
                 <span className="flex-shrink-0 text-xs text-slate-400">{item.date}</span>
               </button>
             ))}
