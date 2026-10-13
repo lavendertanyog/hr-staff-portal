@@ -24,9 +24,8 @@ export default function WhatsNewPage() {
     ? { icon: 'check', lead: '', text: point }
     : { icon: point.icon || 'check', lead: point.lead || '', text: point.text || '' });
 
-  // Header icon, one-line summary and highlight chips for an entry. Entries can set `icon` and
-  // `summary`; otherwise they fall back to the first point's icon and the first sentence of the body.
-  const entryIcon = (e) => e.icon || (e.points && typeof e.points[0] === 'object' && e.points[0].icon) || 'sparkles';
+  // One-line summary and highlight chips for an entry. Entries can set `summary` and `chips`;
+  // otherwise they fall back to the first sentence of the body and the points' own lead-ins.
   const clip = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
   const entrySummary = (e) => e.summary || clip((e.body || '').split(/(?<=[.!?])\s/)[0], 110);
   const chipsFor = (e) => (Array.isArray(e.chips) && e.chips.length > 0
@@ -71,8 +70,7 @@ export default function WhatsNewPage() {
           <div className="mt-2 border-t border-slate-100">
             {older.map((item) => (
               <button type="button" key={item.id} onClick={() => setActive(item)}
-                className="w-full flex items-center gap-4 py-3.5 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-2 -mx-2">
-                <span className="flex-shrink-0" style={{ color: '#1a3a8f' }}><Icon name={entryIcon(item)} size={18} /></span>
+                className="w-full flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-2 -mx-2">
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-slate-800">{item.title}</span>
                   <span className="block truncate text-xs text-slate-500">{entrySummary(item)}</span>
