@@ -46,6 +46,7 @@ export default function UpdateNotice({ sessionKey }) {
   if (!open) return null;
 
   const date = WHATS_NEW[0]?.date || '';
+  const version = WHATS_NEW[0]?.version;
   const items = WHATS_NEW_NOTICE.highlights;
 
   return (
@@ -58,7 +59,7 @@ export default function UpdateNotice({ sessionKey }) {
             <Icon name="sparkles" size={20} />
           </span>
           <div className="min-w-0">
-            <p className="text-xs" style={{ color: '#b5d4f4' }}>{date}</p>
+            <p className="text-xs" style={{ color: '#b5d4f4' }}>{version ? `Version ${version} · ` : ''}{date}</p>
             <h2 id="update-notice-title" className="text-base font-semibold text-white leading-snug">
               What&apos;s new in the {WHATS_NEW_NOTICE.portal}
             </h2>
