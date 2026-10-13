@@ -70,7 +70,7 @@ export default function WhatsNewPage() {
           <div className="mt-2 border-t border-slate-100">
             {older.map((item) => (
               <button type="button" key={item.id} onClick={() => setActive(item)}
-                className="w-full flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-2 -mx-2">
+                className="w-full flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-6">
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-slate-800">{item.title}</span>
                   <span className="block truncate text-xs text-slate-500">{entrySummary(item)}</span>
