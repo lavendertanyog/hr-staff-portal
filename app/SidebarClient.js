@@ -250,7 +250,8 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
           )}
         </div>
 
-        <nav className="flex flex-col items-center" style={{ paddingTop: 20 }}>
+        {/* SIDEBAR_NAV_SCROLL: the rail scrolls when the window is too short for every item; the bottom padding keeps the last item clear of the Settings pill. */}
+        <nav className="flex flex-col items-center overflow-y-auto hide-native-scrollbar" style={{ paddingTop: 20, flex: 1, minHeight: 0, paddingBottom: collapsed ? 84 : 112 }}>
           {NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
