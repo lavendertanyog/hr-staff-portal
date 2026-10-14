@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { REMEMBERED_EMAIL_KEY, clearDeviceToken, forgetThisDevice, getDeviceToken, revokeSessionToken, saveSession } from './authSession';
 
+import VerifyEmailPanel from './VerifyEmailPanel';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
 function deriveNameFromEmail(email) {
@@ -32,6 +33,8 @@ export default function StaffLoginPage() {
   const [logoMissing, setLogoMissing] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [resending, setResending] = useState(false);
+  // While an account waits for email verification this panel replaces the login form: { email, status }.
+  const [verifyPanel, setVerifyPanel] = useState(null);
   const [rememberMe, setRememberMe] = useState(false);
   const [rememberedEmail, setRememberedEmail] = useState('');
   const [resuming, setResuming] = useState(false);
@@ -76,7 +79,7 @@ export default function StaffLoginPage() {
       });
       const payload = await res.json();
       setInfoMessage(res.ok ? 'If an unverified account exists for that email, a new verification link has been sent.' : (payload.error || 'Failed to resend.'));
-      setUnverifiedEmail('');
+      setUnverifiedEmail(''); setVerifyPanel(null);
     } catch {
       setError('Unable to reach server. Try again.');
     } finally {
@@ -125,7 +128,7 @@ export default function StaffLoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setInfoMessage(''); setUnverifiedEmail('');
+    setError(''); setInfoMessage(''); setUnverifiedEmail(''); setVerifyPanel(null);
     const norm = email.trim().toLowerCase();
     if (!norm.endsWith('@nextan.com.sg')) { setError(mode === 'login' ? 'Invalid email or password.' : 'Please enter a valid email address.'); return; }
     if (mode !== 'reset' && (!password || password.length < 6)) { setError('Password must be at least 6 characters.'); return; }
@@ -151,6 +154,7 @@ export default function StaffLoginPage() {
       if (!res.ok) {
         if (payload.unverified) {
           setUnverifiedEmail(norm);
+          setVerifyPanel({ email: norm, status: 'unverified' });
         }
         setError(payload.error || payload.detail || 'Authentication failed.');
         setLoading(false);
@@ -164,7 +168,8 @@ export default function StaffLoginPage() {
       }
       if (mode === 'signup') {
         setMode('login'); setPassword(''); setConfirmPassword(''); setLoading(false);
-        setInfoMessage('Account created. Check your email for a link to verify your account before signing in.');
+        setInfoMessage('');
+        setVerifyPanel({ email: norm, status: payload.emailSent === false ? 'failed' : 'sent' });
         return;
       }
       const loginError = finishLogin(payload, rememberMe);
@@ -192,7 +197,7 @@ export default function StaffLoginPage() {
           </div>
           <div className="flex flex-col items-center justify-center h-full">
             <h2 className="text-3xl font-bold mb-3">Nextan Staff Portal</h2>
-            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); setVerifyPanel(null); }}
               className="mt-8 px-5 py-2 rounded-full border border-white/40 text-sm font-medium hover:bg-white/10 transition">
               {mode === 'login' ? 'Create Account' : 'Back to Sign In'}
             </button>
@@ -201,14 +206,19 @@ export default function StaffLoginPage() {
 
         {/* Right white panel */}
         <div className="flex flex-col justify-center w-full md:w-1/2 bg-white p-10 md:p-12">
+          {!verifyPanel && (<>
           <h1 className="text-4xl font-bold text-slate-900 mb-2">
             {mode === 'login' ? 'Hello Again!' : mode === 'signup' ? 'Create Account' : 'Forgot Password'}
           </h1>
           <p className="text-slate-500 text-base mb-8">
             {mode === 'login' ? (rememberedEmail ? `Welcome back, ${deriveNameFromEmail(rememberedEmail)}` : 'Welcome Back') : mode === 'signup' ? 'Register with your Nextan email' : 'Enter your email and we’ll send you a temporary password'}
           </p>
+          </>)}
 
-          {resuming ? (
+          {verifyPanel ? (
+            <VerifyEmailPanel key={verifyPanel.email + verifyPanel.status} apiBase={API_BASE} email={verifyPanel.email} initialStatus={verifyPanel.status}
+              onBack={() => { setVerifyPanel(null); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }} />
+          ) : resuming ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
                 <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-[#1540A8]" aria-hidden />
@@ -296,7 +306,7 @@ export default function StaffLoginPage() {
                     Remember me on this device
                   </label>
                   <button type="button" className="text-cyan-700 hover:underline"
-                    onClick={() => { setMode('reset'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Forgot password</button>
+                    onClick={() => { setMode('reset'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); setVerifyPanel(null); }}>Forgot password</button>
                 </div>
               )}
 
@@ -321,15 +331,15 @@ export default function StaffLoginPage() {
           <p className="text-center text-base text-slate-700 mt-6">
             {mode === 'login' ? (
               <>No account?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('signup'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Sign up</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('signup'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); setVerifyPanel(null); }}>Sign up</button>
               </>
             ) : mode === 'signup' ? (
               <>Already have an account?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Sign in</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); setVerifyPanel(null); }}>Sign in</button>
               </>
             ) : (
               <>Remember your password?{' '}
-                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); }}>Back to login</button>
+                <button className="text-blue-700 font-semibold" onClick={() => { setMode('login'); setError(''); setInfoMessage(''); setUnverifiedEmail(''); setVerifyPanel(null); }}>Back to login</button>
               </>
             )}
           </p>
