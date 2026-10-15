@@ -24,6 +24,7 @@ export const WHATS_NEW = [
       'Add up to 10 receipts at once; each one becomes its own claim',
       'Always check every field before you submit; you can correct anything the photo reading got wrong',
       'If the photo can’t be read, just type the details in yourself',
+      'Service charge, each tax (such as SST or GST), rounding and discounts are listed under Charges and tax, and the form checks they add up to the amount paid',
       'You can edit or delete a claim until your manager reviews it',
       'Your Inbox tells you when a claim is approved, rejected or paid',
     ],

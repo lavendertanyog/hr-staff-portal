@@ -37,10 +37,29 @@ const FILTERS = [
 const sgtToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
 const money = (currency, amount) => `${currency} ${Number(amount || 0).toFixed(2)}`;
 const emptyItem = () => ({ description: '', quantity: '', amount: '' });
+// Lines between the items and the total. A receipt can have several (service charge, two tax
+// rates, rounding), so they are a list rather than one tax field.
+const CHARGE_KINDS = [
+  { code: 'TAX', label: 'Tax' },
+  { code: 'SERVICE_CHARGE', label: 'Service charge' },
+  { code: 'ROUNDING', label: 'Rounding' },
+  { code: 'DISCOUNT', label: 'Discount' },
+  { code: 'OTHER', label: 'Other' },
+];
+const chargeKindLabel = (code) => CHARGE_KINDS.find((k) => k.code === code)?.label || code;
+const emptyCharge = () => ({ kind: 'TAX', label: '', rate: '', amount: '' });
+// How a line changes the total: discounts subtract, and tax already inside the prices adds nothing.
+const chargeEffect = (ch, taxInclusive) => {
+  const amount = Number(ch.amount) || 0;
+  if (ch.kind === 'DISCOUNT') return -amount;
+  if (ch.kind === 'TAX' && taxInclusive) return 0;
+  return amount;
+};
 const emptyForm = () => ({
   purchaseDate: '', merchant: '', category: '', currency: 'SGD', totalAmount: '',
-  projectCode: '', notes: '', items: [emptyItem()],
+  projectCode: '', notes: '', items: [emptyItem()], charges: [], taxInclusive: false,
 });
+const chargesFromApi = (list) => (list || []).map((ch) => ({ kind: ch.kind, label: ch.label || '', rate: ch.rate ?? '', amount: ch.amount ?? '' }));
 let draftSeq = 0;
 // One receipt being prepared. claimId is set when it edits a claim already submitted.
 const newDraft = (receipt, extra = {}) => ({
@@ -63,6 +82,10 @@ function toPayload(form) {
     items: form.items
       .filter((it) => it.description.trim())
       .map((it) => ({ description: it.description.trim(), quantity: it.quantity === '' ? null : Number(it.quantity), amount: it.amount === '' ? null : Number(it.amount) })),
+    charges: form.charges
+      .filter((ch) => ch.amount !== '')
+      .map((ch) => ({ kind: ch.kind, label: ch.label.trim() || undefined, rate: ch.rate === '' ? null : Number(ch.rate), amount: Number(ch.amount) })),
+    taxInclusive: form.taxInclusive,
   };
 }
 
@@ -77,12 +100,16 @@ function invalidFields(d) {
   };
 }
 
-function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onReplacePhoto, onRescan, onRemove }) {
+function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onCharge, onAddCharge, onRemoveCharge, onReplacePhoto, onRescan, onRemove }) {
   const fileRef = useRef(null);
   const { form, invalid } = draft;
+  const cur = form.currency || 'SGD';
   const itemsTotal = form.items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  const chargesTotal = form.charges.reduce((s, ch) => s + chargeEffect(ch, form.taxInclusive), 0);
+  const addsUpTo = itemsTotal + chargesTotal;
   const total = Number(form.totalAmount);
-  const itemsMismatch = form.items.some((it) => it.amount !== '') && Number.isFinite(total) && total > 0 && Math.abs(itemsTotal - total) >= 0.01;
+  const hasAmounts = form.items.some((it) => it.amount !== '') || form.charges.some((ch) => ch.amount !== '');
+  const mismatch = hasAmounts && Number.isFinite(total) && total > 0 && Math.abs(addsUpTo - total) >= 0.01;
 
   return (
     <div className={`rounded-2xl border ${draft.error ? 'border-red-300' : 'border-slate-200'} bg-slate-50 p-5`}>
@@ -173,12 +200,46 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
                 </div>
               ))}
             </div>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-2">
               <button type="button" onClick={onAddItem} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">+ Add item</button>
-              {itemsMismatch && (
-                <p className="text-xs text-amber-700">Items add up to {money(form.currency || 'SGD', itemsTotal)}; the amount paid is {money(form.currency || 'SGD', total)}. That's fine if tax, service charge or a discount explains it.</p>
-              )}
             </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-1">Charges and tax</label>
+            <p className="mb-2 text-xs text-slate-400">Lines between the items and the total, as printed: service charge, each tax (for example SST 8% or GST 9%), rounding or a discount. Amounts are in {cur}.</p>
+            {form.charges.length > 0 && (
+              <div className="space-y-2">
+                {form.charges.map((ch, i) => (
+                  <div key={i} className="grid grid-cols-[130px_1fr_72px_110px_auto] gap-2">
+                    <select value={ch.kind} onChange={(e) => onCharge(i, 'kind', e.target.value)} aria-label="Type" className={smallInputCls}>
+                      {CHARGE_KINDS.map((k) => <option key={k.code} value={k.code}>{k.label}</option>)}
+                    </select>
+                    <input value={ch.label} onChange={(e) => onCharge(i, 'label', e.target.value)} maxLength={60} placeholder="As printed, e.g. SST 8%" aria-label="Label" className={smallInputCls} />
+                    <input type="number" min="0" max="100" step="0.01" value={ch.rate} onChange={(e) => onCharge(i, 'rate', e.target.value)} placeholder="%" aria-label="Rate (%)" className={smallInputCls} />
+                    <input type="number" step="0.01" value={ch.amount} onChange={(e) => onCharge(i, 'amount', e.target.value)}
+                      placeholder={ch.kind === 'DISCOUNT' ? 'Amount off' : 'Amount'} aria-label="Amount" className={smallInputCls} />
+                    <button type="button" onClick={() => onRemoveCharge(i)} aria-label="Remove charge"
+                      className="flex h-9 w-9 items-center justify-center self-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <button type="button" onClick={onAddCharge} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">+ Add charge or tax</button>
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input type="checkbox" checked={form.taxInclusive} onChange={(e) => onField('taxInclusive', e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+                Prices already include tax (tax is not added on top)
+              </label>
+            </div>
+            {hasAmounts && (
+              <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${mismatch ? 'bg-amber-50 text-amber-700' : 'bg-white text-slate-500'}`}>
+                Items {money(cur, itemsTotal)}{form.charges.length > 0 ? ` + charges and tax ${money(cur, chargesTotal)}` : ''} = {money(cur, addsUpTo)}
+                {mismatch ? `, but the amount paid is ${money(cur, total)}. Check the lines, or add the missing charge, tax or rounding.` : ''}
+              </p>
+            )}
           </div>
 
           <div className="sm:col-span-2">
@@ -266,6 +327,13 @@ export default function ClaimsPage() {
   const removeItem = (key, i) => updateDraft(key, (d) => ({
     ...d, form: { ...d.form, items: d.form.items.length > 1 ? d.form.items.filter((_, j) => j !== i) : [emptyItem()] },
   }));
+  const setCharge = (key, i, field, value) => updateDraft(key, (d) => ({
+    ...d, form: { ...d.form, charges: d.form.charges.map((ch, j) => (j === i ? { ...ch, [field]: value } : ch)) },
+  }));
+  const addCharge = (key) => updateDraft(key, (d) => ({ ...d, form: { ...d.form, charges: [...d.form.charges, emptyCharge()] } }));
+  const removeCharge = (key, i) => updateDraft(key, (d) => ({
+    ...d, form: { ...d.form, charges: d.form.charges.filter((_, j) => j !== i) },
+  }));
 
   const scanDraft = async (key, dataUrl) => {
     updateDraft(key, (d) => ({ ...d, scanning: true, scanNote: null }));
@@ -293,6 +361,8 @@ export default function ClaimsPage() {
           items: s.items?.length
             ? s.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' }))
             : d.form.items,
+          charges: Array.isArray(s.charges) ? chargesFromApi(s.charges) : d.form.charges,
+          taxInclusive: s.taxInclusive === true,
         },
       }));
     } catch (err) {
@@ -424,6 +494,8 @@ export default function ClaimsPage() {
         projectCode: c.project_code || '',
         notes: c.notes || '',
         items: c.items?.length ? c.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' })) : [emptyItem()],
+        charges: chargesFromApi(c.charges),
+        taxInclusive: c.tax_inclusive === true,
       },
     })]);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -517,6 +589,9 @@ export default function ClaimsPage() {
                   onItem={(idx, field, value) => setItem(d.key, idx, field, value)}
                   onAddItem={() => addItem(d.key)}
                   onRemoveItem={(idx) => removeItem(d.key, idx)}
+                  onCharge={(idx, field, value) => setCharge(d.key, idx, field, value)}
+                  onAddCharge={() => addCharge(d.key)}
+                  onRemoveCharge={(idx) => removeCharge(d.key, idx)}
                   onReplacePhoto={(file) => replacePhoto(d.key, file)}
                   onRescan={() => scanDraft(d.key, d.receipt)}
                   onRemove={() => removeDraft(d.key)} />
@@ -598,6 +673,20 @@ export default function ClaimsPage() {
                                 ))}
                               </ul>
                             ) : <p className="mt-2 text-slate-400">No items listed.</p>}
+                            {c.charges?.length > 0 && (
+                              <>
+                                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Charges and tax</p>
+                                <ul className="mt-2 space-y-1">
+                                  {c.charges.map((ch, i) => (
+                                    <li key={i} className="flex justify-between gap-4">
+                                      <span>{ch.label || chargeKindLabel(ch.kind)}{ch.label && ch.label !== chargeKindLabel(ch.kind) ? <span className="text-slate-400"> · {chargeKindLabel(ch.kind)}</span> : null}</span>
+                                      <span className="whitespace-nowrap">{ch.kind === 'DISCOUNT' ? '−' : ''}{Number(ch.amount).toFixed(2)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                {c.tax_inclusive && <p className="mt-1 text-xs text-slate-400">Prices include tax, so tax isn&apos;t added on top.</p>}
+                              </>
+                            )}
                           </div>
                           <div className="space-y-1">
                             <p><span className="text-slate-400">Submitted:</span> {formatLeaveDate(c.created_at)}</p>
