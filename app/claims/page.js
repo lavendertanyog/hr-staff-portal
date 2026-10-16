@@ -36,6 +36,14 @@ const FILTERS = [
 
 const sgtToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
 const money = (currency, amount) => `${currency} ${Number(amount || 0).toFixed(2)}`;
+
+// Claims in another currency also carry the amount in SGD at the purchase date's rate.
+const fxNote = (c) => (c.currency !== 'SGD' && c.amount_base != null ? `≈ SGD ${Number(c.amount_base).toFixed(2)}` : '');
+const fxDetail = (c) => {
+  if (c.currency === 'SGD') return '';
+  if (c.fx_rate == null) return `No exchange rate found for ${c.currency} on the purchase date.`;
+  return `1 ${c.currency} = ${Number(c.fx_rate)} SGD (${c.fx_source || 'rate'} for ${c.fx_rate_date})`;
+};
 const emptyItem = () => ({ description: '', quantity: '', amount: '' });
 // Lines between the items and the total. A receipt can have several (service charge, two tax
 // rates, rounding), so they are a list rather than one tax field.
@@ -109,6 +117,19 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
   const addsUpTo = itemsTotal + chargesTotal;
   const total = Number(form.totalAmount);
   const hasAmounts = form.items.some((it) => it.amount !== '') || form.charges.some((ch) => ch.amount !== '');
+
+  // A claim in another currency shows its SGD amount at the purchase date's rate. The server
+  // looks the rate up again on submit; this one is only for display.
+  const [fx, setFx] = useState(null); // { rate, rateDate, source } | { missing: true } | null
+  const fxCurrency = (form.currency || '').toUpperCase();
+  useEffect(() => {
+    if (!/^[A-Z]{3}$/.test(fxCurrency) || fxCurrency === 'SGD' || !form.purchaseDate) { setFx(null); return undefined; }
+    let alive = true;
+    axios.get(`${API_BASE}/api/v1/claims/fx-rate`, { params: { currency: fxCurrency, date: form.purchaseDate }, headers: authHeaders() })
+      .then((r) => { if (alive) setFx(r.data?.data || { missing: true }); })
+      .catch(() => { if (alive) setFx({ missing: true }); });
+    return () => { alive = false; };
+  }, [fxCurrency, form.purchaseDate]);
   const mismatch = hasAmounts && Number.isFinite(total) && total > 0 && Math.abs(addsUpTo - total) >= 0.01;
 
   return (
@@ -177,6 +198,16 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
               <input type="number" min="0.01" step="0.01" inputMode="decimal" value={form.totalAmount} onChange={(e) => onField('totalAmount', e.target.value)} className={inputCls(invalid.totalAmount)} placeholder="0.00" />
             </div>
           </div>
+          {fx && (
+            <p className={`sm:col-span-2 -mt-2 rounded-xl px-3 py-2 text-xs ${fx.missing ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>
+              {fx.missing
+                ? `No exchange rate found for ${fxCurrency} on this date. You can still submit; HR will convert it.`
+                : <>
+                    {total > 0 ? <><span className="font-semibold">≈ SGD {(total * fx.rate).toFixed(2)}</span> · </> : null}
+                    1 {fxCurrency} = {Number(fx.rate)} SGD ({fx.source} for {formatLeaveDate(fx.rateDate)}). You are reimbursed in SGD at this rate.
+                  </>}
+            </p>
+          )}
           <div className="sm:col-span-2">
             <label className="block text-sm font-semibold text-slate-700 mb-2">Project (optional)</label>
             <select value={form.projectCode} onChange={(e) => onField('projectCode', e.target.value)} className={inputCls(false)}>
@@ -645,7 +676,10 @@ export default function ClaimsPage() {
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatLeaveDate(c.purchase_date)}</td>
                     <td className="px-4 py-3 font-medium text-slate-900">{c.merchant}</td>
                     <td className="px-4 py-3 text-slate-600">{categoryLabel(c.category)}</td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-slate-900">{money(c.currency, c.total_amount)}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-slate-900">
+                      {money(c.currency, c.total_amount)}
+                      {fxNote(c) && <span className="block text-xs font-normal text-slate-400">{fxNote(c)}</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLOR[c.status] || 'bg-slate-100 text-slate-600'}`}>{STATUS_LABEL[c.status] || c.status}</span>
                     </td>
@@ -690,6 +724,7 @@ export default function ClaimsPage() {
                           </div>
                           <div className="space-y-1">
                             <p><span className="text-slate-400">Submitted:</span> {formatLeaveDate(c.created_at)}</p>
+                            {fxDetail(c) && <p><span className="text-slate-400">Exchange rate:</span> {fxDetail(c)}</p>}
                             {c.project_code && <p><span className="text-slate-400">Project:</span> {c.project_code}{c.project_name ? ` · ${c.project_name}` : ''}</p>}
                             {c.notes && <p><span className="text-slate-400">Notes:</span> {c.notes}</p>}
                             {c.manager_remarks && <p><span className="text-slate-400">Manager:</span> {c.manager_remarks}</p>}
