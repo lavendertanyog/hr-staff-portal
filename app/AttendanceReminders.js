@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
+import { readPendingClockOut, retryPendingClockOut, formatClockOutTime } from './pendingClockOut';
 
 // Short beep via Web Audio API — no audio asset needed.
 function playBeep() {
@@ -75,9 +76,34 @@ export default function AttendanceReminders() {
   const [stillWorkingSession, setStillWorkingSession] = useState(null); // { attendanceId, userId }
   const [autoClockedOutNotice, setAutoClockedOutNotice] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [sentClockOutTime, setSentClockOutTime] = useState(''); // a saved clock-out that has just reached the server
+  const retryingRef = useRef(false);
   const notifiedCheckpointsRef = useRef(new Map()); // attendanceId -> Set of checkpoint hours already beeped for
   const autoClockingOutRef = useRef(new Set()); // attendanceId currently being auto-clocked-out (guards against double-fire)
   const pathname = usePathname();
+
+  // A clock-out that didn't reach the server (laptop closed, connection lost) is kept in this
+  // browser. Send it again when a page opens, every 15 seconds while it waits, and when the
+  // connection returns, using the time the button was pressed.
+  useEffect(() => {
+    const run = async () => {
+      if (retryingRef.current || !readPendingClockOut()) return;
+      let user;
+      try { user = JSON.parse(sessionStorage.getItem('staff_portal_user') || 'null'); } catch { user = null; }
+      if (!user?.user_id) return;
+      retryingRef.current = true;
+      try {
+        const result = await retryPendingClockOut(API_BASE, user.user_id);
+        if (result.status === 'sent') setSentClockOutTime(formatClockOutTime(result.clockOutTime));
+      } finally {
+        retryingRef.current = false;
+      }
+    };
+    run();
+    const id = window.setInterval(run, 15000);
+    window.addEventListener('online', run);
+    return () => { window.clearInterval(id); window.removeEventListener('online', run); };
+  }, []);
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -266,6 +292,15 @@ export default function AttendanceReminders() {
               style={{ background: '#0c3b8f' }}>
               {confirming ? 'Please wait…' : 'Continue'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {sentClockOutTime && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
+          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white flex items-center gap-3">
+            Your clock-out at {sentClockOutTime} has been saved.
+            <button type="button" onClick={() => setSentClockOutTime('')} className="text-slate-300 hover:text-white" aria-label="Dismiss">×</button>
           </div>
         </div>
       )}

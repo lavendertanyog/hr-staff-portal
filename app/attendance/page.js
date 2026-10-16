@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { savePendingClockOut, readPendingClockOut, clearPendingClockOut, sendPendingClockOut, formatClockOutTime } from '../pendingClockOut';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -720,6 +721,12 @@ export default function AttendancePage() {
 
   const handleClockOut = async () => {
     if (!attendanceId || !user?.user_id) return;
+    // The time the button was pressed, not the time the server happens to receive the request. If an
+    // earlier press for this session is still waiting to be sent, keep its (earlier) time.
+    const earlier = readPendingClockOut();
+    const clickedAt = earlier && earlier.attendanceId === attendanceId && earlier.userId === user.user_id
+      ? earlier.clockOutTime
+      : new Date().toISOString();
     const generalAlloc = allocations.find((a) => !a.project_code);
     if (generalAlloc && !(generalAlloc.description || '').trim()) {
       setClockDescriptionValidated(true);
@@ -746,28 +753,31 @@ export default function AttendancePage() {
       return;
     }
 
-    // Guarantee the backend sees General's latest text even if the field's onBlur save hasn't
-    // resolved yet — awaiting it here beats racing an unsaved PATCH against the clock-out call.
-    // If the save itself fails, stop here with a clear error instead of letting the clock-out
-    // call go through and bounce back with a confusing "description is required" — the field
-    // isn't actually empty, the save to the backend just didn't happen.
-    if (generalAlloc) {
-      const saved = await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
-      if (!saved) { showMsg('Could not save your description — check your connection and try again.', 'error'); return; }
-    }
+    // Keep the press (with General's latest text, so it is saved first on the way out) in this
+    // browser until the server confirms it. If the laptop closes or the connection drops mid-request,
+    // the next page that opens sends it again with the same time (see AttendanceReminders).
+    const pending = {
+      userId: user.user_id, attendanceId, clockOutTime: clickedAt,
+      allocationId: generalAlloc?.allocation_id || null, description: generalAlloc?.description || '',
+    };
+    savePendingClockOut(pending);
     setLoading(true);
-    try {
-      await axios.post(`${API_BASE}/api/v1/attendance/clock-out`, {
-        userId: user.user_id, attendanceId,
-      });
+    const result = await sendPendingClockOut(API_BASE, pending);
+    if (result.ok) {
+      clearPendingClockOut();
       setClockedIn(false); setAttendanceId(null); setAllocations([]);
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
       showToast('Clocked out successfully.', 'success');
       refreshPastSessions();
-    } catch (e) { showMsg(e.response?.data?.error || 'Clock-out failed.', 'error'); }
-    finally { setLoading(false); }
+    } else if (result.retry) {
+      showMsg(`We couldn't reach the server. Your clock-out at ${formatClockOutTime(clickedAt)} is saved and will be sent automatically when you are back online, so you can close this tab.`, 'error');
+    } else {
+      clearPendingClockOut();
+      showMsg(result.error || 'Clock-out failed.', 'error');
+    }
+    setLoading(false);
   };
 
   const handleAddProject = async () => {
