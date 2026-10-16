@@ -100,7 +100,7 @@ function toPayload(form) {
 function invalidFields(d) {
   const f = d.form;
   return {
-    receipt: !d.receipt,
+    receipt: !d.receipt && !d.claimId,
     purchaseDate: !f.purchaseDate,
     merchant: !f.merchant.trim(),
     category: !f.category,
@@ -108,7 +108,7 @@ function invalidFields(d) {
   };
 }
 
-function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onCharge, onAddCharge, onRemoveCharge, onReplacePhoto, onRescan, onRemove }) {
+function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onCharge, onAddCharge, onRemoveCharge, onReplacePhoto, onRescan, onRetryPhoto, onRemove }) {
   const fileRef = useRef(null);
   const { form, invalid } = draft;
   const cur = form.currency || 'SGD';
@@ -127,7 +127,7 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
     let alive = true;
     axios.get(`${API_BASE}/api/v1/claims/fx-rate`, { params: { currency: fxCurrency, date: form.purchaseDate }, headers: authHeaders() })
       .then((r) => { if (alive) setFx(r.data?.data || { missing: true }); })
-      .catch(() => { if (alive) setFx({ missing: true }); });
+      .catch(() => { if (alive) setFx({ failed: true }); });
     return () => { alive = false; };
   }, [fxCurrency, form.purchaseDate]);
   const mismatch = hasAmounts && Number.isFinite(total) && total > 0 && Math.abs(addsUpTo - total) >= 0.01;
@@ -150,7 +150,16 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
             {draft.receipt
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={draft.receipt} alt="Receipt" className="max-h-[320px] w-full cursor-zoom-in object-contain" onClick={() => openMcFile(draft.receipt)} />
-              : <p className="px-6 text-center text-sm text-slate-400">No photo</p>}
+              : draft.claimId && !draft.receiptChanged
+                ? (
+                  <div className="px-6 text-center">
+                    <p className="text-sm text-slate-500">{draft.receiptLoading ? 'Loading the saved photo…' : "The saved photo couldn't be loaded right now. It's still kept with this claim."}</p>
+                    {!draft.receiptLoading && (
+                      <button type="button" onClick={onRetryPhoto} className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Try again</button>
+                    )}
+                  </div>
+                )
+                : <p className="px-6 text-center text-sm text-slate-400">No photo</p>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onReplacePhoto(e.target.files?.[0] || null); e.target.value = ''; }} />
           <div className="mt-2 flex gap-2">
@@ -199,8 +208,10 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
             </div>
           </div>
           {fx && (
-            <p className={`sm:col-span-2 -mt-2 rounded-xl px-3 py-2 text-xs ${fx.missing ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>
-              {fx.missing
+            <p className={`sm:col-span-2 -mt-2 rounded-xl px-3 py-2 text-xs ${fx.missing || fx.failed ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>
+              {fx.failed
+                ? "Couldn't check the exchange rate right now. You can still submit; the SGD amount is worked out when the claim is saved."
+                : fx.missing
                 ? `No exchange rate found for ${fxCurrency} on this date. You can still submit; HR will convert it.`
                 : <>
                     {total > 0 ? <><span className="font-semibold">≈ SGD {(total * fx.rate).toFixed(2)}</span> · </> : null}
@@ -506,16 +517,25 @@ export default function ClaimsPage() {
     }
   };
 
+  // The saved photo is only shown for reference; it stays on the server unless replaced, so a
+  // failed load never blocks saving.
+  const loadSavedPhoto = async (key, claimId) => {
+    updateDraft(key, (d) => ({ ...d, receiptLoading: true }));
+    try {
+      const res = await axios.get(`${API_BASE}/api/v1/claims/${claimId}/receipt`, { headers: authHeaders() });
+      const photo = res.data?.data?.receiptImage || null;
+      updateDraft(key, (d) => (d.receiptChanged ? { ...d, receiptLoading: false } : { ...d, receipt: photo, receiptLoading: false }));
+    } catch {
+      updateDraft(key, (d) => ({ ...d, receiptLoading: false }));
+    }
+  };
+
   const startEdit = async (c) => {
     if (drafts.length > 0 && !(await confirm({ title: 'Edit claim', message: "Remove the receipts you haven't submitted and edit this claim instead?", confirmLabel: 'Edit claim' }))) return;
-    let receipt = null;
-    try {
-      const res = await axios.get(`${API_BASE}/api/v1/claims/${c.claim_id}/receipt`, { headers: authHeaders() });
-      receipt = res.data?.data?.receiptImage || null;
-    } catch { /* the photo stays as it is unless replaced */ }
-    setDrafts([newDraft(receipt, {
+    const draft = newDraft(null, {
       claimId: c.claim_id,
       receiptChanged: false,
+      receiptLoading: true,
       form: {
         purchaseDate: c.purchase_date,
         merchant: c.merchant,
@@ -528,8 +548,10 @@ export default function ClaimsPage() {
         charges: chargesFromApi(c.charges),
         taxInclusive: c.tax_inclusive === true,
       },
-    })]);
+    });
+    setDrafts([draft]);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    loadSavedPhoto(draft.key, c.claim_id);
   };
 
   const deleteClaim = async (c) => {
@@ -625,6 +647,7 @@ export default function ClaimsPage() {
                   onRemoveCharge={(idx) => removeCharge(d.key, idx)}
                   onReplacePhoto={(file) => replacePhoto(d.key, file)}
                   onRescan={() => scanDraft(d.key, d.receipt)}
+                  onRetryPhoto={() => loadSavedPhoto(d.key, d.claimId)}
                   onRemove={() => removeDraft(d.key)} />
               ))}
             </div>
