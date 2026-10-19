@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
+import { useT, getLocale } from '../i18n/LanguageProvider';
 
 // Company calendar: Singapore public holidays plus who is on approved leave. Read-only — HR
 // manages holidays in the HR portal, and leave comes from approved leave requests. The same
@@ -13,9 +14,9 @@ const LEAVE_PILLS_PER_DAY = 2;
 
 const toISODateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parseISO = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
-const monthLabel = (s) => parseISO(s).toLocaleDateString('en-SG', { month: 'long', year: 'numeric' });
-const shortDate = (s) => parseISO(s).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
-const longDate = (s) => parseISO(s).toLocaleDateString('en-SG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const monthLabel = (s) => parseISO(s).toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' });
+const shortDate = (s) => parseISO(s).toLocaleDateString(getLocale(), { day: 'numeric', month: 'short' });
+const longDate = (s) => parseISO(s).toLocaleDateString(getLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const dayCount = (a, b) => Math.round((parseISO(b) - parseISO(a)) / 86400000) + 1;
 const rangeLabel = (a, b) => (a === b ? shortDate(a) : `${shortDate(a)} – ${shortDate(b)}`);
 
@@ -25,6 +26,7 @@ const Chevron = ({ dir }) => (
 );
 
 export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
+  const { t } = useT();
   const userId = sessionUser?.user_id || null;
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [holidays, setHolidays] = useState([]);
@@ -156,7 +158,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                   listTab === key ? 'border-[#1540A8] font-bold text-slate-900' : 'border-transparent font-medium text-slate-400 hover:text-slate-600'
                 }`}>
                 <svg width="15" height="15" viewBox="0 0 24 24" {...svg}>{icon}</svg>
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
@@ -164,8 +166,8 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
             <svg width="14" height="14" viewBox="0 0 24 24" {...svg} stroke="#94A3B8" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
               <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search holiday or name…"
-              aria-label="Search holidays and people"
+            <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={t("Search holiday or name…")}
+              aria-label={t("Search holidays and people")}
               className="w-60 max-w-full rounded-full border border-slate-200 py-1.5 pl-8 pr-3 text-sm transition-all focus:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
@@ -183,7 +185,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                     viewMode === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
                   }`}>
                   <svg width="13" height="13" viewBox="0 0 24 24" {...svg}>{icon}</svg>
-                  {label}
+                  {t(label)}
                 </button>
               ))}
             </div>
@@ -192,20 +194,20 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
           <div className="relative justify-self-center">
             {showMonth ? (
               <div className="flex items-center gap-3">
-                <button type="button" onClick={() => shiftGridMonth(-1)} aria-label="Previous month"
+                <button type="button" onClick={() => shiftGridMonth(-1)} aria-label={t("Previous month")}
                   className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"><Chevron dir="left" /></button>
                 <button type="button" onClick={() => (pickerOpen ? setPickerOpen(false) : openPicker())}
                   className="-mx-1 flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-base font-bold text-slate-900 transition hover:bg-slate-50">
-                  {gridMonth.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' })}
+                  {gridMonth.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' })}
                   <svg width="12" height="12" viewBox="0 0 24 24" {...svg} stroke="#94A3B8" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
                 </button>
-                <button type="button" onClick={() => shiftGridMonth(1)} aria-label="Next month"
+                <button type="button" onClick={() => shiftGridMonth(1)} aria-label={t("Next month")}
                   className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"><Chevron dir="right" /></button>
               </div>
             ) : (
               <button type="button" onClick={() => (pickerOpen ? setPickerOpen(false) : openPicker())}
                 className="-mx-1 flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-base font-bold text-slate-900 transition hover:bg-slate-50">
-                {listTab === 'upcoming' ? `Upcoming in ${year}` : year}
+                {listTab === 'upcoming' ? t("Upcoming in {year}", { year: year }) : year}
                 <svg width="12" height="12" viewBox="0 0 24 24" {...svg} stroke="#94A3B8" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
             )}
@@ -215,10 +217,10 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                 <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
                 <div className="absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
                   <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                    <button type="button" onClick={() => setPickerYear((y) => y - 1)} aria-label="Previous year"
+                    <button type="button" onClick={() => setPickerYear((y) => y - 1)} aria-label={t("Previous year")}
                       className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"><Chevron dir="left" /></button>
                     <p className="text-sm font-bold text-slate-900">{pickerYear}</p>
-                    <button type="button" onClick={() => setPickerYear((y) => y + 1)} aria-label="Next year"
+                    <button type="button" onClick={() => setPickerYear((y) => y + 1)} aria-label={t("Next year")}
                       className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"><Chevron dir="right" /></button>
                   </div>
                   <div className="grid grid-cols-3">
@@ -227,23 +229,21 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                       return (
                         <button key={m} type="button" onClick={() => pickMonthYear(i)}
                           className={`border-slate-100 py-3 text-xs font-semibold transition ${i % 3 !== 2 ? 'border-r' : ''} ${i < 9 ? 'border-b' : ''} ${isCurrent ? 'bg-[#1540A8] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-                          {m}
+                          {new Date(2000, i, 1).toLocaleDateString(getLocale(), { month: 'short' })}
                         </button>
                       );
                     })}
                   </div>
                   <button type="button" onClick={jumpToToday}
-                    className="w-full border-t border-slate-100 py-3 text-xs font-semibold text-[#1540A8] transition hover:bg-slate-50">
-                    Today
-                  </button>
+                    className="w-full border-t border-slate-100 py-3 text-xs font-semibold text-[#1540A8] transition hover:bg-slate-50">{t("Today")}</button>
                 </div>
               </>
             )}
           </div>
 
           <div className="flex items-center gap-4 justify-self-end text-xs font-medium text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" />Public holiday</span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#C9D5FF]" />On leave</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" />{t("Public holiday")}</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#C9D5FF]" />{t("On leave")}</span>
           </div>
         </div>
 
@@ -252,7 +252,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
             <div className="min-w-[640px]">
               <div className="grid grid-cols-7 border-b border-slate-100">
                 {WEEKDAYS.map((d) => (
-                  <span key={d} className="border-r border-slate-100 py-3 text-center text-xs font-semibold text-slate-400 last:border-r-0">{d}</span>
+                  <span key={d} className="border-r border-slate-100 py-3 text-center text-xs font-semibold text-slate-400 last:border-r-0">{t(d)}</span>
                 ))}
               </div>
               <div className="grid grid-cols-7">
@@ -278,13 +278,13 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                         </p>
                       ))}
                       {onLeave.length > LEAVE_PILLS_PER_DAY && (
-                        <p className="mt-1 w-full text-left text-[10px] font-semibold text-slate-500">+{onLeave.length - LEAVE_PILLS_PER_DAY} more on leave</p>
+                        <p className="mt-1 w-full text-left text-[10px] font-semibold text-slate-500">{t("+{v} more on leave", { v: onLeave.length - LEAVE_PILLS_PER_DAY })}</p>
                       )}
                     </>
                   );
                   const cellClass = `min-h-[110px] p-2 flex flex-col items-end text-left border-b border-slate-100 ${isLastCol ? '' : 'border-r'}`;
                   return hasDetails ? (
-                    <button key={i} type="button" onClick={() => setDayOpen(iso)} aria-label={`${longDate(iso)}: details`}
+                    <button key={i} type="button" onClick={() => setDayOpen(iso)} aria-label={t("{longDate}: details", { longDate: longDate(iso) })}
                       className={`${cellClass} transition hover:bg-slate-50`}>
                       {content}
                     </button>
@@ -298,18 +298,18 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
         ) : (
           <div className="p-6">
             {loading ? (
-              <p className="py-8 text-center text-sm text-slate-400">Loading…</p>
+              <p className="py-8 text-center text-sm text-slate-400">{t("Loading…")}</p>
             ) : agenda.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">
-                {query ? `Nothing matches "${searchQuery.trim()}" in ${year}.` : listTab === 'upcoming' ? `No more holidays or leave in ${year}.` : `No holidays or leave in ${year}.`}
+                {query ? t("Nothing matches \"{v}\" in {year}.", { v: searchQuery.trim(), year: year }) : listTab === 'upcoming' ? t("No more holidays or leave in {year}.", { year: year }) : t("No holidays or leave in {year}.", { year: year })}
               </p>
             ) : (
               agenda.map((group, gi) => (
                 <div key={group.label} className={gi > 0 ? 'mt-6' : ''}>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{group.label}</p>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{t(group.label)}</p>
                   <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
                     {group.items.map((it) => {
-                      const weekday = parseISO(it.date).toLocaleDateString('en-SG', { weekday: 'short' });
+                      const weekday = parseISO(it.date).toLocaleDateString(getLocale(), { weekday: 'short' });
                       const dNum = it.date.split('-')[2];
                       const isHoliday = it.kind === 'holiday';
                       return (
@@ -320,15 +320,15 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                           </div>
                           <div className={`w-[3px] flex-shrink-0 self-stretch rounded-full ${isHoliday ? 'bg-red-500' : 'bg-[#1540A8]'}`} />
                           <div className="min-w-0 flex-1">
-                            <p className="text-[11px] font-medium leading-tight text-slate-400">{isHoliday ? 'Public holiday' : 'On leave'}</p>
+                            <p className="text-[11px] font-medium leading-tight text-slate-400">{isHoliday ? t("Public holiday") : t("On leave")}</p>
                             <p className="truncate text-sm font-semibold leading-snug text-slate-800">
-                              {isHoliday ? it.holiday.name : (isMine(it.leave) ? `${it.leave.full_name} (you)` : it.leave.full_name)}
+                              {isHoliday ? it.holiday.name : (isMine(it.leave) ? t("{full_name} (you)", { full_name: it.leave.full_name }) : it.leave.full_name)}
                             </p>
                           </div>
                           {!isHoliday && (
                             <p className="flex-shrink-0 text-right text-xs text-slate-500">
                               {rangeLabel(it.leave.start_date, it.leave.end_date)}
-                              <span className="block text-[11px] text-slate-400">{dayCount(it.leave.start_date, it.leave.end_date)} day{dayCount(it.leave.start_date, it.leave.end_date) === 1 ? '' : 's'}</span>
+                              <span className="block text-[11px] text-slate-400">{t(dayCount(it.leave.start_date, it.leave.end_date) === 1 ? "{dayCount} day" : "{dayCount} days", { dayCount: dayCount(it.leave.start_date, it.leave.end_date) })}</span>
                             </p>
                           )}
                         </div>
@@ -350,23 +350,23 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
             className="flex max-h-[calc(100vh-2rem)] w-full max-w-sm flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4">
               <p className="text-sm font-semibold text-slate-900">{longDate(dayOpen)}</p>
-              <button type="button" onClick={() => setDayOpen(null)} aria-label="Close"
+              <button type="button" onClick={() => setDayOpen(null)} aria-label={t("Close")}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">&times;</button>
             </div>
             <div className="space-y-4 overflow-y-auto px-6 py-5">
               {dayHoliday && (
                 <div className="rounded-2xl bg-red-50 px-4 py-3">
-                  <p className="text-[11px] font-medium text-red-500">Public holiday</p>
+                  <p className="text-[11px] font-medium text-red-500">{t("Public holiday")}</p>
                   <p className="text-sm font-semibold text-red-700">{dayHoliday.name}</p>
                 </div>
               )}
               {dayLeave.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">On leave ({dayLeave.length})</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{t("On leave ({length})", { length: dayLeave.length })}</p>
                   <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">
                     {dayLeave.map((l) => (
                       <div key={l.leave_id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                        <span className="min-w-0 truncate text-sm font-medium text-slate-800">{isMine(l) ? `${l.full_name} (you)` : l.full_name}</span>
+                        <span className="min-w-0 truncate text-sm font-medium text-slate-800">{isMine(l) ? t("{full_name} (you)", { full_name: l.full_name }) : l.full_name}</span>
                         <span className="flex-shrink-0 text-xs text-slate-500">{rangeLabel(l.start_date, l.end_date)}</span>
                       </div>
                     ))}

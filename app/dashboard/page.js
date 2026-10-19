@@ -6,6 +6,7 @@ import axios from 'axios';
 import Link from 'next/link';
 import Chart from 'chart.js/auto';
 import { authHeaders } from '../authSession';
+import { useT, getLocale } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -39,7 +40,7 @@ function weekRange(offset) {
 
 function formatShort(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(getLocale(), { day: 'numeric', month: 'short' });
 }
 
 
@@ -51,7 +52,7 @@ function monthRange(offset) {
   const start = new Date(target.getFullYear(), target.getMonth(), 1);
   const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0);
   const end = lastDay < now ? lastDay : now;
-  const label = target.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' });
+  const label = target.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' });
   return { start: toISO(start), end: toISO(end), label };
 }
 
@@ -67,7 +68,7 @@ function sgtParts(iso) {
 }
 
 function fmtTimeSGT(iso) {
-  return new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+  return new Date(iso).toLocaleString(getLocale(), { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 // Labels the timeline's 0-24 hour axis as a clock (12 AM, 2 AM, ...) since the axis now
@@ -80,6 +81,7 @@ function clockHourLabel(hour) {
 }
 
 export default function StaffDashboard() {
+  const { t, lang } = useT();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -144,8 +146,8 @@ export default function StaffDashboard() {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
-    return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
-  }, [activeSession, nowTick]);
+    return t('{h}h {m}m {s}s', { h, m: String(m).padStart(2, '0'), s: String(s).padStart(2, '0') });
+  }, [activeSession, nowTick, lang]);
 
   // Fetch range for the weekly project log whenever the range/offset changes.
   const { fetchStart, fetchEnd, rangeLabel } = useMemo(() => {
@@ -155,7 +157,7 @@ export default function StaffDashboard() {
     }
     const { start, end, label } = monthRange(monthOffset);
     return { fetchStart: start, fetchEnd: end, rangeLabel: label };
-  }, [logRange, weekOffset, monthOffset]);
+  }, [logRange, weekOffset, monthOffset, lang]);
 
   // Earliest month navigable is January of the current year.
   const minMonthOffset = -new Date().getMonth();
@@ -253,7 +255,7 @@ export default function StaffDashboard() {
       cursor = toISO(d);
     }
     const labelsForDays = dayKeys.map((k) => logRange === 'week'
-      ? new Date(k + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' })
+      ? new Date(k + 'T00:00:00').toLocaleDateString(getLocale(), { weekday: 'short' })
       : formatShort(k));
 
     const byDay = {};
@@ -395,26 +397,26 @@ export default function StaffDashboard() {
   }, [selectedSessionId, sessionRows]);
 
   const staffName = deriveNameFromEmail(user?.email) || user?.full_name || 'Staff';
-  const leaveDate = new Date().toLocaleDateString('en-SG', { day: 'numeric', month: 'long' });
+  const leaveDate = new Date().toLocaleDateString(getLocale(), { day: 'numeric', month: 'long' });
 
   const stats = [
     {
-      label: 'Active Sessions',
-      value: loading ? '—' : (elapsedLabel || 'Not clocked in'),
+      label: t("Active Sessions"),
+      value: loading ? '—' : (elapsedLabel || t('Not clocked in')),
       href: '/attendance',
       live: !!elapsedLabel,
     },
-    { label: `Leave taken as of ${leaveDate}`, value: loading ? '—' : leaveBalance ? `${leaveBalance.usedDays} days` : '—', href: '/leave' },
-    { label: 'Unread Notifications', value: loading ? '—' : unreadCount, href: '/inbox' },
+    { label: t("Leave taken as of {leaveDate}", { leaveDate: leaveDate }), value: loading ? '—' : leaveBalance ? t('{n} days', { n: leaveBalance.usedDays }) : '—', href: '/leave' },
+    { label: t("Unread Notifications"), value: loading ? '—' : unreadCount, href: '/inbox' },
   ];
 
   return (
     <div className="p-8">
       {/* Header */}
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {staffName}</h1>
-        <p className="mt-2 text-sm text-slate-500">Manage your attendance, leave, and project progress in one place.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Welcome back, {staffName}", { staffName: staffName })}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Manage your attendance, leave, and project progress in one place.")}</p>
       </div>
 
       {/* Stat cards */}
@@ -424,7 +426,7 @@ export default function StaffDashboard() {
             className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-slate-300 cursor-pointer">
             <div className="flex items-center gap-2">
               {item.live && <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />}
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{item.label}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t(item.label)}</p>
             </div>
             <p className="mt-4 text-3xl font-semibold text-slate-950 tabular-nums">{item.value}</p>
           </Link>
@@ -433,18 +435,18 @@ export default function StaffDashboard() {
 
       {/* Quick actions */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">Quick Actions</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">{t("Quick Actions")}</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: activeSession ? 'Clock Out' : 'Clock In', href: '/attendance', bg: '#EEF4FF', color: '#1a3a8f' },
-            { label: 'Apply Leave', href: '/leave', bg: '#EEFBF3', color: '#166534' },
-            { label: 'Log Progress', href: '/progress', bg: '#FFFBEB', color: '#92400e' },
-            { label: 'Request Budget', href: '/progress?tab=budget', bg: '#FDF4FF', color: '#6b21a8' },
+            { label: activeSession ? t("Clock Out") : t("Clock In"), href: '/attendance', bg: '#EEF4FF', color: '#1a3a8f' },
+            { label: t("Apply Leave"), href: '/leave', bg: '#EEFBF3', color: '#166534' },
+            { label: t("Log Progress"), href: '/progress', bg: '#FFFBEB', color: '#92400e' },
+            { label: t("Request Budget"), href: '/progress?tab=budget', bg: '#FDF4FF', color: '#6b21a8' },
           ].map((a) => (
             <Link key={a.href} href={a.href}
               className="rounded-2xl px-4 py-4 text-sm font-semibold transition hover:opacity-90"
               style={{ background: a.bg, color: a.color }}>
-              {a.label}
+              {t(a.label)}
             </Link>
           ))}
         </div>
@@ -453,26 +455,26 @@ export default function StaffDashboard() {
       {/* Weekly project log */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Weekly Project Log</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Weekly Project Log")}</p>
           <div className="flex items-center gap-2 flex-wrap ml-auto">
             <div className="flex items-center gap-1">
               <button type="button"
                 onClick={() => (logRange === 'week' ? setWeekOffset((o) => o - 1) : setMonthOffset((o) => Math.max(minMonthOffset, o - 1)))}
                 disabled={logRange === 'month' && monthOffset <= minMonthOffset}
-                aria-label={logRange === 'week' ? 'Previous week' : 'Previous month'}
+                aria-label={logRange === 'week' ? t("Previous week") : t("Previous month")}
                 className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">‹</button>
               <span className="text-xs text-slate-500 min-w-[104px] text-center">{rangeLabel}</span>
               <button type="button"
                 onClick={() => (logRange === 'week' ? setWeekOffset((o) => Math.min(0, o + 1)) : setMonthOffset((o) => Math.min(0, o + 1)))}
                 disabled={logRange === 'week' ? weekOffset >= 0 : monthOffset >= 0}
-                aria-label={logRange === 'week' ? 'Next week' : 'Next month'}
+                aria-label={logRange === 'week' ? t("Next week") : t("Next month")}
                 className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">›</button>
             </div>
             <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-              {[{ k: 'week', l: 'Week' }, { k: 'month', l: 'Month' }].map((r) => (
+              {[{ k: 'week', l: t("Week") }, { k: 'month', l: t("Month") }].map((r) => (
                 <button key={r.k} type="button" onClick={() => setLogRange(r.k)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${logRange === r.k ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-                  {r.l}
+                  {t(r.l)}
                 </button>
               ))}
             </div>
@@ -491,24 +493,24 @@ export default function StaffDashboard() {
         )}
 
         {logLoading ? (
-          <p className="text-sm text-slate-400 text-center py-10">Loading…</p>
+          <p className="text-sm text-slate-400 text-center py-10">{t("Loading…")}</p>
         ) : (
           <>
             <div style={logRange === 'month' ? { maxHeight: 480, overflowY: 'auto' } : undefined}>
               <div style={{ position: 'relative', width: '100%', height: logRange === 'week' ? 280 : Math.max(280, ganttLabels.length * 32) }}>
-                <canvas ref={chartRef} role="img" aria-label="Timeline of attendance sessions, one row per day" />
+                <canvas ref={chartRef} role="img" aria-label={t("Timeline of attendance sessions, one row per day")} />
               </div>
             </div>
             {sessionRows.length === 0 && (
-              <p className="mt-2 text-xs text-slate-400 text-center">No attendance logged in this period yet.</p>
+              <p className="mt-2 text-xs text-slate-400 text-center">{t("No attendance logged in this period yet.")}</p>
             )}
             {selectedSession && (
               <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    {formatShort(selectedSession.day)} · {fmtTimeSGT(selectedSession.clock_in_time)} – {selectedSession.clock_out_time ? fmtTimeSGT(selectedSession.clock_out_time) : 'still active'}
+                    {formatShort(selectedSession.day)} · {fmtTimeSGT(selectedSession.clock_in_time)} – {selectedSession.clock_out_time ? fmtTimeSGT(selectedSession.clock_out_time) : t("still active")}
                   </p>
-                  <button type="button" onClick={() => setSelectedSessionId(null)} className="text-xs text-slate-400 hover:text-slate-600">Close</button>
+                  <button type="button" onClick={() => setSelectedSessionId(null)} className="text-xs text-slate-400 hover:text-slate-600">{t("Close")}</button>
                 </div>
                 <ul className="space-y-1.5">
                   {(selectedSession.allocations || []).map((a, i) => (
@@ -528,32 +530,30 @@ export default function StaffDashboard() {
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Recent Activity</p>
-            <p className="mt-1 font-semibold text-slate-900">Inbox</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Recent Activity")}</p>
+            <p className="mt-1 font-semibold text-slate-900">{t("Inbox")}</p>
           </div>
-          <Link href="/inbox" className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
-            View all
-          </Link>
+          <Link href="/inbox" className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">{t("View all")}</Link>
         </div>
         {loading ? (
-          <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
+          <p className="px-6 py-8 text-sm text-slate-400">{t("Loading…")}</p>
         ) : inbox.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-slate-400">No recent activity.</p>
+          <p className="px-6 py-8 text-sm text-slate-400">{t("No recent activity.")}</p>
         ) : (
           <ul className="divide-y divide-slate-50">
             {inbox.map((item, i) => (
               <li key={item.notification_id || i}
                 className={`px-6 py-4 flex items-start justify-between gap-4 hover:bg-slate-50 transition ${item.status === 'READ' ? 'opacity-50' : ''}`}>
                 <div className="min-w-0">
-                  <p className={`text-sm truncate ${item.status === 'UNREAD' ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>{item.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">{item.subtitle}</p>
+                  <p className={`text-sm truncate ${item.status === 'UNREAD' ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>{t(item.title)}</p>
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">{t(item.subtitle)}</p>
                 </div>
                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
                   item.status === 'UNREAD' ? 'bg-blue-50 text-blue-700' :
                   item.status === 'APPROVED' ? 'bg-green-50 text-green-700' :
                   item.status === 'REJECTED' ? 'bg-red-50 text-red-600' :
                   'bg-gray-100 text-gray-500'
-                }`}>{item.status}</span>
+                }`}>{t(item.status)}</span>
               </li>
             ))}
           </ul>

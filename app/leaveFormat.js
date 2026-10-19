@@ -1,6 +1,8 @@
 // Leave display helpers, shared by the leave screens. This file is identical in the Staff,
 // Manager and HR portals — change every copy together.
 
+import { getLocale } from './i18n/LanguageProvider';
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Leave dates are shown as DD-MMM-YYYY, e.g. 31-Oct-2026. A YYYY-MM-DD value is a calendar date
@@ -16,6 +18,7 @@ export function formatLeaveDate(value) {
     ymd = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
   }
   const [y, m, day] = ymd.split('-');
+  if (getLocale() === 'zh-CN') return `${y}年${Number(m)}月${Number(day)}日`;
   return `${day}-${MONTHS[Number(m) - 1]}-${y}`;
 }
 

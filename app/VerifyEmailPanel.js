@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import { useT } from './i18n/LanguageProvider';
 
 const COOLDOWN_SECONDS = 60;
 const HR_CONTACT = 'hr.admin@nextan.com.sg';
@@ -10,6 +11,7 @@ const HR_CONTACT = 'hr.admin@nextan.com.sg';
 // button waits 60 seconds between sends so a slow inbox doesn't turn into a flood of emails.
 // `initialStatus`: 'sent' (we just sent it), 'unverified' (nothing sent yet), or 'failed'.
 export default function VerifyEmailPanel({ apiBase, email, initialStatus = 'sent', onBack }) {
+  const { t } = useT();
   const [status, setStatus] = useState(initialStatus);
   const [sending, setSending] = useState(false);
   const [left, setLeft] = useState(initialStatus === 'sent' ? COOLDOWN_SECONDS : 0);
@@ -37,7 +39,7 @@ export default function VerifyEmailPanel({ apiBase, email, initialStatus = 'sent
   };
 
   const waiting = left > 0;
-  const label = sending ? 'Sending…' : waiting ? `Resend in ${left}s` : status === 'failed' ? 'Try again' : 'Resend email';
+  const label = sending ? t('Sending…') : waiting ? t('Resend in {left}s', { left }) : status === 'failed' ? t('Try again') : t('Resend email');
 
   return (
     <div className="space-y-5 text-center" role="status" aria-live="polite">
@@ -48,36 +50,31 @@ export default function VerifyEmailPanel({ apiBase, email, initialStatus = 'sent
       </div>
 
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">Check your email</h2>
+        <h2 className="text-2xl font-bold text-slate-900">{t("Check your email")}</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-500">
-          {status === 'unverified' ? 'This email hasn’t been verified yet. Use the link we sent to' : 'We sent a verification link to'}
+          {status === 'unverified' ? t("This email hasn’t been verified yet. Use the link we sent to") : t("We sent a verification link to")}
           <br />
           <span className="font-semibold text-slate-800 break-all">{email}</span>
         </p>
       </div>
 
       <div className="min-h-[20px] text-sm">
-        {status === 'sent' && <p className="text-emerald-700">Email sent. Check your inbox.</p>}
-        {status === 'failed' && <p className="text-red-500">We couldn’t send the email. Try again, or contact HR.</p>}
+        {status === 'sent' && <p className="text-emerald-700">{t("Email sent. Check your inbox.")}</p>}
+        {status === 'failed' && <p className="text-red-500">{t("We couldn’t send the email. Try again, or contact HR.")}</p>}
       </div>
 
       <button type="button" onClick={resend} disabled={sending || waiting}
         className="w-full rounded-xl py-3.5 text-base font-bold text-white transition disabled:opacity-60"
         style={{ background: '#0c3b8f' }}>
-        {label}
+        {t(label)}
       </button>
 
       <div className="rounded-xl bg-slate-50 px-4 py-3 text-left text-xs leading-relaxed text-slate-500">
-        <p className="mb-1 font-semibold text-slate-700">Can’t find it?</p>
-        <p>
-          Check your Junk or Spam folder for mail from <span className="font-mono">noreply@mail.nextantech.com</span>.
-          Still nothing after 5 minutes? Contact HR at {HR_CONTACT} and they can activate your account.
-        </p>
+        <p className="mb-1 font-semibold text-slate-700">{t("Can’t find it?")}</p>
+        <p>{t("Check your Junk or Spam folder for mail from")}{" "}<span className="font-mono">{t("noreply@mail.nextantech.com")}</span>{t(". Still nothing after 5 minutes? Contact HR at {HR_CONTACT} and they can activate your account.", { HR_CONTACT: HR_CONTACT })}</p>
       </div>
 
-      <button type="button" onClick={onBack} className="text-sm font-semibold text-blue-700 hover:underline">
-        Back to log in
-      </button>
+      <button type="button" onClick={onBack} className="text-sm font-semibold text-blue-700 hover:underline">{t("Back to log in")}</button>
     </div>
   );
 }

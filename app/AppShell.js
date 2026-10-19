@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import SidebarClient from './SidebarClient';
 import UpdateNotice from './UpdateNotice';
+import LanguageWelcome from './i18n/LanguageWelcome';
 import AttendanceReminders from './AttendanceReminders';
 import TopBar from './TopBar';
 
@@ -72,6 +73,7 @@ export default function AppShell({ children }) {
         <SidebarClient isDrawer={isMobile} onClose={() => setSidebarOpen(false)} collapsed={collapsed} />
       )}
 
+      <LanguageWelcome />
       <UpdateNotice sessionKey="staff_portal_user" />
 
       <main

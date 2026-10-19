@@ -53,6 +53,7 @@ export const WHATS_NEW = [
     date: '8 Oct 2026',
     version: '1.0',
     title: 'Remember me on this device',
+    summary: "Stay signed in on this device for 30 days",
     body: 'Tick "Remember me on this device" when you log in and you’ll stay signed in on that browser for 30 days (1 day for HR accounts). Next time, the portal signs you straight in without your password.',
     points: [
       'Log out ends the sign-in but keeps your email filled in, partly hidden (e.g. ju•••@nextan.com.sg)',
@@ -66,6 +67,7 @@ export const WHATS_NEW = [
     id: 4,
     date: '18 Sept 2026',
     title: 'Find anything faster',
+    summary: "The top bar search now works: type a page or action and jump to it",
     body: 'The search bar in the top bar now actually works — type a page name or an action like "clock in" or "budget" and jump straight there.',
     points: [
       'Type a page name (e.g. "leave", "budget") to jump straight there',
@@ -77,6 +79,7 @@ export const WHATS_NEW = [
     id: 3,
     date: '18 Sept 2026',
     title: 'Clearer attendance history',
+    summary: "Recent Entries shows duration and clear overnight labels",
     body: 'Recent Entries now shows how long each session lasted, and overnight shifts get a clear "Ends <date>" label instead of a confusing "+1 day".',
     points: [
       'Each entry now shows the total duration worked',
@@ -88,6 +91,7 @@ export const WHATS_NEW = [
     id: 2,
     date: '17 Sept 2026',
     title: 'Leave calendar improvements',
+    summary: "Hover a marked date to see what it is, and clearer colours",
     body: 'Hover any marked date to see what it is. Approved and pending are now easier to tell apart, and Sick Leave no longer uses an alarming red.',
     points: [
       'Hover any marked date to see what it is',
@@ -99,6 +103,7 @@ export const WHATS_NEW = [
     id: 1,
     date: '16 Sept 2026',
     title: 'Attendance hours fixed',
+    summary: "Fixed a lunch-hour deduction on short shifts",
     body: 'Fixed a bug where an hour was deducted from your worked time even on shifts that never crossed lunch.',
     points: [
       'Fixed a bug that deducted an hour from worked time even on shifts that never crossed lunch',

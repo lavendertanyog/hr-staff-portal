@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import Icon from '../NoticeIcon';
 import { WHATS_NEW, WHATS_NEW_LATEST_ID, WHATS_NEW_SEEN_KEY } from '../whatsNewData';
+import { useT, translateDate } from '../i18n/LanguageProvider';
 
 export default function WhatsNewPage() {
+  const { t } = useT();
   useEffect(() => {
     try { localStorage.setItem(WHATS_NEW_SEEN_KEY, String(WHATS_NEW_LATEST_ID)); } catch {}
   }, []);
@@ -37,9 +39,9 @@ export default function WhatsNewPage() {
   return (
     <div className="p-8">
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">What's new</h1>
-        <p className="mt-2 text-sm text-slate-500">Recent updates to the staff portal.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("What's new")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Recent updates to the staff portal.")}</p>
       </div>
 
       <div>
@@ -47,28 +49,24 @@ export default function WhatsNewPage() {
           <button type="button" onClick={() => setActive(latest)}
             className="w-full text-left rounded-3xl p-6 hover:brightness-[0.98] transition" style={{ background: '#EEF4FF' }}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-block rounded-full px-3 py-1 text-[11px] font-semibold text-white" style={{ background: '#1a3a8f' }}>
-                Latest
-              </span>
+              <span className="inline-block rounded-full px-3 py-1 text-[11px] font-semibold text-white" style={{ background: '#1a3a8f' }}>{t("Latest")}</span>
               {latest.version && (
-                <span className="inline-block rounded-full bg-white px-3 py-1 text-[11px] font-semibold" style={{ color: '#1a3a8f' }}>
-                  Version {latest.version}
-                </span>
+                <span className="inline-block rounded-full bg-white px-3 py-1 text-[11px] font-semibold" style={{ color: '#1a3a8f' }}>{t("Version {version}", { version: latest.version })}</span>
               )}
             </div>
-            <p className="mt-3 text-xl font-semibold text-slate-900">{latest.title}</p>
-            <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{latest.body}</p>
+            <p className="mt-3 text-xl font-semibold text-slate-900">{t(latest.title)}</p>
+            <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{t(latest.body)}</p>
             {chipsFor(latest).length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {chipsFor(latest).map((chip, i) => (
                   <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-medium" style={{ color: '#0c447c' }}>
-                    <Icon name={chip.icon} size={13} />{chip.label}
+                    <Icon name={chip.icon} size={13} />{t(chip.label)}
                   </span>
                 ))}
               </div>
             )}
             <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              {latest.date}{Array.isArray(latest.points) && latest.points.length > 0 ? ` · ${latest.points.length} changes` : ''}
+              {translateDate(latest.date)}{Array.isArray(latest.points) && latest.points.length > 0 ? t(" · {length} changes", { length: latest.points.length }) : ''}
             </p>
           </button>
         )}
@@ -79,14 +77,14 @@ export default function WhatsNewPage() {
               <button type="button" key={item.id} onClick={() => setActive(item)}
                 className="w-full flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 text-left hover:bg-slate-50 transition rounded-lg px-6">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-800">{item.title}</span>
-                  <span className="block truncate text-xs text-slate-500">{entrySummary(item)}</span>
+                  <span className="block text-sm font-medium text-slate-800">{t(item.title)}</span>
+                  <span className="block truncate text-xs text-slate-500">{t(entrySummary(item))}</span>
                 </span>
                 <span className="flex flex-shrink-0 items-center gap-3">
                   {item.version && (
-                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500">Version {item.version}</span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500">{t("Version {version}", { version: item.version })}</span>
                   )}
-                  <span className="text-xs text-slate-400">{item.date}</span>
+                  <span className="text-xs text-slate-400">{translateDate(item.date)}</span>
                 </span>
               </button>
             ))}
@@ -101,10 +99,10 @@ export default function WhatsNewPage() {
             onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-shrink-0 items-start justify-between gap-3 px-6 py-5" style={{ background: '#1a3a8f' }}>
               <div className="min-w-0">
-                <p className="text-xs" style={{ color: '#b5d4f4' }}>{active.version ? `Version ${active.version} · ` : ''}{active.date}</p>
-                <h2 id="whats-new-title" className="mt-0.5 text-base font-semibold leading-snug text-white">{active.title}</h2>
+                <p className="text-xs" style={{ color: '#b5d4f4' }}>{active.version ? t("Version {version} · ", { version: active.version }) : ''}{translateDate(active.date)}</p>
+                <h2 id="whats-new-title" className="mt-0.5 text-base font-semibold leading-snug text-white">{t(active.title)}</h2>
               </div>
-              <button type="button" onClick={() => setActive(null)} aria-label="Close"
+              <button type="button" onClick={() => setActive(null)} aria-label={t("Close")}
                 className="flex-shrink-0 rounded-full p-1 text-white/70 transition hover:text-white">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -120,22 +118,20 @@ export default function WhatsNewPage() {
                     return (
                       <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-slate-800">
                         <span className="mt-0.5 flex-shrink-0" style={{ color: '#1a3a8f' }}><Icon name={p.icon} size={18} /></span>
-                        <span>{p.lead && <span className="font-semibold">{p.lead}</span>}{p.lead && p.text ? ' ' : ''}{p.text}</span>
+                        <span>{p.lead && <span className="font-semibold">{t(p.lead)}</span>}{p.lead && p.text ? ' ' : ''}{t(p.text)}</span>
                       </li>
                     );
                   })}
                 </ul>
               ) : (
-                <p className="text-sm leading-relaxed text-slate-700">{active.body}</p>
+                <p className="text-sm leading-relaxed text-slate-700">{t(active.body)}</p>
               )}
             </div>
 
             <div className="flex-shrink-0 border-t border-slate-100">
               <button type="button" onClick={() => setActive(null)}
                 className="w-full py-4 text-sm font-semibold transition hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50"
-                style={{ color: '#1a3a8f' }}>
-                Close
-              </button>
+                style={{ color: '#1a3a8f' }}>{t("Close")}</button>
             </div>
           </div>
         </div>

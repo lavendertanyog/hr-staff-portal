@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { authHeaders } from '../authSession';
 import RememberedDevices from './RememberedDevices';
+import LanguageSwitch from '../i18n/LanguageSwitch';
+import { useT } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -16,6 +18,7 @@ function formatRole(role) {
 }
 
 export default function ProfilePage() {
+  const { t } = useT();
   const [user, setUser] = useState(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -23,6 +26,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [languageSaved, setLanguageSaved] = useState(false);
   const [devicesRefreshKey, setDevicesRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -38,15 +42,15 @@ export default function ProfilePage() {
     setSuccess('');
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('Please fill in all fields.');
+      setError(t("Please fill in all fields."));
       return;
     }
     if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters.');
+      setError(t("New password must be at least 6 characters."));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match.');
+      setError(t("New passwords do not match."));
       return;
     }
 
@@ -59,18 +63,18 @@ export default function ProfilePage() {
       });
       const payload = await res.json();
       if (!res.ok) {
-        setError(payload.error || 'Failed to change password.');
+        setError(t(payload.error || 'Failed to change password.'));
         setLoading(false);
         return;
       }
-      setSuccess('Password updated successfully. Your other devices have been signed out.');
+      setSuccess(t("Password updated successfully. Your other devices have been signed out."));
       setDevicesRefreshKey((k) => k + 1);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setLoading(false);
     } catch {
-      setError("Unable to reach server.");
+      setError(t("Unable to reach server."));
       setLoading(false);
     }
   };
@@ -83,9 +87,9 @@ export default function ProfilePage() {
     <div className="p-8">
       {/* Header */}
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Account</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Profile</h1>
-        <p className="mt-2 text-sm text-slate-500">Manage your account details, password and remembered devices.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Account")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Profile")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Manage your account details, password and remembered devices.")}</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -105,37 +109,35 @@ export default function ProfilePage() {
             {roles.length > 0 ? roles.map((r) => (
               <span key={r} className="rounded-full px-3 py-1 text-xs font-semibold"
                 style={{ background: '#e8edf8', color: '#1a3a8f' }}>
-                {formatRole(r)}
+                {t(formatRole(r))}
               </span>
             )) : (
-              <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: '#e8edf8', color: '#1a3a8f' }}>Staff</span>
+              <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: '#e8edf8', color: '#1a3a8f' }}>{t("Staff")}</span>
             )}
           </div>
         </div>
 
         {/* Change password card */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Change Password</p>
-          <p className="mt-2 text-sm text-slate-500">
-            If you logged in with a temporary password sent by email, set a new password here.
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Change Password")}</p>
+          <p className="mt-2 text-sm text-slate-500">{t("If you logged in with a temporary password sent by email, set a new password here.")}</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-5 max-w-md">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Current Password</label>
-              <input type="password" placeholder="Enter your current password" value={currentPassword}
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Current Password")}</label>
+              <input type="password" placeholder={t("Enter your current password")} value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">New Password</label>
-              <input type="password" placeholder="Enter a new password" value={newPassword}
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{t("New Password")}</label>
+              <input type="password" placeholder={t("Enter a new password")} value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Confirm New Password</label>
-              <input type="password" placeholder="Confirm your new password" value={confirmPassword}
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Confirm New Password")}</label>
+              <input type="password" placeholder={t("Confirm your new password")} value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
@@ -146,9 +148,19 @@ export default function ProfilePage() {
             <button type="submit" disabled={loading}
               className="rounded-xl font-bold text-white text-sm px-6 py-3 transition"
               style={{ background: '#0c3b8f' }}>
-              {loading ? 'Please wait…' : 'Update Password'}
+              {loading ? t("Please wait…") : t("Update Password")}
             </button>
           </form>
+        </div>
+
+        {/* Language card */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Language")}</p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm text-slate-500">{t("Used for menus, buttons and emails")}</p>
+            <LanguageSwitch size={15} onChange={() => setLanguageSaved(true)} />
+          </div>
+          {languageSaved && <p className="mt-3 text-xs text-emerald-600">{t("Language saved")}</p>}
         </div>
 
         <RememberedDevices refreshKey={devicesRefreshKey} />

@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { formatLeaveDate, openMcFile } from '../leaveFormat';
 import { useConfirm } from '../ConfirmDialog';
+import { useT, getLocale } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 const CATEGORIES = ['ANNUAL', 'EMERGENCY', 'SICK'];
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const monthYearLabel = (year, month) => new Date(year, month, 1).toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' });
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MC_ACCEPT = '.png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf';
 const MC_MAX_BYTES = 5 * 1024 * 1024; // 5MB
@@ -44,9 +46,10 @@ function fileToBase64(file) {
 }
 
 function StatusPill({ status }) {
+  const { t } = useT();
   const s = String(status || '').toUpperCase();
   const map = { APPROVED: 'bg-green-50 text-green-700', REJECTED: 'bg-red-50 text-red-600', PENDING: 'bg-yellow-50 text-yellow-700' };
-  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-600'}`}>{s}</span>;
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-600'}`}>{t(s)}</span>;
 }
 
 const START_COLOR = '#0c3b8f';
@@ -55,6 +58,7 @@ const END_COLOR = '#7c3aed';
 // Small "i" icon that reveals extra hint text on hover — keeps helper copy out of the form's
 // main flow so fields don't read as crowded.
 function InfoTip({ text }) {
+  const { t } = useT();
   return (
     <span className="relative inline-flex group align-middle">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="cursor-help flex-shrink-0">
@@ -63,13 +67,14 @@ function InfoTip({ text }) {
         <line x1="12" y1="8" x2="12.01" y2="8" />
       </svg>
       <span className="pointer-events-none absolute left-1/2 bottom-full -translate-x-1/2 mb-2 w-56 rounded-lg bg-slate-800 px-3 py-2 text-xs font-normal leading-snug text-white opacity-0 shadow-lg transition group-hover:opacity-100 z-20">
-        {text}
+        {t(text)}
       </span>
     </span>
   );
 }
 
 function MiniCalendar({ startDate, endDate, onDateClick, onClear }) {
+  const { t } = useT();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -141,7 +146,7 @@ function MiniCalendar({ startDate, endDate, onDateClick, onClear }) {
           className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 transition">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <p className="text-sm font-bold text-slate-900">{MONTHS[viewMonth]} {viewYear}</p>
+        <p className="text-sm font-bold text-slate-900">{monthYearLabel(viewYear, viewMonth)}</p>
         <button type="button" onClick={nextMonth}
           className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 transition">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -180,23 +185,21 @@ function MiniCalendar({ startDate, endDate, onDateClick, onClear }) {
         {startDate && (
           <p className="flex items-center gap-1.5">
             <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: START_COLOR }} />
-            <span className="font-semibold text-slate-600">Start:</span> {formatLeaveDate(startDate)}
+            <span className="font-semibold text-slate-600">{t("Start:")}</span> {formatLeaveDate(startDate)}
           </p>
         )}
         {endDate && (
           <p className="flex items-center gap-1.5">
             <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: END_COLOR }} />
-            <span className="font-semibold text-slate-600">End:</span> {formatLeaveDate(endDate)}
+            <span className="font-semibold text-slate-600">{t("End:")}</span> {formatLeaveDate(endDate)}
           </p>
         )}
-        {!startDate && <p>Click a date to set start, then click another for end.</p>}
-        {startDate && !endDate && <p>Now click an end date (same day or later).</p>}
+        {!startDate && <p>{t("Click a date to set start, then click another for end.")}</p>}
+        {startDate && !endDate && <p>{t("Now click an end date (same day or later).")}</p>}
         {(startDate || endDate) && (
           <button type="button" onClick={onClear}
             className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            Clear
-          </button>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>{t("Clear")}</button>
         )}
       </div>
     </div>
@@ -221,6 +224,7 @@ function categoryLabel(cat) {
 // approved leave (solid navy) and pending leave (amber outline) on the days they cover, so they
 // can see at a glance what's booked without opening the request form.
 function LeavePreviewCalendar({ requests }) {
+  const { t } = useT();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -267,11 +271,11 @@ function LeavePreviewCalendar({ requests }) {
     if (info?.status === 'APPROVED') {
       circleClass += ' text-white font-bold cursor-default';
       circleStyle = { background: color };
-      title = `${categoryLabel(info.category)} — Approved`;
+      title = t("{category} — Approved", { category: t(categoryLabel(info.category)) });
     } else if (info?.status === 'PENDING') {
       circleClass += ' font-semibold border-2 cursor-default';
       circleStyle = { borderColor: PENDING_COLOR, color: PENDING_COLOR };
-      title = `${categoryLabel(info.category)} — Pending approval`;
+      title = t("{category} — Pending approval", { category: t(categoryLabel(info.category)) });
     } else {
       circleClass += ' text-slate-700';
     }
@@ -286,7 +290,7 @@ function LeavePreviewCalendar({ requests }) {
           className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 transition">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <p className="text-sm font-bold text-slate-900">Leave Calendar — {MONTHS[viewMonth]} {viewYear}</p>
+        <p className="text-sm font-bold text-slate-900">{t("Leave Calendar — {v}", { v: monthYearLabel(viewYear, viewMonth) })}</p>
         <button type="button" onClick={nextMonth}
           className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 transition">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -305,7 +309,7 @@ function LeavePreviewCalendar({ requests }) {
           return (
             <div key={i} className="flex items-center justify-center">
               {day ? (
-                <span style={cell.circleStyle} className={cell.circleClass} title={cell.title}>{day}</span>
+                <span style={cell.circleStyle} className={cell.circleClass} title={t(cell.title)}>{day}</span>
               ) : <span className="w-8 h-8" />}
             </div>
           );
@@ -314,23 +318,18 @@ function LeavePreviewCalendar({ requests }) {
 
       <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: APPROVED_COLOR }} />
-          Annual &amp; Emergency
-        </span>
+          <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: APPROVED_COLOR }} />{t("Annual & Emergency")}</span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: SICK_COLOR }} />
-          Sick
-        </span>
+          <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: SICK_COLOR }} />{t("Sick")}</span>
         <span className="flex items-center gap-1.5 pl-1 border-l border-slate-200">
-          <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 border-2" style={{ borderColor: PENDING_COLOR }} />
-          Pending
-        </span>
+          <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 border-2" style={{ borderColor: PENDING_COLOR }} />{t("Pending")}</span>
       </div>
     </div>
   );
 }
 
 export default function LeavePage() {
+  const { t } = useT();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [requests, setRequests] = useState([]);
@@ -366,7 +365,7 @@ export default function LeavePage() {
   const wasOverBalanceRef = useRef(false);
   useEffect(() => {
     if (overBalance && !wasOverBalanceRef.current) {
-      showToast(`Only ${effectiveRemaining} day${effectiveRemaining === 1 ? '' : 's'} left in your balance — pick a shorter range.`, 'error');
+      showToast(t("Only {effectiveRemaining} day{v} left in your balance — pick a shorter range.", { effectiveRemaining: effectiveRemaining, v: effectiveRemaining === 1 ? '' : 's' }), 'error');
     }
     wasOverBalanceRef.current = overBalance;
   }, [overBalance]);
@@ -422,7 +421,7 @@ export default function LeavePage() {
     if (missing.length > 0) {
       setDateFieldErrors(missing);
       showToast(
-        missing.length === 2 ? 'Please select a start and end date.' : `Please select ${missing[0] === 'startDate' ? 'a start' : 'an end'} date.`,
+        t(missing.length === 2 ? 'Please select a start and end date.' : `Please select ${missing[0] === 'startDate' ? 'a start' : 'an end'} date.`),
         'error'
       );
       return;
@@ -430,7 +429,7 @@ export default function LeavePage() {
     // Annual and emergency leave draw from the same balance and are capped by it; sick leave is
     // never limited, matching the backend's balance calculation (ANNUAL + EMERGENCY only).
     if (overBalance) {
-      showToast(`Only ${effectiveRemaining} day${effectiveRemaining === 1 ? '' : 's'} left in your balance — pick a shorter range.`, 'error');
+      showToast(t("Only {effectiveRemaining} day{v} left in your balance — pick a shorter range.", { effectiveRemaining: effectiveRemaining, v: effectiveRemaining === 1 ? '' : 's' }), 'error');
       return;
     }
     setDateFieldErrors([]);
@@ -441,17 +440,17 @@ export default function LeavePage() {
         await axios.patch(`${API_BASE}/api/v1/leave/${editingId}`, {
           userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
         });
-        showToast('Leave request updated successfully.', 'success');
+        showToast(t("Leave request updated successfully."), 'success');
       } else {
         await axios.post(`${API_BASE}/api/v1/leave/apply`, {
           userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
         });
-        showToast('Leave request submitted successfully.', 'success');
+        showToast(t("Leave request submitted successfully."), 'success');
       }
       setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setEditingId(null);
       setMcFile(null); setMcFileError(''); setEditingOriginalDays(0);
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Submission failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -478,17 +477,17 @@ export default function LeavePage() {
 
   const handleMcUpload = async (leaveId, file) => {
     if (!file || !user?.user_id) return;
-    if (file.size > MC_MAX_BYTES) { showToast('File is too large — max 5MB.', 'error'); return; }
+    if (file.size > MC_MAX_BYTES) { showToast(t("File is too large — max 5MB."), 'error'); return; }
     setUploadingMcId(leaveId);
     try {
       const mcFileUrl = await fileToBase64(file);
       await axios.post(`${API_BASE}/api/v1/leave/${leaveId}/mc-upload`, { userId: user.user_id, mcFileUrl });
-      showToast('MC document uploaded successfully.', 'success');
+      showToast(t("MC document uploaded successfully."), 'success');
       await fetchData(user.user_id);
     } catch (err) {
       const apiError = err.response?.data?.error || 'MC upload failed.';
       const detail = err.response?.data?.detail;
-      showToast(detail ? `${apiError} (${detail})` : apiError, 'error');
+      showToast(t(detail ? `${apiError} (${detail})` : apiError), 'error');
     }
     finally { setUploadingMcId(null); }
   };
@@ -516,8 +515,8 @@ export default function LeavePage() {
   const handleCancelLeave = async (leaveId) => {
     if (!user?.user_id) return;
     const confirmed = await confirm({
-      title: 'Delete leave request',
-      message: 'Delete this pending leave request?',
+      title: t("Delete leave request"),
+      message: t("Delete this pending leave request?"),
       confirmLabel: 'Delete',
       danger: true,
     });
@@ -527,19 +526,19 @@ export default function LeavePage() {
       await axios.delete(`${API_BASE}/api/v1/leave/${leaveId}`, {
         data: { userId: user.user_id },
       });
-      showToast('Leave request deleted successfully.', 'success');
+      showToast(t("Leave request deleted successfully."), 'success');
       await fetchData(user.user_id);
     } catch (err) {
-      showToast(err.response?.data?.error || 'Cancellation failed.', 'error');
+      showToast(t(err.response?.data?.error || 'Cancellation failed.'), 'error');
     }
   };
 
   return (
     <div className="p-4 sm:p-8 overflow-x-hidden">
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Leave</h1>
-        <p className="mt-2 text-sm text-slate-500">Apply for leave and track your request history.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Leave")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Apply for leave and track your request history.")}</p>
       </div>
 
       {confirmDialog}
@@ -549,7 +548,7 @@ export default function LeavePage() {
           <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
             toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
           }`}>
-            {toast.text}
+            {t(toast.text)}
           </div>
         </div>
       )}
@@ -577,48 +576,43 @@ export default function LeavePage() {
                   <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Annual &amp; Emergency Leave</p>
-                        <p className="mt-1 text-xs text-slate-400">Shared balance &middot; {balance ? balance.totalDays : '—'} days</p>
+                        <p className="text-sm font-semibold text-slate-900">{t("Annual & Emergency Leave")}</p>
+                        <p className="mt-1 text-xs text-slate-400">{t("Shared balance ·")}{" "}{balance ? balance.totalDays : '—'}{" "}{t("days")}</p>
                       </div>
                       <span className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: '#E6F1FB', color: '#0C447C' }}>
-                        {balance ? balance.remainingDays : '—'} left
-                      </span>
+                        {balance ? balance.remainingDays : '—'}{" "}{t("left")}</span>
                     </div>
                     <p className="mt-4 text-3xl font-semibold text-slate-950 leading-none">
-                      {balance ? balance.remainingDays : '—'}<span className="text-sm font-normal text-slate-400"> / {balance ? balance.totalDays : '—'} days</span>
+                      {balance ? balance.remainingDays : '—'}<span className="text-sm font-normal text-slate-400"> / {balance ? balance.totalDays : '—'}{" "}{t("days")}</span>
                     </p>
                     <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden flex">
                       <div className="h-full" style={{ width: `${annualUsedPct}%`, background: START_COLOR }} />
                       <div className="h-full" style={{ width: `${annualPendingPct}%`, background: '#FAEEDA' }} />
                     </div>
                     <div className="mt-2.5 flex gap-4 text-xs text-slate-500">
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: START_COLOR }} />{annualUsed} used</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#FAEEDA' }} />{annualPending} pending</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: START_COLOR }} />{t("{annualUsed} used", { annualUsed: annualUsed })}</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#FAEEDA' }} />{t("{annualPending} pending", { annualPending: annualPending })}</span>
                     </div>
-                    <p className="mt-3 text-xs text-slate-400">
-                      Annual: {annualStats.used} used, {annualStats.pending} pending &middot; Emergency: {emergencyStats.used} used, {emergencyStats.pending} pending
-                    </p>
+                    <p className="mt-3 text-xs text-slate-400">{t("Annual: {used} used, {pending} pending · Emergency: {used2} used, {pending2} pending", { used: annualStats.used, pending: annualStats.pending, used2: emergencyStats.used, pending2: emergencyStats.pending })}</p>
                   </div>
 
                   <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Sick Leave</p>
-                        <p className="mt-1 text-xs text-slate-400">No balance cap</p>
+                        <p className="text-sm font-semibold text-slate-900">{t("Sick Leave")}</p>
+                        <p className="mt-1 text-xs text-slate-400">{t("No balance cap")}</p>
                       </div>
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: '#E1F5EE', color: '#085041' }}>
-                        {sickStats.pending} pending
-                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: '#E1F5EE', color: '#085041' }}>{t("{pending} pending", { pending: sickStats.pending })}</span>
                     </div>
                     <p className="mt-4 text-3xl font-semibold text-slate-950 leading-none">
-                      {sickStats.used}<span className="text-sm font-normal text-slate-400"> days applied</span>
+                      {sickStats.used}<span className="text-sm font-normal text-slate-400">{t("days applied")}</span>
                     </p>
                     <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden flex">
                       <div className="h-full" style={{ width: `${sickUsedPct}%`, background: SICK_COLOR }} />
                       <div className="h-full" style={{ width: `${sickPendingPct}%`, background: '#FAEEDA' }} />
                     </div>
                     <div className="mt-2.5 flex gap-4 text-xs text-slate-500">
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: SICK_COLOR }} />{sickStats.used} applied this year</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: SICK_COLOR }} />{t("{used} applied this year", { used: sickStats.used })}</span>
                     </div>
                   </div>
                 </>
@@ -635,17 +629,15 @@ export default function LeavePage() {
           <div className="mb-4">
             <button onClick={() => { setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setEditingOriginalDays(0); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-              style={{ background: '#64748b' }}>
-              ← Back
-            </button>
+              style={{ background: '#64748b' }}>{t("← Back")}</button>
           </div>
           <div className="mb-8 grid gap-6 lg:grid-cols-2">
             {/* Form card */}
             <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm">
-              {editingId && <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-3">Edit Leave Request</p>}
+              {editingId && <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-3">{t("Edit Leave Request")}</p>}
               <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Leave Type</label>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">{t("Leave Type")}</label>
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                   {CATEGORIES.map((c) => {
                     const selected = category === c;
@@ -657,7 +649,7 @@ export default function LeavePage() {
                           {selected && <span className="w-2 h-2 rounded-full bg-[#0c3b8f]" />}
                         </span>
                         <span className={`text-sm ${selected ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>
-                          {c.charAt(0) + c.slice(1).toLowerCase()}
+                          {t(c === 'ALL' ? 'All' : c.charAt(0) + c.slice(1).toLowerCase())}
                         </span>
                       </label>
                     );
@@ -671,9 +663,7 @@ export default function LeavePage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
-                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: START_COLOR }} />
-                    Start Date
-                    <InfoTip text="Type dates directly, or click them on the calendar." />
+                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: START_COLOR }} />{t("Start Date")}{" "}<InfoTip text="Type dates directly, or click them on the calendar." />
                   </label>
                   <input type="date" value={startDate}
                     onChange={(e) => { setStartDate(e.target.value); setDateFieldErrors([]); }}
@@ -684,9 +674,7 @@ export default function LeavePage() {
                 </div>
                 <div>
                   <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
-                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: END_COLOR }} />
-                    End Date
-                  </label>
+                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: END_COLOR }} />{t("End Date")}</label>
                   <input type="date" value={endDate} min={startDate || undefined}
                     onChange={(e) => { setEndDate(e.target.value); setDateFieldErrors([]); }}
                     style={
@@ -701,41 +689,34 @@ export default function LeavePage() {
               </div>
 
               {leaveDayCount && (
-                <p className="-mt-2 text-xs font-semibold" style={{ color: overBalance ? '#DC2626' : START_COLOR }}>
-                  {leaveDayCount.total} day{leaveDayCount.total === 1 ? '' : 's'} selected
-                  <span className="font-normal text-slate-400"> · {leaveDayCount.working} working day{leaveDayCount.working === 1 ? '' : 's'}</span>
+                <p className="-mt-2 text-xs font-semibold" style={{ color: overBalance ? '#DC2626' : START_COLOR }}>{t(leaveDayCount.total === 1 ? "{total} day selected" : "{total} days selected", { total: leaveDayCount.total })}{" "}<span className="font-normal text-slate-400">{t(leaveDayCount.working === 1 ? "· {working} working day" : "· {working} working days", { working: leaveDayCount.working })}</span>
                 </p>
               )}
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Reason <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Brief reason for leave…"
+                <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Reason")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
+                <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Brief reason for leave…")}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
 
               {category === 'SICK' && (
                 <div>
-                  <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
-                    MC Upload <span className="font-normal text-slate-400">(optional)</span>
+                  <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">{t("MC Upload")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span>
                     <InfoTip text="You can also upload this later. Accepts PNG, JPG, or PDF — max 5MB." />
                   </label>
                   <input type="file" accept={MC_ACCEPT} onChange={(e) => handleMcFileChange(e.target.files?.[0] || null)}
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#EEF4FF] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#0c3b8f]" />
                   {editingMcUrl && !mcFile && (
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      MC already attached.{' '}
-                      <button type="button" onClick={() => openMcFile(editingMcUrl)} className="font-semibold text-[#0c3b8f] hover:underline">View current MC</button>
-                      {' '}· Choose a file only if you want to replace it.
-                    </p>
+                    <p className="mt-1.5 text-xs text-slate-500">{t("MC already attached.")}{" "}<button type="button" onClick={() => openMcFile(editingMcUrl)} className="font-semibold text-[#0c3b8f] hover:underline">{t("View current MC")}</button>{t("· Choose a file only if you want to replace it.")}</p>
                   )}
-                  {mcFile && <p className="mt-1.5 text-xs font-medium text-[#0c3b8f]">Selected: {mcFile.name}{editingMcUrl ? ' (replaces the current MC)' : ''}</p>}
+                  {mcFile && <p className="mt-1.5 text-xs font-medium text-[#0c3b8f]">{t("Selected: {name}", { name: mcFile.name })}{editingMcUrl ? t(" (replaces the current MC)") : ''}</p>}
                   {mcFileError && <p className="mt-1.5 text-xs font-medium text-red-600">{mcFileError}</p>}
                 </div>
               )}
 
               <button type="submit" disabled={submitting || overBalance}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                {submitting ? 'Please wait…' : editingId ? 'Save changes' : 'Submit'}
+                {submitting ? t("Please wait…") : editingId ? t("Save changes") : t("Submit")}
               </button>
             </form>
           </div>
@@ -753,13 +734,11 @@ export default function LeavePage() {
 
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Leave History")}</p>
           {!showForm && (
             <button onClick={() => { setShowForm(true); setEditingId(null); setEditingOriginalDays(0); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
-              style={{ background: '#0c3b8f' }}>
-              + Apply for Leave
-            </button>
+              style={{ background: '#0c3b8f' }}>{t("+ Apply for Leave")}</button>
           )}
         </div>
 
@@ -771,36 +750,36 @@ export default function LeavePage() {
                 className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                   leaveCategoryFilter === c ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}>
-                {c.charAt(0) + c.slice(1).toLowerCase()}
+                {t(c === 'ALL' ? 'All' : c.charAt(0) + c.slice(1).toLowerCase())}
               </button>
             ))}
           </div>
         </div>
 
         {loading ? (
-          <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
+          <p className="px-6 py-8 text-sm text-slate-400 text-center">{t("Loading…")}</p>
         ) : filteredRequests.length === 0 ? (
           <p className="px-6 py-8 text-sm text-slate-400 text-center">
-            {activeRequests.length === 0 ? 'No leave requests yet.' : 'No leave requests match this filter.'}
+            {activeRequests.length === 0 ? t("No leave requests yet.") : t("No leave requests match this filter.")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                 <tr>
-                  <th className="px-6 py-4 whitespace-nowrap">Category</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Start</th>
-                  <th className="px-6 py-4 whitespace-nowrap">End</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Remarks</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Submitted</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Action</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("Category")}</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("Start")}</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("End")}</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("Status")}</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("Remarks")}</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("Submitted")}</th>
+                  <th className="px-6 py-4 whitespace-nowrap">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {filteredRequests.map((r) => (
                   <tr key={r.leave_id} className="hover:bg-slate-50 transition">
-                    <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.category}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{t(r.category)}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatLeaveDate(String(r.start_date).slice(0, 10))}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatLeaveDate(String(r.end_date).slice(0, 10))}</td>
                     <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.workflow_status} /></td>
@@ -811,24 +790,18 @@ export default function LeavePage() {
                         {r.workflow_status === 'PENDING' && (
                           <>
                             <button type="button" onClick={() => handleEditClick(r)}
-                              className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">
-                              Edit
-                            </button>
+                              className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">{t("Edit")}</button>
                             <button type="button" onClick={() => handleCancelLeave(r.leave_id)}
-                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
-                              Delete
-                            </button>
+                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">{t("Delete")}</button>
                           </>
                         )}
                         {r.category === 'SICK' && (
                           r.mc_file_url ? (
                             <button type="button" onClick={() => openMcFile(r.mc_file_url)}
-                              className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
-                              View MC
-                            </button>
+                              className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">{t("View MC")}</button>
                           ) : (
                             <label className={`rounded-xl border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 cursor-pointer ${uploadingMcId === r.leave_id ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                              {uploadingMcId === r.leave_id ? 'Uploading…' : 'Upload MC'}
+                              {uploadingMcId === r.leave_id ? t("Uploading…") : t("Upload MC")}
                               <input type="file" accept={MC_ACCEPT} className="hidden" disabled={uploadingMcId === r.leave_id}
                                 onChange={(e) => { const f = e.target.files?.[0] || null; e.target.value = ''; if (f) handleMcUpload(r.leave_id, f); }} />
                             </label>

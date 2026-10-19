@@ -5,6 +5,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { authHeaders, getSessionToken } from '../authSession';
+import { useT, getLocale } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -16,10 +17,11 @@ const PORTAL_NAMES = {
 };
 
 function formatDate(value) {
-  return new Date(value).toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(value).toLocaleDateString(getLocale(), { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function RememberedDevices({ refreshKey }) {
+  const { t } = useT();
   const [devices, setDevices] = useState([]);
   const [status, setStatus] = useState('loading'); // 'loading' | 'ready' | 'signed-out' | 'error'
   const [busyId, setBusyId] = useState('');
@@ -55,11 +57,11 @@ export default function RememberedDevices({ refreshKey }) {
         body: JSON.stringify(body),
       });
       const payload = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(payload.error || 'Could not sign out the device.', 'error'); return; }
+      if (!res.ok) { showToast(t(payload.error || 'Could not sign out the device.'), 'error'); return; }
       showToast(doneText);
       await load();
     } catch {
-      showToast('Unable to reach server.', 'error');
+      showToast(t("Unable to reach server."), 'error');
     } finally {
       setBusyId('');
     }
@@ -71,26 +73,24 @@ export default function RememberedDevices({ refreshKey }) {
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Remembered Devices</p>
-          <p className="mt-2 text-sm text-slate-500">
-            Devices where you ticked “Remember me on this device”. They sign in without a password until the date shown.
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Remembered Devices")}</p>
+          <p className="mt-2 text-sm text-slate-500">{t("Devices where you ticked “Remember me on this device”. They sign in without a password until the date shown.")}</p>
         </div>
         {status === 'ready' && others.length > 0 && (
           <button type="button" disabled={Boolean(busyId)}
             onClick={() => revoke({ allOthers: true }, 'all', 'Signed out of all other devices.')}
             className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-            {busyId === 'all' ? 'Signing out…' : 'Sign out all other devices'}
+            {busyId === 'all' ? t("Signing out…") : t("Sign out all other devices")}
           </button>
         )}
       </div>
 
       <div className="mt-5">
-        {status === 'loading' && <p className="text-sm text-slate-400">Loading…</p>}
-        {status === 'signed-out' && <p className="text-sm text-slate-400">Log out and log in again to see your remembered devices.</p>}
-        {status === 'error' && <p className="text-sm text-slate-400">Could not load your devices. Refresh the page to try again.</p>}
+        {status === 'loading' && <p className="text-sm text-slate-400">{t("Loading…")}</p>}
+        {status === 'signed-out' && <p className="text-sm text-slate-400">{t("Log out and log in again to see your remembered devices.")}</p>}
+        {status === 'error' && <p className="text-sm text-slate-400">{t("Could not load your devices. Refresh the page to try again.")}</p>}
         {status === 'ready' && devices.length === 0 && (
-          <p className="text-sm text-slate-400">No remembered devices. Tick “Remember me on this device” when you log in to add one.</p>
+          <p className="text-sm text-slate-400">{t("No remembered devices. Tick “Remember me on this device” when you log in to add one.")}</p>
         )}
         {status === 'ready' && devices.length > 0 && (
           <ul className="divide-y divide-slate-100">
@@ -101,20 +101,18 @@ export default function RememberedDevices({ refreshKey }) {
                     {d.device_label || 'Unknown device'}
                     <span className="font-normal text-slate-500"> · {PORTAL_NAMES[d.portal] || 'Portal'}</span>
                     {d.is_current && (
-                      <span className="ml-2 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: '#E8EEFF', color: '#1a3a8f' }}>This device</span>
+                      <span className="ml-2 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: '#E8EEFF', color: '#1a3a8f' }}>{t("This device")}</span>
                     )}
                   </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Last signed in {formatDate(d.created_at)} · Remembered until {formatDate(d.expires_at)}
-                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{t("Last signed in {formatDate} · Remembered until {formatDate2}", { formatDate: formatDate(d.created_at), formatDate2: formatDate(d.expires_at) })}</p>
                 </div>
                 {d.is_current ? (
-                  <p className="text-xs text-slate-400">Use Log out to sign out here</p>
+                  <p className="text-xs text-slate-400">{t("Use Log out to sign out here")}</p>
                 ) : (
                   <button type="button" disabled={Boolean(busyId)}
                     onClick={() => revoke({ sessionId: d.session_id }, d.session_id, 'Device signed out.')}
                     className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-                    {busyId === d.session_id ? 'Signing out…' : 'Sign out'}
+                    {busyId === d.session_id ? t("Signing out…") : t("Sign out")}
                   </button>
                 )}
               </li>
@@ -127,7 +125,7 @@ export default function RememberedDevices({ refreshKey }) {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
           <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
             toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
-          }`}>{toast.text}</div>
+          }`}>{t(toast.text)}</div>
         </div>
       )}
     </div>

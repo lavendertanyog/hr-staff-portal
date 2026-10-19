@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { savePendingClockOut, readPendingClockOut, clearPendingClockOut, sendPendingClockOut, formatClockOutTime } from '../pendingClockOut';
+import { useT, getLocale } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -28,6 +29,7 @@ const GENERAL = 'GENERAL';
 
 // Searchable project picker: type to filter, or just pick from the list — replaces a plain <select>
 function ProjectSearchSelect({ value, onChange, projects, placeholder, error, compact }) {
+  const { t } = useT();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -73,7 +75,7 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder, error, co
         {open && (
           <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
             {filtered.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-slate-400">No matching projects</p>
+              <p className="px-4 py-3 text-sm text-slate-400">{t("No matching projects")}</p>
             ) : filtered.map((o) => (
               <button key={o.code} type="button"
                 onClick={() => { onChange(o.code); setOpen(false); setQuery(''); }}
@@ -95,6 +97,7 @@ function ProjectSearchSelect({ value, onChange, projects, placeholder, error, co
 // completion at 100%, same as typing 100 into Progress tracking) and "Delete project", both
 // occasional enough not to need their own permanent icon buttons.
 function AllocationActionsMenu({ onComplete, completeSubtext, onDelete }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -108,7 +111,7 @@ function AllocationActionsMenu({ onComplete, completeSubtext, onDelete }) {
 
   return (
     <div ref={ref} className="relative flex-shrink-0">
-      <button type="button" title="More actions" onClick={() => setOpen((o) => !o)}
+      <button type="button" title={t("More actions")} onClick={() => setOpen((o) => !o)}
         className={`flex items-center justify-center w-6 h-6 rounded-full transition ${open ? 'bg-slate-200 text-slate-700' : 'text-slate-400 hover:bg-slate-200 hover:text-slate-700'}`}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" />
@@ -123,7 +126,7 @@ function AllocationActionsMenu({ onComplete, completeSubtext, onDelete }) {
                 <circle cx="12" cy="12" r="9" /><path d="M9 12l2 2 4-4" />
               </svg>
               <span>
-                <span className="block text-xs font-semibold text-emerald-800">Mark as completed</span>
+                <span className="block text-xs font-semibold text-emerald-800">{t("Mark as completed")}</span>
                 <span className="block text-[11px] text-emerald-700 mt-0.5">{completeSubtext}</span>
               </span>
             </button>
@@ -135,8 +138,8 @@ function AllocationActionsMenu({ onComplete, completeSubtext, onDelete }) {
                 <path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
               </svg>
               <span>
-                <span className="block text-xs font-semibold text-red-800">Delete project</span>
-                <span className="block text-[11px] text-red-700 mt-0.5">Re-splits remaining time across the rest</span>
+                <span className="block text-xs font-semibold text-red-800">{t("Delete project")}</span>
+                <span className="block text-[11px] text-red-700 mt-0.5">{t("Re-splits remaining time across the rest")}</span>
               </span>
             </button>
           )}
@@ -149,8 +152,9 @@ function AllocationActionsMenu({ onComplete, completeSubtext, onDelete }) {
 // Small round pencil affordance next to any field that can be edited in place — used for
 // Project, Budget/Hours, and Progress Tracking, so each editable area is marked consistently.
 function EditIconButton({ onClick, title }) {
+  const { t } = useT();
   return (
-    <button type="button" title={title} onClick={onClick}
+    <button type="button" title={t(title)} onClick={onClick}
       className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 20h9" />
@@ -162,13 +166,14 @@ function EditIconButton({ onClick, title }) {
 
 // Paired confirm (check) / cancel (x) buttons shown while a field is being edited in place.
 function InlineConfirmCancel({ onConfirm, onCancel }) {
+  const { t } = useT();
   return (
     <>
-      <button type="button" title="Save" onClick={onConfirm}
+      <button type="button" title={t("Save")} onClick={onConfirm}
         className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#0c3b8f] text-white hover:bg-[#0a2f70] transition">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
       </button>
-      <button type="button" title="Cancel" onClick={onCancel}
+      <button type="button" title={t("Cancel")} onClick={onCancel}
         className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 transition">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
       </button>
@@ -252,6 +257,7 @@ function showBrowserNotification(title, body) {
 }
 
 export default function AttendancePage() {
+  const { t } = useT();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -512,7 +518,7 @@ export default function AttendancePage() {
     if (!String(progressEditDraft).trim()) return; // left blank — nothing to change
     const pct = parseFloat(progressEditDraft);
     if (isNaN(pct) || pct < 0 || pct > 100) {
-      showToast('Enter a value between 0 and 100.', 'error');
+      showToast(t("Enter a value between 0 and 100."), 'error');
       return;
     }
     if (pct === getLatestProgressPct(projectCode)) return;
@@ -522,7 +528,7 @@ export default function AttendancePage() {
       });
       fetchProgressHistory();
     } catch (e) {
-      showToast(e.response?.data?.error || 'Failed to update progress.', 'error');
+      showToast(t(e.response?.data?.error || 'Failed to update progress.'), 'error');
     }
   };
 
@@ -542,9 +548,9 @@ export default function AttendancePage() {
         });
       }
       fetchProgressHistory();
-      showToast('Marked as completed.', 'success');
+      showToast(t("Marked as completed."), 'success');
     } catch (e) {
-      showToast(e.response?.data?.error || 'Failed to mark as completed.', 'error');
+      showToast(t(e.response?.data?.error || 'Failed to mark as completed.'), 'error');
     } finally {
       setProgressSubmitting((prev) => ({ ...prev, [allocationId]: false }));
     }
@@ -556,7 +562,7 @@ export default function AttendancePage() {
     const current = getLatestProgressPct(projectCode);
     const cap = Math.max(0.1, 100 - current);
     if (!raw || isNaN(pct) || pct <= 0 || pct > cap) {
-      showToast(`Enter a valid amount to add (0–${cap.toFixed(0)}%).`, 'error');
+      showToast(t("Enter a valid amount to add (0–{v}%).", { v: cap.toFixed(0) }), 'error');
       return;
     }
     setProgressSubmitting((prev) => ({ ...prev, [allocationId]: true }));
@@ -566,9 +572,9 @@ export default function AttendancePage() {
       });
       setProgressInputs((prev) => ({ ...prev, [allocationId]: '' }));
       fetchProgressHistory();
-      showToast('Progress logged.', 'success');
+      showToast(t("Progress logged."), 'success');
     } catch (e) {
-      showToast(e.response?.data?.error || 'Failed to log progress.', 'error');
+      showToast(t(e.response?.data?.error || 'Failed to log progress.'), 'error');
     } finally {
       setProgressSubmitting((prev) => ({ ...prev, [allocationId]: false }));
     }
@@ -659,7 +665,7 @@ export default function AttendancePage() {
   const handleClockIn = async () => {
     if (!user?.user_id) return;
     if (projectRows.some((r) => !r.code)) { setProjectRowsValidated(true); return; }
-    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setProjectRowsValidated(true); showMsg('Please enter valid hours for every project.', 'error'); return; }
+    if (projectRows.some((r) => !(parseFloat(r.hours) > 0))) { setProjectRowsValidated(true); showMsg(t("Please enter valid hours for every project."), 'error'); return; }
     const allocationsPayload = projectRows.map((r) => ({ projectCode: r.code, allocatedHours: parseFloat(r.hours) }));
 
     setLoading(true);
@@ -685,8 +691,8 @@ export default function AttendancePage() {
       sessionStorage.setItem('staff_attendance_id', id);
       sessionStorage.setItem('staff_attendance_project', firstCode);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
-      showMsg('Clocked in successfully.', 'success');
-    } catch (e) { showMsg(e.response?.data?.error || 'Clock-in failed.', 'error'); }
+      showMsg(t("Clocked in successfully."), 'success');
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Clock-in failed.'), 'error'); }
     finally { setLoading(false); }
   };
 
@@ -712,7 +718,7 @@ export default function AttendancePage() {
           await new Promise((r) => setTimeout(r, 1000));
           continue;
         }
-        showToast(e.response?.data?.error || 'Failed to save description.', 'error');
+        showToast(t(e.response?.data?.error || 'Failed to save description.'), 'error');
         return false;
       }
     }
@@ -731,7 +737,7 @@ export default function AttendancePage() {
     if (generalAlloc && !(generalAlloc.description || '').trim()) {
       setClockDescriptionValidated(true);
       focusAllocationCard(generalAlloc.allocation_id, 'description');
-      showMsg('Add a description for your General work before clocking out.', 'error');
+      showMsg(t("Add a description for your General work before clocking out."), 'error');
       return;
     }
 
@@ -749,7 +755,7 @@ export default function AttendancePage() {
     });
     if (missingProgress) {
       focusAllocationCard(missingProgress.allocation_id, 'progress');
-      showMsg(`Add today's completion % for ${projectLabel(missingProgress.project_code, projects)} before clocking out.`, 'error');
+      showMsg(t("Add today's completion % for {projectLabel} before clocking out.", { projectLabel: projectLabel(missingProgress.project_code, projects) }), 'error');
       return;
     }
 
@@ -769,13 +775,13 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
-      showToast('Clocked out successfully.', 'success');
+      showToast(t("Clocked out successfully."), 'success');
       refreshPastSessions();
     } else if (result.retry) {
-      showMsg(`We couldn't reach the server. Your clock-out at ${formatClockOutTime(clickedAt)} is saved and will be sent automatically when you are back online, so you can close this tab.`, 'error');
+      showMsg(t("We couldn't reach the server. Your clock-out at {formatClockOutTime} is saved and will be sent automatically when you are back online, so you can close this tab.", { formatClockOutTime: formatClockOutTime(clickedAt) }), 'error');
     } else {
       clearPendingClockOut();
-      showMsg(result.error || 'Clock-out failed.', 'error');
+      showMsg(t(result.error || 'Clock-out failed.'), 'error');
     }
     setLoading(false);
   };
@@ -789,8 +795,8 @@ export default function AttendancePage() {
       });
       setAllocations(res.data?.data?.allocations || []);
       setAddProjectOpen(false); setAddProjectCode('');
-      showMsg('Project added — remaining time has been re-split.', 'success');
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to add project.', 'error'); }
+      showMsg(t("Project added — remaining time has been re-split."), 'success');
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Failed to add project.'), 'error'); }
     finally { setAddProjectBusy(false); }
   };
 
@@ -800,7 +806,7 @@ export default function AttendancePage() {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/reopen`, { userId: user.user_id });
       setAllocations(res.data?.data?.allocations || []);
       notifiedRef.current.delete(allocationId);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to reopen project.', 'error'); }
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Failed to reopen project.'), 'error'); }
   };
 
   // General (non-project) work has no completion % to log, so it's marked done directly —
@@ -812,7 +818,7 @@ export default function AttendancePage() {
       const res = await axios.post(`${API_BASE}/api/v1/attendance/allocations/${allocationId}/complete`, { userId: user.user_id });
       setAllocations(res.data?.data?.allocations || []);
       notifiedRef.current.delete(allocationId);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to mark as completed.', 'error'); }
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Failed to mark as completed.'), 'error'); }
   };
 
   // Opens the whole card for editing — project, hours, and (if any) the latest logged progress %
@@ -835,7 +841,7 @@ export default function AttendancePage() {
         userId: user.user_id, projectCode: projectDraft,
       });
       setAllocs((prev) => prev.map((x) => (x.allocation_id === a.allocation_id ? res.data?.data : x)));
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update project.', 'error'); }
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Failed to update project.'), 'error'); }
   };
 
   // Plan (allocated_hours) for an open block, or a correction (corrected_hours) for a completed one.
@@ -849,7 +855,7 @@ export default function AttendancePage() {
       const res = await axios.patch(`${API_BASE}/api/v1/attendance/allocations/${a.allocation_id}`, payload);
       setAllocs((prev) => prev.map((x) => (x.allocation_id === a.allocation_id ? res.data?.data : x)));
       notifiedRef.current.delete(a.allocation_id);
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to update hours.', 'error'); }
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Failed to update hours.'), 'error'); }
   };
 
   // Commits every editable field on the card in one action, then closes edit mode.
@@ -863,15 +869,15 @@ export default function AttendancePage() {
 
   const handleDeleteAllocation = async (allocationId, source, currentList) => {
     if (!user?.user_id) return;
-    if (currentList.length <= 1) { showMsg("Can't delete the only project on this entry.", 'error'); return; }
-    if (!window.confirm('Delete this project from the entry? Its hours will be re-split across the remaining projects.')) return;
+    if (currentList.length <= 1) { showMsg(t("Can't delete the only project on this entry."), 'error'); return; }
+    if (!window.confirm(t("Delete this project from the entry? Its hours will be re-split across the remaining projects."))) return;
     const setTarget = source === 'manual' ? setManualAllocations : setAllocations;
     try {
       const res = await axios.delete(`${API_BASE}/api/v1/attendance/allocations/${allocationId}`, { data: { userId: user.user_id } });
       setTarget(res.data?.data?.allocations || []);
       notifiedRef.current.delete(allocationId);
-      showMsg('Project removed.', 'success');
-    } catch (e) { showMsg(e.response?.data?.error || 'Failed to delete project.', 'error'); }
+      showMsg(t("Project removed."), 'success');
+    } catch (e) { showMsg(t(e.response?.data?.error || 'Failed to delete project.'), 'error'); }
   };
 
   // Manual Entry: a single-shot, already-finished block of work. The end time defaults to the
@@ -973,34 +979,34 @@ export default function AttendancePage() {
     if (!editEndTime) missing.push('endTime');
     if (missing.length > 0) {
       setEditFieldErrors(missing);
-      showToast('Please fill in the highlighted field(s).', 'error');
+      showToast(t("Please fill in the highlighted field(s)."), 'error');
       return;
     }
     const orderError = dateTimeOrderError(editStartDate, editStartTime, editEndDate, editEndTime);
     if (orderError) {
       setEditFieldErrors([orderError === 'date' ? 'endDate' : 'endTime']);
-      showToast(orderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
+      showToast(t(orderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.'), 'error');
       return;
     }
     const clockInTime = combineDateTime(editStartDate, editStartTime);
     const clockOutTime = combineDateTime(editEndDate, editEndTime);
     if (new Date(clockInTime) > new Date()) {
       setEditFieldErrors(['startDate', 'startTime']);
-      showToast('You can\'t select a future date.', 'error'); return;
+      showToast(t("You can't select a future date."), 'error'); return;
     }
     let allocationsPayload;
     if (editProjectRows) {
       if (editProjectRows.some((r) => !r.code)) { setEditRowsValidated(true); return; }
       if (editProjectRows.some((r) => !(parseFloat(r.hours) > 0))) {
         setEditRowsValidated(true);
-        showToast('Please enter valid hours for every project.', 'error');
+        showToast(t("Please enter valid hours for every project."), 'error');
         return;
       }
       const windowHours = (new Date(clockOutTime) - new Date(clockInTime)) / 3600000;
       const totalRowHours = editProjectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
       if (Math.abs(totalRowHours - windowHours) > 0.05) {
         setEditFieldErrors(['endDate', 'endTime']);
-        showToast(`Project hours (${totalRowHours.toFixed(2)}h) don't match the time entered (${windowHours.toFixed(2)}h) — adjust one to match the other.`, 'error');
+        showToast(t("Project hours ({v}h) don't match the time entered ({v2}h) — adjust one to match the other.", { v: totalRowHours.toFixed(2), v2: windowHours.toFixed(2) }), 'error');
         return;
       }
       allocationsPayload = editProjectRows.map((r) => ({ projectCode: r.code, hours: parseFloat(r.hours) }));
@@ -1011,11 +1017,11 @@ export default function AttendancePage() {
       await axios.patch(`${API_BASE}/api/v1/attendance/${editingEntry.attendance_id}/edit-times`, {
         userId: user.user_id, clockInTime, clockOutTime, allocations: allocationsPayload,
       });
-      showToast('Entry updated successfully.', 'success');
+      showToast(t("Entry updated successfully."), 'success');
       setEditingEntry(null);
       refreshPastSessions();
     } catch (e2) {
-      showToast(e2.response?.data?.error || 'Failed to update entry.', 'error');
+      showToast(t(e2.response?.data?.error || 'Failed to update entry.'), 'error');
     } finally {
       setEditSubmitting(false);
     }
@@ -1029,11 +1035,11 @@ export default function AttendancePage() {
     setDeleteSubmitting(true);
     try {
       await axios.delete(`${API_BASE}/api/v1/attendance/${deleteConfirmEntry.attendance_id}`, { data: { userId: user.user_id } });
-      showToast('Entry deleted.', 'success');
+      showToast(t("Entry deleted."), 'success');
       setDeleteConfirmEntry(null);
       refreshPastSessions();
     } catch (e2) {
-      showToast(e2.response?.data?.error || 'Failed to delete entry.', 'error');
+      showToast(t(e2.response?.data?.error || 'Failed to delete entry.'), 'error');
     } finally {
       setDeleteSubmitting(false);
     }
@@ -1140,7 +1146,7 @@ export default function AttendancePage() {
       const data = res.data?.data;
       const totalHours = (data?.allocations || []).reduce((sum, a) => sum + Number(a.allocated_hours || 0), 0);
       setManualAllocations(data?.allocations || []);
-      showToast(`Entry logged — ${fmtHours(totalHours)} recorded.`, 'success');
+      showToast(t("Entry logged — {fmtHours} recorded.", { fmtHours: fmtHours(totalHours) }), 'success');
       setManualClockInDate(todayISOStr()); setManualClockInTime(nowHHMM()); setManualRemark(''); setManualDescription('');
       setManualProjectRows([{ code: GENERAL, hours: '' }]);
       setManualProjectRowsValidated(false);
@@ -1148,7 +1154,7 @@ export default function AttendancePage() {
       setManualClockInTouched(false);
       setManualClockOutTouched(false);
       refreshPastSessions();
-    } catch (e) { showToast(e.response?.data?.error || 'Manual entry failed.', 'error'); }
+    } catch (e) { showToast(t(e.response?.data?.error || 'Manual entry failed.'), 'error'); }
     finally { setManualSubmitting(false); }
   };
 
@@ -1179,9 +1185,9 @@ export default function AttendancePage() {
       sessionStorage.setItem('staff_attendance_id', id);
       sessionStorage.setItem('staff_attendance_project', firstCode);
       sessionStorage.setItem('staff_attendance_user_id', user.user_id);
-      showToast('Clocked in successfully.', 'success');
+      showToast(t("Clocked in successfully."), 'success');
       refreshPastSessions();
-    } catch (e) { showToast(e.response?.data?.error || 'Clock-in failed.', 'error'); }
+    } catch (e) { showToast(t(e.response?.data?.error || 'Clock-in failed.'), 'error'); }
     finally { setManualSubmitting(false); }
   };
 
@@ -1197,18 +1203,18 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!user?.user_id) return;
     if (manualProjectRows.some((r) => !r.code)) { setManualProjectRowsValidated(true); return; }
-    if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualProjectRowsValidated(true); showToast('Please enter valid hours for every project.', 'error'); return; }
+    if (manualProjectRows.some((r) => !(parseFloat(r.hours) > 0))) { setManualProjectRowsValidated(true); showToast(t("Please enter valid hours for every project."), 'error'); return; }
     const startMissing = [];
     if (!manualClockInDate) startMissing.push('startDate');
     if (!manualClockInTime) startMissing.push('startTime');
     if (startMissing.length > 0) {
       setManualFieldErrors(startMissing);
-      showToast('Please fill in the highlighted field(s).', 'error');
+      showToast(t("Please fill in the highlighted field(s)."), 'error');
       return;
     }
     if (new Date(combineDateTime(manualClockInDate, manualClockInTime)) > new Date()) {
       setManualFieldErrors(['startDate', 'startTime']);
-      showToast('You can\'t select a future date.', 'error'); return;
+      showToast(t("You can't select a future date."), 'error'); return;
     }
     if (hasManualEnd) {
       // A finished entry is submitted whole in one step — there's no later "closing" moment to ask
@@ -1219,18 +1225,18 @@ export default function AttendancePage() {
         if (!manualClockOutDate) endMissing.push('endDate');
         if (!manualClockOutTime) endMissing.push('endTime');
         setManualFieldErrors(endMissing);
-        showToast('Please fill in the highlighted field(s).', 'error');
+        showToast(t("Please fill in the highlighted field(s)."), 'error');
         return;
       }
       const manualOrderError = dateTimeOrderError(manualClockInDate, manualClockInTime, manualClockOutDate, manualClockOutTime);
       if (manualOrderError) {
         setManualFieldErrors([manualOrderError === 'date' ? 'endDate' : 'endTime']);
-        showToast(manualOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
+        showToast(t(manualOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.'), 'error');
         return;
       }
       if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
         setManualFieldErrors(['endDate', 'endTime']);
-        showToast('You can\'t select a future date.', 'error'); return;
+        showToast(t("You can't select a future date."), 'error'); return;
       }
       // Project hours are what actually get recorded as worked time (not the clock times
       // themselves) — if they don't match the Start/End window, the entry shows the right times
@@ -1240,7 +1246,7 @@ export default function AttendancePage() {
       const totalRowHours = manualProjectRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
       if (Math.abs(totalRowHours - actualDurationHours) > 0.02) {
         setManualFieldErrors(['endDate', 'endTime']);
-        showToast(`Project hours (${totalRowHours.toFixed(2)}h) don't match the time entered (${actualDurationHours.toFixed(2)}h) — adjust one to match the other.`, 'error');
+        showToast(t("Project hours ({v}h) don't match the time entered ({v2}h) — adjust one to match the other.", { v: totalRowHours.toFixed(2), v2: actualDurationHours.toFixed(2) }), 'error');
         return;
       }
     }
@@ -1273,7 +1279,7 @@ export default function AttendancePage() {
       if (!manualClockOutDate) missing.push('endDate');
       if (!manualClockOutTime) missing.push('endTime');
       setActiveFieldErrors(missing);
-      showToast('Please fill in the highlighted field(s).', 'error');
+      showToast(t("Please fill in the highlighted field(s)."), 'error');
       return;
     }
     // The End Time input only has minute precision, but a clock-in can land a few seconds into
@@ -1285,19 +1291,19 @@ export default function AttendancePage() {
     const activeOrderError = dateTimeOrderError(startDateStr, startTimeStr, manualClockOutDate, manualClockOutTime);
     if (activeOrderError) {
       setActiveFieldErrors([activeOrderError === 'date' ? 'endDate' : 'endTime']);
-      showToast(activeOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.', 'error');
+      showToast(t(activeOrderError === 'date' ? 'Error with Date Entry — please double check it.' : 'End time must be after the start time.'), 'error');
       return;
     }
     if (new Date(combineDateTime(manualClockOutDate, manualClockOutTime)) > new Date()) {
       setActiveFieldErrors(['endDate', 'endTime']);
-      showToast('You can\'t select a future date.', 'error'); return;
+      showToast(t("You can't select a future date."), 'error'); return;
     }
     setActiveFieldErrors([]);
     const generalAlloc = allocations.find((a) => !a.project_code);
     if (generalAlloc && !(generalAlloc.description || '').trim()) { setClockDescriptionValidated(true); return; }
     if (generalAlloc) {
       const saved = await saveAllocationDescription(generalAlloc.allocation_id, generalAlloc.description);
-      if (!saved) { showToast('Could not save your description — check your connection and try again.', 'error'); return; }
+      if (!saved) { showToast(t("Could not save your description — check your connection and try again."), 'error'); return; }
     }
     setManualSubmitting(true);
     try {
@@ -1310,14 +1316,14 @@ export default function AttendancePage() {
       sessionStorage.removeItem('staff_attendance_id');
       sessionStorage.removeItem('staff_attendance_project');
       sessionStorage.removeItem('staff_attendance_user_id');
-      showToast('Active session clocked out successfully.', 'success');
+      showToast(t("Active session clocked out successfully."), 'success');
       setManualClockOutTouched(false);
       refreshPastSessions();
-    } catch (e2) { showToast(e2.response?.data?.error || 'Clock-out failed.', 'error'); }
+    } catch (e2) { showToast(t(e2.response?.data?.error || 'Clock-out failed.'), 'error'); }
     finally { setManualSubmitting(false); }
   };
 
-  const fmtTimeSGT = (iso) => new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+  const fmtTimeSGT = (iso) => new Date(iso).toLocaleString(getLocale(), { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
   // "YYYY-MM-DD" for an instant's SGT calendar day — en-CA formats dates in that order directly.
   const sgtDateStr = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
 
@@ -1333,7 +1339,7 @@ export default function AttendancePage() {
   // fmtSlashDate (no timezone conversion needed, "YYYY-MM-DD" already names an SGT calendar day).
   const fmtDayHeader = (dateStr) => {
     const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
+    return new Date(y, m - 1, d).toLocaleDateString(getLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
   };
 
   // "3h 40m" — elapsed time between two instants, for the Recent Entries duration column.
@@ -1341,12 +1347,12 @@ export default function AttendancePage() {
     const totalMin = Math.max(Math.round((new Date(endIso) - new Date(startIso)) / 60000), 0);
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    return h > 0 ? t('{h}h {m}m', { h, m }) : t('{m}m', { m });
   };
   // "19 Sept" — short end-day label for an overnight session's badge.
   const fmtShortDate = (dateStr) => {
     const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
+    return new Date(y, m - 1, d).toLocaleDateString(getLocale(), { day: 'numeric', month: 'short' });
   };
 
   // Shared between Clock In/Out and Manual Entry — each keeps its own row state (so setting up
@@ -1364,7 +1370,7 @@ export default function AttendancePage() {
     };
     return (
       <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
-        <p className="text-xs text-slate-400 mb-4">Enter the hours you plan to spend on each project.</p>
+        <p className="text-xs text-slate-400 mb-4">{t("Enter the hours you plan to spend on each project.")}</p>
         <div className="space-y-4">
           {rows.map((row, i) => {
             const rowError = validated && !row.code;
@@ -1376,22 +1382,22 @@ export default function AttendancePage() {
                   value={row.code}
                   onChange={(code) => { setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, code } : r))); }}
                   projects={projects.filter((p) => !rows.some((r, idx) => idx !== i && r.code === p.project_code))}
-                  placeholder="Select or search project…"
+                  placeholder={t("Select or search project…")}
                   error={rowError}
                 />
-                {rowError && <p className="mt-1 text-xs text-red-500">* Complete this field</p>}
+                {rowError && <p className="mt-1 text-xs text-red-500">{t("* Complete this field")}</p>}
               </div>
               <div className="flex flex-col items-center gap-1 flex-shrink-0">
                 <div className="flex items-center gap-1.5">
                   <input type="number" min="0.1" step="0.1" value={row.hours} placeholder="0"
                     onChange={(e) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, hours: e.target.value } : r)))}
                     className={`w-16 rounded-xl border-2 bg-white px-2 py-3 text-sm text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${hoursError ? 'border-red-400' : 'border-[#D1D5DB] focus:border-blue-500'}`} />
-                  <span className="text-xs text-slate-400">hrs</span>
+                  <span className="text-xs text-slate-400">{t("hrs")}</span>
                 </div>
-                {hoursError && <p className="text-[10px] text-red-500 whitespace-nowrap">* Invalid</p>}
+                {hoursError && <p className="text-[10px] text-red-500 whitespace-nowrap">{t("* Invalid")}</p>}
               </div>
               {rows.length > 1 && (
-                <button type="button" onClick={() => removeRow(i)} title="Remove project"
+                <button type="button" onClick={() => removeRow(i)} title={t("Remove project")}
                   className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-red-500 transition">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" />
@@ -1403,14 +1409,10 @@ export default function AttendancePage() {
             );
           })}
         </div>
-        <p className="mt-3 text-xs font-semibold text-slate-400">
-          Total: {totalRowHours.toFixed(2)} hrs
-        </p>
+        <p className="mt-3 text-xs font-semibold text-slate-400">{t("Total: {v} hrs", { v: totalRowHours.toFixed(2) })}</p>
         {rows.length < 8 && (
           <button type="button" onClick={addRow}
-            className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
-            + Add Project
-          </button>
+            className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">{t("+ Add Project")}</button>
         )}
         {extraContent && <div className="mt-5 pt-5 border-t border-slate-200">{extraContent}</div>}
       </div>
@@ -1418,12 +1420,12 @@ export default function AttendancePage() {
   };
   const manualDescriptionUI = hasManualEnd && hasGeneralManual ? (
     <>
-      <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
+      <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Description")}</label>
       <textarea rows={2} value={manualDescription}
         onChange={(e) => { setManualDescription(e.target.value); setManualDescriptionValidated(false); }}
-        placeholder="Add description or notes"
+        placeholder={t("Add description or notes")}
         className={`w-full rounded-xl border bg-white px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualDescriptionValidated && !manualDescription.trim() ? 'border-red-400' : 'border-slate-300'}`} />
-      {manualDescriptionValidated && !manualDescription.trim() && <p className="mt-1 text-xs text-red-500">* Please fill in this field</p>}
+      {manualDescriptionValidated && !manualDescription.trim() && <p className="mt-1 text-xs text-red-500">{t("* Please fill in this field")}</p>}
     </>
   ) : null;
   const projectSetupUI = renderProjectSetupUI(projectRows, setProjectRows, projectRowsValidated, setProjectRowsValidated);
@@ -1466,7 +1468,7 @@ export default function AttendancePage() {
                     value={projectDraft}
                     onChange={setProjectDraft}
                     projects={projects.filter((p) => !allocs.some((x) => x.allocation_id !== a.allocation_id && x.project_code === p.project_code))}
-                    placeholder="Select or search project…"
+                    placeholder={t("Select or search project…")}
                     compact
                   />
                 </div>
@@ -1480,10 +1482,10 @@ export default function AttendancePage() {
                   isActive ? (overBudget ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
                   : isCompleted ? 'bg-slate-200 text-slate-500' : isPaused ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
                 }`}>
-                  {isActive ? (overBudget ? 'Time up' : 'Active') : isCompleted ? 'Completed' : isPaused ? 'Paused' : 'Pending'}
+                  {isActive ? (overBudget ? t("Time up") : t("Active")) : isCompleted ? t("Completed") : isPaused ? t("Paused") : t("Pending")}
                 </span>
                 <span className={isEditingCard ? 'invisible pointer-events-none' : ''}>
-                  <EditIconButton title="Edit this project entry" onClick={() => startCardEdit(a)} />
+                  <EditIconButton title={t("Edit this project entry")} onClick={() => startCardEdit(a)} />
                 </span>
                 <AllocationActionsMenu
                   onComplete={source === 'live' && !isCompleted ? () => (a.project_code
@@ -1505,16 +1507,16 @@ export default function AttendancePage() {
                   ) : (
                     a.corrected_hours != null ? fmtHours(a.corrected_hours) : fmtHours(a.accumulated_hours)
                   )}
-                  <span>actual</span>
+                  <span>{t("actual")}</span>
                   {!isEditingCard && a.corrected_hours != null && (
-                    <span className="text-slate-400">(system recorded {fmtHours(a.accumulated_hours)})</span>
+                    <span className="text-slate-400">{t("(system recorded {fmtHours})", { fmtHours: fmtHours(a.accumulated_hours) })}</span>
                   )}
-                  {a.edited_after_completion && <span className="text-amber-600">· plan edited after completion</span>}
+                  {a.edited_after_completion && <span className="text-amber-600">{t("· plan edited after completion")}</span>}
                 </span>
               </div>
             ) : a.project_code ? (
               <>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-2">Budget utilisation</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-2">{t("Budget utilisation")}</p>
                 <div className="flex items-center gap-4">
                   <svg width="64" height="64" viewBox="0 0 72 72" className="flex-shrink-0">
                     <circle cx="36" cy="36" r={ringR} fill="none" stroke="#e2e8f0" strokeWidth="7" />
@@ -1522,12 +1524,12 @@ export default function AttendancePage() {
                       strokeDasharray={ringC} strokeDashoffset={ringOffset} strokeLinecap="round"
                       transform="rotate(-90 36 36)" />
                     <text x="36" y="33" textAnchor="middle" fontSize="14" fontWeight="700" fill="#1e293b">{pct}%</text>
-                    <text x="36" y="45" textAnchor="middle" fontSize="8" fill="#94a3b8">used</text>
+                    <text x="36" y="45" textAnchor="middle" fontSize="8" fill="#94a3b8">{t("used")}</text>
                   </svg>
                   <div className="flex-1 space-y-1 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500">Used</span><span className="font-semibold text-slate-800">{fmtHours(trackedHrs)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">{t("Used")}</span><span className="font-semibold text-slate-800">{fmtHours(trackedHrs)}</span></div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Budget</span>
+                      <span className="text-slate-500">{t("Budget")}</span>
                       {isEditingCard ? (
                         <input type="number" min="0.1" step="0.1" autoFocus value={hoursDraft}
                           onChange={(e) => setHoursDraft(e.target.value)}
@@ -1538,14 +1540,14 @@ export default function AttendancePage() {
                       )}
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Remaining</span>
+                      <span className="text-slate-500">{t("Remaining")}</span>
                       <span className={`font-semibold ${overBudget ? 'text-amber-600' : 'text-green-600'}`}>{a.allocated_hours ? fmtHours(Math.max(0, a.allocated_hours - trackedHrs)) : ''}</span>
                     </div>
                   </div>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5">
-                  {isPaused && 'Paused'}
-                  {a.edited_after_completion && <span className="text-amber-600">{isPaused ? ' · ' : ''}Plan edited after completion</span>}
+                  {isPaused && t("Paused")}
+                  {a.edited_after_completion && <span className="text-amber-600">{isPaused ? ' · ' : ''}{t("Plan edited after completion")}</span>}
                 </p>
 
                 {source === 'live' && (() => {
@@ -1558,7 +1560,7 @@ export default function AttendancePage() {
                   const showProgressInput = canEditLast && (isEditingCard || isEditingProgress);
                   return (
                     <div className={`mt-3 pt-3 border-t border-slate-100 transition-shadow duration-300 ${highlightField === 'progress' ? 'rounded-xl ring-2 ring-red-300 bg-red-50/60 -mx-2 px-2 pb-2' : ''}`}>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-2">Progress tracking</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-2">{t("Progress tracking")}</p>
                       {log ? (
                         showProgressInput ? (
                           <div>
@@ -1583,7 +1585,7 @@ export default function AttendancePage() {
                               {lastPct.toFixed(0)}%
                             </span>
                             {canEditLast && (
-                              <EditIconButton title="Edit logged progress"
+                              <EditIconButton title={t("Edit logged progress")}
                                 onClick={() => { setEditingProgressId(a.allocation_id); setProgressEditDraft(String(lastPct)); }} />
                             )}
                           </div>
@@ -1592,12 +1594,12 @@ export default function AttendancePage() {
                         <div className="flex items-center gap-2">
                           <input type="number" min="0.1" max="100" step="0.1" value={draft}
                             onChange={(e) => setProgressInputs((prev) => ({ ...prev, [a.allocation_id]: e.target.value }))}
-                            placeholder="Add completion percentage"
+                            placeholder={t("Add completion percentage")}
                             className="flex-1 min-w-0 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                           <button type="button" disabled={busy}
                             onClick={() => submitProgressUpdate(a.allocation_id, a.project_code)}
                             className="flex-shrink-0 rounded-xl bg-[#0c3b8f] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#0a2f70] disabled:opacity-60 transition">
-                            {busy ? 'Saving…' : 'Log'}
+                            {busy ? t("Saving…") : t("Log")}
                           </button>
                         </div>
                       )}
@@ -1608,7 +1610,7 @@ export default function AttendancePage() {
             ) : (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-slate-500 flex items-center flex-wrap gap-x-1">
-                  {(isActive || isPaused) && <span>{fmtHours(trackedHrs)} tracked of</span>}
+                  {(isActive || isPaused) && <span>{t("{fmtHours} tracked of", { fmtHours: fmtHours(trackedHrs) })}</span>}
                   {isEditingCard ? (
                     <input type="number" min="0.1" step="0.1" autoFocus value={hoursDraft}
                       onChange={(e) => setHoursDraft(e.target.value)}
@@ -1617,17 +1619,15 @@ export default function AttendancePage() {
                   ) : (
                     fmtHours(a.allocated_hours)
                   )}
-                  <span>planned{isPaused ? ' (paused)' : ''}</span>
-                  {a.edited_after_completion && <span className="text-amber-600">· plan edited after completion</span>}
+                  <span>{t("planned")}{isPaused ? t(" (paused)") : ''}</span>
+                  {a.edited_after_completion && <span className="text-amber-600">{t("· plan edited after completion")}</span>}
                 </span>
               </div>
             )}
 
             {source === 'live' && isCompleted && (
               <button type="button" onClick={() => handleReopenAllocation(a.allocation_id)}
-                className="mt-2 text-xs font-semibold text-[#0c3b8f] hover:underline">
-                Reopen — I'm still working on this
-              </button>
+                className="mt-2 text-xs font-semibold text-[#0c3b8f] hover:underline">{t("Reopen — I'm still working on this")}</button>
             )}
 
             {/* Every project block gets its own description, right on the card — required for
@@ -1636,14 +1636,11 @@ export default function AttendancePage() {
             {source === 'live' && (
               <div className={`mt-3 transition-shadow duration-300 ${highlightField === 'description' ? 'rounded-xl ring-2 ring-red-300 bg-red-50/60 -mx-2 px-2 pb-2' : ''}`}>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Description {!a.project_code && <span className="text-red-500">*</span>}
+                  <label className="block text-xs font-semibold text-slate-700">{t("Description")}{" "}{!a.project_code && <span className="text-red-500">*</span>}
                   </label>
                   {descriptionSavedId === a.allocation_id && (
                     <span className="flex items-center gap-1 text-[11px] font-semibold text-green-600">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                      Saved
-                    </span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>{t("Saved")}</span>
                   )}
                 </div>
                 <textarea rows={2} value={a.description || ''}
@@ -1653,12 +1650,12 @@ export default function AttendancePage() {
                     if (!a.project_code) setClockDescriptionValidated(false);
                   }}
                   onBlur={(e) => saveAllocationDescription(a.allocation_id, e.target.value)}
-                  placeholder={a.project_code ? 'Add description or notes (optional)' : 'Add description or notes'}
+                  placeholder={a.project_code ? t("Add description or notes (optional)") : t("Add description or notes")}
                   className={`w-full rounded-xl border px-3 py-2 text-xs resize-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     !a.project_code && clockDescriptionValidated && !(a.description || '').trim() ? 'border-red-400' : 'border-slate-300'
                   }`} />
                 {!a.project_code && clockDescriptionValidated && !(a.description || '').trim() && (
-                  <p className="mt-1 text-xs text-red-500">* Please fill in this field</p>
+                  <p className="mt-1 text-xs text-red-500">{t("* Please fill in this field")}</p>
                 )}
               </div>
             )}
@@ -1676,21 +1673,19 @@ export default function AttendancePage() {
         <div className="rounded-2xl border border-dashed border-slate-300 p-4">
           <ProjectSearchSelect value={addProjectCode} onChange={setAddProjectCode}
             projects={projects.filter((p) => !allocs.some((a) => a.project_code === p.project_code))}
-            placeholder="Search or select a project…" />
+            placeholder={t("Search or select a project…")} />
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={handleAddProject} disabled={!addProjectCode || addProjectBusy}
               className="flex-1 rounded-xl py-2 text-sm font-bold text-white disabled:opacity-60" style={{ background: '#0c3b8f' }}>
-              {addProjectBusy ? 'Adding…' : 'Add Project'}
+              {addProjectBusy ? t("Adding…") : t("Add Project")}
             </button>
             <button type="button" onClick={() => { setAddProjectOpen(false); setAddProjectCode(''); }}
-              className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">{t("Cancel")}</button>
           </div>
         </div>
       ) : (
         <button type="button" onClick={() => setAddProjectOpen(true)}
-          className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">
-          + Add Project
-        </button>
+          className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-semibold text-[#0c3b8f] hover:bg-slate-50">{t("+ Add Project")}</button>
       )}
 
     </div>
@@ -1708,18 +1703,18 @@ export default function AttendancePage() {
           <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
             toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
           }`}>
-            {toast.text}
+            {t(toast.text)}
           </div>
         </div>
       )}
 
       <div className="mb-10 flex items-start gap-3 pl-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
-          <p className="mt-2 text-sm text-slate-500">Clock in/out live, or manually enter your actual times for project or general work.</p>
+          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+          <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Attendance")}</h1>
+          <p className="mt-2 text-sm text-slate-500">{t("Clock in/out live, or manually enter your actual times for project or general work.")}</p>
         </div>
-        <button type="button" onClick={() => setShowHelp((v) => !v)} title="How it works"
+        <button type="button" onClick={() => setShowHelp((v) => !v)} title={t("How it works")}
           className="mt-3 flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-slate-300 text-slate-500 text-sm font-bold hover:bg-slate-100 transition">
           ?
         </button>
@@ -1735,13 +1730,9 @@ export default function AttendancePage() {
           {/* Segment tabs */}
           <div className="mb-6 flex-shrink-0 flex gap-2 rounded-2xl bg-slate-100 p-1">
             <button type="button" onClick={() => setLogTab('clock')}
-              className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'clock' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-              Clock In/Out
-            </button>
+              className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'clock' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>{t("Clock In/Out")}</button>
             <button type="button" onClick={openManualTab}
-              className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'manual' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-              Manual Entry
-            </button>
+              className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${logTab === 'manual' ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>{t("Manual Entry")}</button>
           </div>
 
           {logTab === 'clock' ? (
@@ -1749,7 +1740,7 @@ export default function AttendancePage() {
               <div className="mb-6 flex items-center gap-3">
                 <div className={`h-3 w-3 rounded-full ${clockedIn ? 'bg-green-500' : 'bg-slate-300'}`} />
                 <span className={`text-sm font-semibold ${clockedIn ? 'text-green-700' : 'text-slate-500'}`}>
-                  {clockedIn ? 'Active session' : 'Not clocked in'}
+                  {clockedIn ? t("Active session") : t("Not clocked in")}
                 </span>
               </div>
 
@@ -1763,12 +1754,12 @@ export default function AttendancePage() {
                   <button onClick={handleClockIn} disabled={loading}
                     className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                     style={{ background: '#0c3b8f' }}>
-                    {loading ? 'Please wait…' : 'Clock In'}
+                    {loading ? t("Please wait…") : t("Clock In")}
                   </button>
                 ) : (
                   <button onClick={handleClockOut} disabled={loading}
                     className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                    {loading ? 'Please wait…' : 'Clock Out'}
+                    {loading ? t("Please wait…") : t("Clock Out")}
                   </button>
                 )}
             </div>
@@ -1779,20 +1770,19 @@ export default function AttendancePage() {
             <form onSubmit={submitActiveSessionClockOut} noValidate className="flex flex-col flex-1 min-h-0">
               <div className="mb-6 flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full bg-green-500" />
-                <span className="text-sm font-semibold text-green-700">Active session</span>
+                <span className="text-sm font-semibold text-green-700">{t("Active session")}</span>
               </div>
 
               {allocationTracker}
 
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Date")}</label>
                   <input type="date" value={manualClockOutDate} max={todayISO} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setActiveFieldErrors([]); }}
                     className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
                 <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    End Time <span className="font-normal text-slate-400">(when you actually clocked off)</span>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Time")}{" "}<span className="font-normal text-slate-400">{t("(when you actually clocked off)")}</span>
                   </label>
                   <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setActiveFieldErrors([]); }}
                     className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
@@ -1803,25 +1793,25 @@ export default function AttendancePage() {
 
               <button type="submit" disabled={manualSubmitting || !manualClockOutTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {manualSubmitting ? 'Please wait…' : 'Clock Out'}
+                {manualSubmitting ? t("Please wait…") : t("Clock Out")}
               </button>
             </form>
           ) : (
             <form onSubmit={handleManualClockInStep} noValidate className="flex flex-col flex-1 min-h-0">
               <div className="mb-6 flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full bg-slate-300" />
-                <span className="text-sm font-semibold text-slate-500">Not clocked in</span>
+                <span className="text-sm font-semibold text-slate-500">{t("Not clocked in")}</span>
               </div>
               {manualProjectSetupUI}
 
               <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Date")}</label>
                   <input type="date" value={manualClockInDate} max={todayISO} onChange={(e) => { setManualClockInDate(e.target.value); setManualFieldErrors([]); }}
                     className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('startDate') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
                 <div className="min-w-0">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Start Time")}</label>
                   <input type="time" value={manualClockInTime} onChange={(e) => { setManualClockInTime(e.target.value); setManualClockInTouched(true); setManualFieldErrors([]); }}
                     className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('startTime') ? 'border-red-400' : 'border-slate-300'}`} />
                 </div>
@@ -1829,12 +1819,12 @@ export default function AttendancePage() {
               {isPastManualEntry && (
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Date")}</label>
                     <input type="date" value={manualClockOutDate} max={manualEndDateMax} onChange={(e) => { setManualClockOutDate(e.target.value); setManualClockOutTouched(true); setManualFieldErrors([]); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Time")}</label>
                     <input type="time" value={manualClockOutTime} onChange={(e) => { setManualClockOutTime(e.target.value); setManualClockOutTouched(true); setManualFieldErrors([]); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
@@ -1842,7 +1832,7 @@ export default function AttendancePage() {
               )}
               {!isPastManualEntry && (
                 <div className="mb-5">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">End Time <span className="font-normal text-slate-400">(optional)</span></label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Time")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
                   <input type="time" value={manualClockOutTouched ? manualClockOutTime : ''}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -1851,13 +1841,13 @@ export default function AttendancePage() {
                       setManualFieldErrors([]);
                     }}
                     className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${manualFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
-                  <p className="mt-1 text-xs text-slate-400">Leave blank to clock in now and clock out later. Fill in to log a shift that has already finished.</p>
+                  <p className="mt-1 text-xs text-slate-400">{t("Leave blank to clock in now and clock out later. Fill in to log a shift that has already finished.")}</p>
                 </div>
               )}
               <div className="mb-6">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Remark")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
                 <textarea rows={2} value={manualRemark} onChange={(e) => setManualRemark(e.target.value)}
-                  placeholder="Add notes or specific tasks (optional)"
+                  placeholder={t("Add notes or specific tasks (optional)")}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
 
@@ -1866,7 +1856,7 @@ export default function AttendancePage() {
               <button type="submit" disabled={manualSubmitting || !manualClockInTime}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
                 style={{ background: '#0c3b8f' }}>
-                {manualSubmitting ? 'Please wait…' : (hasManualEnd ? 'Submit' : 'Clock In')}
+                {manualSubmitting ? t("Please wait…") : (hasManualEnd ? t("Submit") : t("Clock In"))}
               </button>
 
               {dayConflictEntries && (() => {
@@ -1875,7 +1865,7 @@ export default function AttendancePage() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setDayConflictEntries(null)}>
                   <div className="relative inline-block max-w-[90vw] rounded-3xl bg-white px-8 pt-6 pb-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end mb-2 -mr-4">
-                      <button type="button" onClick={() => setDayConflictEntries(null)} aria-label="Close"
+                      <button type="button" onClick={() => setDayConflictEntries(null)} aria-label={t("Close")}
                         className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="18" y1="6" x2="6" y2="18" />
@@ -1883,29 +1873,26 @@ export default function AttendancePage() {
                         </svg>
                       </button>
                     </div>
-                    <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">
-                      You've already {isToday ? 'clocked in today' : 'clocked in on this date'}
+                    <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">{t("You've already")}{" "}{isToday ? t("clocked in today") : t("clocked in on this date")}
                     </p>
                     <div className="mb-5 space-y-4">
                       {dayConflictEntries.map((entry) => (
                         <ul key={entry.attendance_id} className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                          <li>Time : {fmtTimeSGT(entry.clock_in_time)} – {entry.clock_out_time ? fmtTimeSGT(entry.clock_out_time) : 'still active'}</li>
-                          <li>Date : {fmtSlashDate(manualClockInDate)}</li>
+                          <li>{t("Time : {fmtTimeSGT} –", { fmtTimeSGT: fmtTimeSGT(entry.clock_in_time) })}{" "}{entry.clock_out_time ? fmtTimeSGT(entry.clock_out_time) : t("still active")}</li>
+                          <li>{t("Date : {fmtSlashDate}", { fmtSlashDate: fmtSlashDate(manualClockInDate) })}</li>
                         </ul>
                       ))}
                     </div>
-                    <p className="text-sm text-slate-500 mb-6 text-left">Do you want to log in again?</p>
+                    <p className="text-sm text-slate-500 mb-6 text-left">{t("Do you want to log in again?")}</p>
                     <div className="flex gap-3">
                       <button type="button" onClick={() => setDayConflictEntries(null)}
-                        className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-                        Cancel
-                      </button>
+                        className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{t("Cancel")}</button>
                       <button type="button" onClick={() => {
                         setDayConflictEntries(null);
                         if (hasManualEnd) submitManualEntry(); else submitManualClockIn();
                       }} disabled={manualSubmitting}
                         className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                        {manualSubmitting ? 'Please wait…' : 'Confirm'}
+                        {manualSubmitting ? t("Please wait…") : t("Confirm")}
                       </button>
                     </div>
                   </div>
@@ -1917,7 +1904,7 @@ export default function AttendancePage() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setOverlapEntry(null)}>
                   <div className="relative inline-block max-w-[90vw] rounded-3xl bg-white px-8 pt-6 pb-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end mb-2 -mr-4">
-                      <button type="button" onClick={() => setOverlapEntry(null)} aria-label="Close"
+                      <button type="button" onClick={() => setOverlapEntry(null)} aria-label={t("Close")}
                         className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="18" y1="6" x2="6" y2="18" />
@@ -1925,25 +1912,19 @@ export default function AttendancePage() {
                         </svg>
                       </button>
                     </div>
-                    <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">
-                      This overlaps an entry you've logged
-                    </p>
+                    <p className="text-lg font-semibold text-slate-900 mb-5 text-left whitespace-nowrap">{t("This overlaps an entry you've logged")}</p>
                     <div className="mb-5 space-y-4">
                       <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                        <li>Time : {fmtTimeSGT(overlapEntry.clock_in_time)} – {overlapEntry.clock_out_time ? fmtTimeSGT(overlapEntry.clock_out_time) : 'still active'}</li>
-                        <li>Date : {fmtSlashDate(manualClockInDate)}</li>
+                        <li>{t("Time : {fmtTimeSGT} –", { fmtTimeSGT: fmtTimeSGT(overlapEntry.clock_in_time) })}{" "}{overlapEntry.clock_out_time ? fmtTimeSGT(overlapEntry.clock_out_time) : t("still active")}</li>
+                        <li>{t("Date : {fmtSlashDate}", { fmtSlashDate: fmtSlashDate(manualClockInDate) })}</li>
                       </ul>
                     </div>
-                    <p className="text-sm text-slate-500 mb-6 text-left">You can't log a new entry over time already recorded. Edit that entry's times instead?</p>
+                    <p className="text-sm text-slate-500 mb-6 text-left">{t("You can't log a new entry over time already recorded. Edit that entry's times instead?")}</p>
                     <div className="flex gap-3">
                       <button type="button" onClick={() => setOverlapEntry(null)}
-                        className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-                        Cancel
-                      </button>
+                        className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{t("Cancel")}</button>
                       <button type="button" onClick={() => openEditEntry(overlapEntry)}
-                        className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>
-                        Edit Existing Entry
-                      </button>
+                        className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition" style={{ background: '#0c3b8f' }}>{t("Edit Existing Entry")}</button>
                     </div>
                   </div>
                 </div>
@@ -1954,43 +1935,43 @@ export default function AttendancePage() {
           {editingEntry && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setEditingEntry(null)}>
               <form onSubmit={submitEditTimes} noValidate className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                <button type="button" onClick={() => setEditingEntry(null)} aria-label="Close"
+                <button type="button" onClick={() => setEditingEntry(null)} aria-label={t("Close")}
                   className="absolute top-4 right-4 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
                   </svg>
                 </button>
-                <p className="text-lg font-semibold text-slate-900 mb-1 pr-8">Edit Entry</p>
-                <p className="text-xs text-slate-400 mb-6">{editProjectRows ? 'Change the projects, hours and clock-in/out times for this entry.' : 'Correcting the clock-in/out times for this entry.'}</p>
+                <p className="text-lg font-semibold text-slate-900 mb-1 pr-8">{t("Edit Entry")}</p>
+                <p className="text-xs text-slate-400 mb-6">{editProjectRows ? t("Change the projects, hours and clock-in/out times for this entry.") : t("Correcting the clock-in/out times for this entry.")}</p>
                 {editProjectRows && renderProjectSetupUI(editProjectRows, setEditProjectRows, editRowsValidated, setEditRowsValidated)}
                 <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Start Date")}</label>
                     <input type="date" value={editStartDate} max={todayISO} onChange={(e) => { setEditStartDate(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(e.target.value, editStartTime, editEndDate, editEndTime); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('startDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Start Time")}</label>
                     <input type="time" value={editStartTime} onChange={(e) => { setEditStartTime(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(editStartDate, e.target.value, editEndDate, editEndTime); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('startTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
                 <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Date")}</label>
                     <input type="date" value={editEndDate} max={todayISO} onChange={(e) => { setEditEndDate(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(editStartDate, editStartTime, e.target.value, editEndTime); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('endDate') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div className="min-w-0">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("End Time")}</label>
                     <input type="time" value={editEndTime} onChange={(e) => { setEditEndTime(e.target.value); setEditFieldErrors([]); syncEditRowsToWindow(editStartDate, editStartTime, editEndDate, e.target.value); }}
                       className={`w-full min-w-0 rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editFieldErrors.includes('endTime') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                 </div>
                 <button type="submit" disabled={editSubmitting}
                   className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                  {editSubmitting ? 'Please wait…' : 'Save'}
+                  {editSubmitting ? t("Please wait…") : t("Save")}
                 </button>
               </form>
             </div>
@@ -2000,14 +1981,14 @@ export default function AttendancePage() {
         {/* Right column: This Week stats + a filterable Recent Entries list, with edit/delete. */}
         <div className="flex flex-col gap-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">This week</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">{t("This week")}</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400 mb-1">Hours logged</p>
+                <p className="text-xs text-slate-400 mb-1">{t("Hours logged")}</p>
                 <p className="text-xl font-bold text-slate-900 tabular-nums">{fmtHours(weekStats.hours)}</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400 mb-1">Days worked</p>
+                <p className="text-xs text-slate-400 mb-1">{t("Days worked")}</p>
                 <p className="text-xl font-bold text-slate-900 tabular-nums">{weekStats.days}</p>
               </div>
             </div>
@@ -2017,24 +1998,24 @@ export default function AttendancePage() {
               constant so this card never grows or shrinks as filters/Load more/tab switches
               change its content. The Log Time card's minHeight is set to match this. */}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col" style={{ height: 440 }}>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4 flex-shrink-0">Recent entries</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4 flex-shrink-0">{t("Recent entries")}</p>
 
             <div className="flex items-center justify-between gap-2 mb-4 relative flex-shrink-0">
               <div className="flex gap-1.5 flex-wrap">
-                {[{ k: 'all', l: 'All' }, { k: 'week', l: 'This week' }, { k: 'month', l: 'This month' }].map((p) => (
+                {[{ k: 'all', l: t("All") }, { k: 'week', l: t("This week") }, { k: 'month', l: t("This month") }].map((p) => (
                   <button key={p.k} type="button"
                     onClick={() => { setHistoryPill(p.k); setHistoryDate(null); }}
                     className={`text-xs font-semibold px-3 py-1.5 rounded-full transition ${
                       !historyDate && historyPill === p.k ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                     style={!historyDate && historyPill === p.k ? { background: '#0c3b8f' } : undefined}>
-                    {p.l}
+                    {t(p.l)}
                   </button>
                 ))}
               </div>
               <button type="button" onClick={() => setCalendarOpen((v) => !v)}
                 className="flex-shrink-0 flex items-center gap-1 text-xs font-semibold border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 hover:bg-slate-50 transition"
-                aria-label="Filter by date">
+                aria-label={t("Filter by date")}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
@@ -2046,7 +2027,7 @@ export default function AttendancePage() {
                     <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="text-slate-400 hover:text-slate-600">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
                     </button>
-                    <p className="text-xs font-semibold text-slate-900">{calendarMonth.toLocaleDateString('en-SG', { month: 'long', year: 'numeric' })}</p>
+                    <p className="text-xs font-semibold text-slate-900">{calendarMonth.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' })}</p>
                     <button type="button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="text-slate-400 hover:text-slate-600">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
                     </button>
@@ -2075,9 +2056,7 @@ export default function AttendancePage() {
                     })}
                   </div>
                   <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                    SG public holiday
-                  </p>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />{t("SG public holiday")}</p>
                 </div>
               )}
             </div>
@@ -2085,9 +2064,9 @@ export default function AttendancePage() {
             <div className="flex-1 min-h-0 inner-scrollbar-pad flex flex-col">
             <div className="flex-1 min-h-0 overflow-y-auto pr-1 inner-scrollbar">
               {pastSessionsLoading ? (
-                <p className="text-sm text-slate-400 text-center py-6">Loading…</p>
+                <p className="text-sm text-slate-400 text-center py-6">{t("Loading…")}</p>
               ) : filteredHistoryEntries.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-6">No attendance logged in this period.</p>
+                <p className="text-sm text-slate-400 text-center py-6">{t("No attendance logged in this period.")}</p>
               ) : (
                 <div className="flex flex-col gap-3">
                   {(() => {
@@ -2122,25 +2101,23 @@ export default function AttendancePage() {
                               </span>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-semibold text-slate-800 truncate">
-                                  {fmtTimeSGT(s.clock_in_time)} <span className="text-slate-400 font-normal">→</span> {isActive ? 'Active now' : fmtTimeSGT(s.clock_out_time)}
+                                  {fmtTimeSGT(s.clock_in_time)} <span className="text-slate-400 font-normal">→</span> {isActive ? t("Active now") : fmtTimeSGT(s.clock_out_time)}
                                 </p>
                                 {isOvernight && (
                                   <span className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: '#FAEEDA', color: '#854F0B' }}>
-                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-                                    Ends {fmtShortDate(sgtDateStr(s.clock_out_time))}
-                                  </span>
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>{t("Ends {fmtShortDate}", { fmtShortDate: fmtShortDate(sgtDateStr(s.clock_out_time)) })}</span>
                                 )}
                               </div>
                               <span className="flex-shrink-0 text-[11px] font-medium text-slate-400">{durationLabel}</span>
                               <div className="flex-shrink-0 flex items-center gap-1.5">
-                                <button type="button" onClick={() => openEditEntry(s)} aria-label="Edit entry"
+                                <button type="button" onClick={() => openEditEntry(s)} aria-label={t("Edit entry")}
                                   className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center transition">
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                   </svg>
                                 </button>
-                                <button type="button" onClick={() => setDeleteConfirmEntry(s)} aria-label="Delete entry"
+                                <button type="button" onClick={() => setDeleteConfirmEntry(s)} aria-label={t("Delete entry")}
                                   className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition">
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
@@ -2166,13 +2143,13 @@ export default function AttendancePage() {
       {showHelp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setShowHelp(false)}>
           <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <button type="button" onClick={() => setShowHelp(false)} aria-label="Close"
+            <button type="button" onClick={() => setShowHelp(false)} aria-label={t("Close")}
               className="absolute top-6 right-6 flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">How It Works</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-4">{t("How It Works")}</p>
             <ul className="space-y-4 text-sm text-slate-600">
               {[
                 { n: '1', t: 'Pick project or general', d: 'Choose the project you are working on, or "General" for non-project work.' },
@@ -2184,13 +2161,13 @@ export default function AttendancePage() {
                 <li key={s.n} className="flex gap-4">
                   <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#EEF4FF] text-[#1a3a8f] text-xs font-bold">{s.n}</span>
                   <div>
-                    <p className="font-semibold text-slate-800">{s.t}</p>
-                    <p className="text-slate-500 mt-0.5">{s.d}</p>
+                    <p className="font-semibold text-slate-800">{t(s.t)}</p>
+                    <p className="text-slate-500 mt-0.5">{t(s.d)}</p>
                   </div>
                 </li>
               ))}
             </ul>
-            <p className="mt-6 text-xs text-slate-400">Your attendance data is synced in real-time across the web portal and the Nextan mobile app.</p>
+            <p className="mt-6 text-xs text-slate-400">{t("Your attendance data is synced in real-time across the web portal and the Nextan mobile app.")}</p>
           </div>
         </div>
       )}
@@ -2198,19 +2175,17 @@ export default function AttendancePage() {
       {deleteConfirmEntry && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4" onClick={() => setDeleteConfirmEntry(null)}>
           <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <p className="text-lg font-semibold text-slate-900 mb-2">Delete this entry?</p>
+            <p className="text-lg font-semibold text-slate-900 mb-2">{t("Delete this entry?")}</p>
             <p className="text-sm text-slate-500 mb-1">
-              {fmtSlashDate(deleteConfirmEntry.day)} &middot; {fmtTimeSGT(deleteConfirmEntry.clock_in_time)} – {deleteConfirmEntry.clock_out_time ? fmtTimeSGT(deleteConfirmEntry.clock_out_time) : 'still active'}
+              {fmtSlashDate(deleteConfirmEntry.day)} &middot; {fmtTimeSGT(deleteConfirmEntry.clock_in_time)} – {deleteConfirmEntry.clock_out_time ? fmtTimeSGT(deleteConfirmEntry.clock_out_time) : t("still active")}
             </p>
-            <p className="text-sm text-slate-500 mb-6">This can't be undone.</p>
+            <p className="text-sm text-slate-500 mb-6">{t("This can't be undone.")}</p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setDeleteConfirmEntry(null)}
-                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-                Cancel
-              </button>
+                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{t("Cancel")}</button>
               <button type="button" onClick={confirmDeleteEntry} disabled={deleteSubmitting}
                 className="flex-1 rounded-2xl py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {deleteSubmitting ? 'Please wait…' : 'Delete'}
+                {deleteSubmitting ? t("Please wait…") : t("Delete")}
               </button>
             </div>
           </div>

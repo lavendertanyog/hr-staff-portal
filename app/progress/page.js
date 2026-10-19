@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
+import { useT } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -12,23 +13,26 @@ function deriveNameFromEmail(email) {
 }
 
 function StatusPill({ status }) {
+  const { t } = useT();
   const s = String(status || '').toUpperCase();
   const map = {
     APPROVED: 'bg-green-50 text-green-700', REJECTED: 'bg-red-50 text-red-600',
     PENDING: 'bg-yellow-50 text-yellow-700', MANAGER_APPROVED: 'bg-blue-50 text-blue-700',
   };
-  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-600'}`}>{s.replace('_', ' ')}</span>;
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-600'}`}>{t(s.replace('_', ' '))}</span>;
 }
 
 function SourceBadge({ isAuto }) {
+  const { t } = useT();
   return isAuto
-    ? <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700">Auto</span>
-    : <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-sky-50 text-sky-700">Manual</span>;
+    ? <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700">{t("Auto")}</span>
+    : <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-sky-50 text-sky-700">{t("Manual")}</span>;
 }
 
 const isAutoEntry = (summary) => String(summary || '').startsWith('Auto-progress baseline');
 
 function ProgressContent() {
+  const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState(null);
@@ -126,13 +130,13 @@ function ProgressContent() {
     if (!progressPct) missing.push('pct');
     if (missing.length > 0) {
       setProgressFieldErrors(missing);
-      showToast('Please fill in the highlighted field(s).', 'error');
+      showToast(t("Please fill in the highlighted field(s)."), 'error');
       return;
     }
     const pct = parseFloat(progressPct);
     if (isNaN(pct) || pct <= 0 || pct > 100) {
       setProgressFieldErrors(['pct']);
-      showToast('Progress added must be greater than 0 and at most 100.', 'error'); return;
+      showToast(t("Progress added must be greater than 0 and at most 100."), 'error'); return;
     }
     setProgressFieldErrors([]);
     setSubmitting(true);
@@ -141,10 +145,10 @@ function ProgressContent() {
         projectCode: progressProject, reporterId: user.user_id,
         completionPercentage: pct, progressSummary: progressSummary.trim() || `Progress update: +${pct}%`,
       });
-      showToast('Progress logged successfully.', 'success');
+      showToast(t("Progress logged successfully."), 'success');
       setShowProgressForm(false); setProgressPct(''); setProgressSummary(''); setProgressProject('');
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Submission failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -155,13 +159,13 @@ function ProgressContent() {
     if (!budgetHours) missing.push('hours');
     if (missing.length > 0) {
       setBudgetFieldErrors(missing);
-      showToast('Please fill in the highlighted field(s).', 'error');
+      showToast(t("Please fill in the highlighted field(s)."), 'error');
       return;
     }
     const hrs = parseFloat(budgetHours);
     if (isNaN(hrs) || hrs <= 0) {
       setBudgetFieldErrors(['hours']);
-      showToast('Hours must be a positive number.', 'error'); return;
+      showToast(t("Hours must be a positive number."), 'error'); return;
     }
     setBudgetFieldErrors([]);
     setSubmitting(true);
@@ -170,10 +174,10 @@ function ProgressContent() {
         userId: user.user_id, projectCode: budgetProject,
         requestedHours: hrs, justification: budgetJustification.trim() || undefined,
       });
-      showToast('Budget request submitted successfully.', 'success');
+      showToast(t("Budget request submitted successfully."), 'success');
       setShowBudgetForm(false); setBudgetHours(''); setBudgetJustification(''); setBudgetProject('');
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Submission failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -186,16 +190,16 @@ function ProgressContent() {
   const submitEditProgressLog = async (e) => {
     e.preventDefault();
     const pct = parseFloat(editProgressPct);
-    if (isNaN(pct) || pct < 0 || pct > 100) { showToast('Completion % must be between 0 and 100.', 'error'); return; }
+    if (isNaN(pct) || pct < 0 || pct > 100) { showToast(t("Completion % must be between 0 and 100."), 'error'); return; }
     setSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/projects/progress-log/${editingProgressLog.log_id}`, {
         userId: user.user_id, completionPercentage: pct, progressSummary: editProgressSummary.trim(),
       });
-      showToast('Progress entry updated.', 'success');
+      showToast(t("Progress entry updated."), 'success');
       setEditingProgressLog(null);
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Update failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Update failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -204,10 +208,10 @@ function ProgressContent() {
     setSubmitting(true);
     try {
       await axios.delete(`${API_BASE}/api/v1/projects/progress-log/${deleteProgressConfirm.log_id}`, { data: { userId: user.user_id } });
-      showToast('Progress entry deleted.', 'success');
+      showToast(t("Progress entry deleted."), 'success');
       setDeleteProgressConfirm(null);
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Delete failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Delete failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -220,16 +224,16 @@ function ProgressContent() {
   const submitEditBudgetRequest = async (e) => {
     e.preventDefault();
     const hrs = parseFloat(editBudgetHours);
-    if (isNaN(hrs) || hrs <= 0) { showToast('Hours must be a positive number.', 'error'); return; }
+    if (isNaN(hrs) || hrs <= 0) { showToast(t("Hours must be a positive number."), 'error'); return; }
     setSubmitting(true);
     try {
       await axios.patch(`${API_BASE}/api/v1/projects/budget-request/${editingBudgetRequest.request_id}`, {
         userId: user.user_id, requestedHours: hrs, justification: editBudgetJustification.trim() || undefined,
       });
-      showToast('Budget request updated.', 'success');
+      showToast(t("Budget request updated."), 'success');
       setEditingBudgetRequest(null);
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Update failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Update failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -238,10 +242,10 @@ function ProgressContent() {
     setSubmitting(true);
     try {
       await axios.delete(`${API_BASE}/api/v1/projects/budget-request/${deleteBudgetConfirm.request_id}`, { data: { userId: user.user_id } });
-      showToast('Budget request deleted.', 'success');
+      showToast(t("Budget request deleted."), 'success');
       setDeleteBudgetConfirm(null);
       await fetchData(user.user_id);
-    } catch (err) { showToast(err.response?.data?.error || 'Delete failed.', 'error'); }
+    } catch (err) { showToast(t(err.response?.data?.error || 'Delete failed.'), 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -270,21 +274,17 @@ function ProgressContent() {
   return (
     <div className="p-8">
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Progress & Budget</h1>
-        <p className="mt-2 text-sm text-slate-500">Log project progress updates and request additional budget hours.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Progress & Budget")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Log project progress updates and request additional budget hours.")}</p>
       </div>
 
       {/* Tab switcher */}
       <div className="mb-6 flex gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 w-fit shadow-sm">
         <button onClick={() => setTab('progress')}
-          className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${tab === 'progress' ? 'bg-[#1a3a8f] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>
-          Progress
-        </button>
+          className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${tab === 'progress' ? 'bg-[#1a3a8f] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>{t("Progress")}</button>
         <button onClick={() => setTab('budget')}
-          className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${tab === 'budget' ? 'bg-[#1a3a8f] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>
-          Budget
-        </button>
+          className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${tab === 'budget' ? 'bg-[#1a3a8f] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>{t("Budget")}</button>
       </div>
 
       {toast && (
@@ -292,7 +292,7 @@ function ProgressContent() {
           <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
             toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
           }`}>
-            {toast.text}
+            {t(toast.text)}
           </div>
         </div>
       )}
@@ -353,19 +353,19 @@ function ProgressContent() {
                     {/* Hours stats */}
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="rounded-2xl p-3" style={{ background: bgColor }}>
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Used</p>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{t("Used")}</p>
                         <p className="mt-1 text-lg font-bold" style={{ color: barColor }}>{usedHrs}</p>
-                        <p className="text-xs text-slate-400">hrs</p>
+                        <p className="text-xs text-slate-400">{t("hrs")}</p>
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-3">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Total</p>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{t("Total")}</p>
                         <p className="mt-1 text-lg font-bold text-slate-800">{totalHrs}</p>
-                        <p className="text-xs text-slate-400">hrs</p>
+                        <p className="text-xs text-slate-400">{t("hrs")}</p>
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-3">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Left</p>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{t("Left")}</p>
                         <p className="mt-1 text-lg font-bold text-slate-800">{remainingHrs}</p>
-                        <p className="text-xs text-slate-400">hrs</p>
+                        <p className="text-xs text-slate-400">{t("hrs")}</p>
                       </div>
                     </div>
 
@@ -373,25 +373,19 @@ function ProgressContent() {
                     <div className="flex-1" />
 
                     {latestLog && (
-                      <p className="mt-3 text-xs text-slate-400 text-right">
-                        Last update: {String(latestLog.logged_at).slice(0, 10)}
-                      </p>
+                      <p className="mt-3 text-xs text-slate-400 text-right">{t("Last update: {v}", { v: String(latestLog.logged_at).slice(0, 10) })}</p>
                     )}
 
                     {isComplete ? (
                       <button type="button"
                         onClick={scrollToHistory}
                         className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
-                        style={{ background: '#16a34a' }}>
-                        View History
-                      </button>
+                        style={{ background: '#16a34a' }}>{t("View History")}</button>
                     ) : (
                       <button type="button"
                         onClick={() => { setProgressProject(alloc.project_code); setShowProgressForm(true); setProgressFieldErrors([]); }}
                         className="mt-4 w-full rounded-2xl py-2 text-xs font-bold text-white transition"
-                        style={{ background: '#0c3b8f' }}>
-                        + Update
-                      </button>
+                        style={{ background: '#0c3b8f' }}>{t("+ Update")}</button>
                     )}
                   </div>
                 );
@@ -404,8 +398,8 @@ function ProgressContent() {
               onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowProgressForm(false); } }}>
               <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="mb-5 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Progress Entry</p>
-                  <button type="button" onClick={() => { setShowProgressForm(false); }} aria-label="Close"
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("New Progress Entry")}</p>
+                  <button type="button" onClick={() => { setShowProgressForm(false); }} aria-label={t("Close")}
                     className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18" />
@@ -415,29 +409,29 @@ function ProgressContent() {
                 </div>
                 <form onSubmit={handleProgressSubmit} className="space-y-5">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Project")}</label>
                     <select value={progressProject} onChange={(e) => { setProgressProject(e.target.value); setProgressFieldErrors([]); }}
                       className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${progressFieldErrors.includes('project') ? 'border-red-400' : 'border-slate-300'}`}>
-                      <option value="">Select project…</option>
+                      <option value="">{t("Select project…")}</option>
                       {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
                     </select>
                     {progressProject && (
-                      <p className="mt-2 text-xs text-slate-400">Current progress: {getCurrentPct(progressProject).toFixed(0)}%</p>
+                      <p className="mt-2 text-xs text-slate-400">{t("Current progress: {v}%", { v: getCurrentPct(progressProject).toFixed(0) })}</p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Progress Made <span className="font-normal text-slate-400">(added to your current progress)</span></label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Progress Made")}{" "}<span className="font-normal text-slate-400">{t("(added to your current progress)")}</span></label>
                     <input type="number" min="0.1" max={progressProject ? Math.max(0.1, 100 - getCurrentPct(progressProject)) : 100} step="0.1"
-                      value={progressPct} onChange={(e) => { setProgressPct(e.target.value); setProgressFieldErrors([]); }} placeholder="e.g. 10"
+                      value={progressPct} onChange={(e) => { setProgressPct(e.target.value); setProgressFieldErrors([]); }} placeholder={t("e.g. 10")}
                       className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${progressFieldErrors.includes('pct') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Summary <span className="font-normal text-slate-400">(optional)</span></label>
-                    <textarea rows={3} value={progressSummary} onChange={(e) => setProgressSummary(e.target.value)} placeholder="What did you work on?"
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Summary")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
+                    <textarea rows={3} value={progressSummary} onChange={(e) => setProgressSummary(e.target.value)} placeholder={t("What did you work on?")}
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                    {submitting ? 'Please wait…' : 'SUBMIT PROGRESS'}
+                    {submitting ? t("Please wait…") : t("SUBMIT PROGRESS")}
                   </button>
                 </form>
               </div>
@@ -446,7 +440,7 @@ function ProgressContent() {
 
           <div ref={historyRef} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden scroll-mt-6">
             <div className="px-6 py-5 border-b border-slate-100">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Progress Log</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Progress Log")}</p>
             </div>
 
             {/* Filters */}
@@ -457,7 +451,7 @@ function ProgressContent() {
                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                       progressStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                     }`}>
-                    {s.charAt(0) + s.slice(1).toLowerCase()}
+                    {t(s.charAt(0) + s.slice(1).toLowerCase())}
                   </button>
                 ))}
               </div>
@@ -466,28 +460,28 @@ function ProgressContent() {
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input type="text" value={progressSearch} onChange={(e) => setProgressSearch(e.target.value)}
-                  placeholder="Search project code or name…"
+                  placeholder={t("Search project code or name…")}
                   className="rounded-2xl border border-slate-200 bg-white pl-9 pr-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
               </div>
             </div>
 
             {loading ? (
-              <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
+              <p className="px-6 py-8 text-sm text-slate-400 text-center">{t("Loading…")}</p>
             ) : filteredProgressHistory.length === 0 ? (
               <p className="px-6 py-8 text-sm text-slate-400 text-center">
-                {progressHistory.length === 0 ? "You haven't logged any progress yet." : 'No progress logs match this filter.'}
+                {progressHistory.length === 0 ? t("You haven't logged any progress yet.") : t("No progress logs match this filter.")}
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                     <tr>
-                      <th className="px-6 py-4 whitespace-nowrap">Project</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Completion</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Source</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Summary</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Logged</th>
-                      <th className="px-6 py-4 whitespace-nowrap text-right">Actions</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Project")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Completion")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Source")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Summary")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Logged")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap text-right">{t("Actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -496,7 +490,7 @@ function ProgressContent() {
                       return (
                       <tr key={r.log_id} className="hover:bg-slate-50 transition">
                         <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
-                          {r.project_code}{!r.project_name && <span className="ml-1.5 text-xs font-normal text-red-500">(deleted)</span>}
+                          {r.project_code}{!r.project_name && <span className="ml-1.5 text-xs font-normal text-red-500">{t("(deleted)")}</span>}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -512,8 +506,8 @@ function ProgressContent() {
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           {!isAuto && (
                             <div className="flex items-center justify-end gap-3">
-                              <button type="button" onClick={() => openEditProgressLog(r)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">Edit</button>
-                              <button type="button" onClick={() => setDeleteProgressConfirm(r)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                              <button type="button" onClick={() => openEditProgressLog(r)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">{t("Edit")}</button>
+                              <button type="button" onClick={() => setDeleteProgressConfirm(r)} className="text-xs font-semibold text-red-500 hover:text-red-700">{t("Delete")}</button>
                             </div>
                           )}
                         </td>
@@ -533,8 +527,8 @@ function ProgressContent() {
               onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowBudgetForm(false); } }}>
               <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="mb-5 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">New Budget Request</p>
-                  <button type="button" onClick={() => { setShowBudgetForm(false); }} aria-label="Close"
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("New Budget Request")}</p>
+                  <button type="button" onClick={() => { setShowBudgetForm(false); }} aria-label={t("Close")}
                     className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18" />
@@ -544,25 +538,25 @@ function ProgressContent() {
                 </div>
                 <form onSubmit={handleBudgetSubmit} className="space-y-5">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Project")}</label>
                     <select value={budgetProject} onChange={(e) => { setBudgetProject(e.target.value); setBudgetFieldErrors([]); }}
                       className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${budgetFieldErrors.includes('project') ? 'border-red-400' : 'border-slate-300'}`}>
-                      <option value="">Select project…</option>
+                      <option value="">{t("Select project…")}</option>
                       {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Additional Hours Requested</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Additional Hours Requested")}</label>
                     <input type="number" min="0.5" step="0.5" value={budgetHours} onChange={(e) => { setBudgetHours(e.target.value); setBudgetFieldErrors([]); }}
                       className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${budgetFieldErrors.includes('hours') ? 'border-red-400' : 'border-slate-300'}`} />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Justification <span className="font-normal text-slate-400">(optional)</span></label>
-                    <textarea rows={3} value={budgetJustification} onChange={(e) => setBudgetJustification(e.target.value)} placeholder="Explain why additional hours are needed…"
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Justification")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
+                    <textarea rows={3} value={budgetJustification} onChange={(e) => setBudgetJustification(e.target.value)} placeholder={t("Explain why additional hours are needed…")}
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                    {submitting ? 'Please wait…' : 'SUBMIT REQUEST'}
+                    {submitting ? t("Please wait…") : t("SUBMIT REQUEST")}
                   </button>
                 </form>
               </div>
@@ -571,11 +565,11 @@ function ProgressContent() {
 
           <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 border-b border-slate-100">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Budget Requests</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Budget Requests")}</p>
               <button onClick={() => { setShowBudgetForm(!showBudgetForm); setBudgetFieldErrors([]); }}
                 className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
                 style={{ background: showBudgetForm ? '#64748b' : '#0c3b8f' }}>
-                {showBudgetForm ? 'Cancel' : '+ Request Additional Hours'}
+                {showBudgetForm ? t("Cancel") : t("+ Request Additional Hours")}
               </button>
             </div>
 
@@ -587,7 +581,7 @@ function ProgressContent() {
                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                       budgetStatusFilter === s ? 'bg-[#1a3a8f] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                     }`}>
-                    {s.replace('_', ' ').charAt(0) + s.replace('_', ' ').slice(1).toLowerCase()}
+                    {t(s.replace('_', ' ').charAt(0) + s.replace('_', ' ').slice(1).toLowerCase())}
                   </button>
                 ))}
               </div>
@@ -596,28 +590,28 @@ function ProgressContent() {
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input type="text" value={budgetSearch} onChange={(e) => setBudgetSearch(e.target.value)}
-                  placeholder="Search project code or name…"
+                  placeholder={t("Search project code or name…")}
                   className="rounded-2xl border border-slate-200 bg-white pl-9 pr-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
               </div>
             </div>
 
             {loading ? (
-              <p className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</p>
+              <p className="px-6 py-8 text-sm text-slate-400 text-center">{t("Loading…")}</p>
             ) : filteredBudgetRequests.length === 0 ? (
               <p className="px-6 py-8 text-sm text-slate-400 text-center">
-                {budgetRequests.length === 0 ? "You haven't submitted any budget requests yet." : 'No budget requests match this filter.'}
+                {budgetRequests.length === 0 ? t("You haven't submitted any budget requests yet.") : t("No budget requests match this filter.")}
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                     <tr>
-                      <th className="px-6 py-4 whitespace-nowrap">Project</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Hours</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Status</th>
-                      <th className="px-6 py-4">Reason</th>
-                      <th className="px-6 py-4 whitespace-nowrap">Details</th>
-                      <th className="px-6 py-4 whitespace-nowrap text-right">Actions</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Project")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Hours")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Status")}</th>
+                      <th className="px-6 py-4">{t("Reason")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{t("Details")}</th>
+                      <th className="px-6 py-4 whitespace-nowrap text-right">{t("Actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -632,7 +626,7 @@ function ProgressContent() {
                             <td className="px-6 py-4 text-slate-500 max-w-[220px] truncate">{r.justification || '—'}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <button type="button" onClick={() => setExpandedBudgetId(isOpen ? null : r.request_id)}
-                                aria-label={isOpen ? 'Hide details' : 'View details'}
+                                aria-label={isOpen ? t("Hide details") : t("View details")}
                                 className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                                   className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
@@ -643,8 +637,8 @@ function ProgressContent() {
                             <td className="px-6 py-4 whitespace-nowrap text-right">
                               {r.status === 'PENDING' && (
                                 <div className="flex items-center justify-end gap-3">
-                                  <button type="button" onClick={() => openEditBudgetRequest(r)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">Edit</button>
-                                  <button type="button" onClick={() => setDeleteBudgetConfirm(r)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                                  <button type="button" onClick={() => openEditBudgetRequest(r)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">{t("Edit")}</button>
+                                  <button type="button" onClick={() => setDeleteBudgetConfirm(r)} className="text-xs font-semibold text-red-500 hover:text-red-700">{t("Delete")}</button>
                                 </div>
                               )}
                             </td>
@@ -654,15 +648,15 @@ function ProgressContent() {
                               <td colSpan={6} className="px-6 py-4">
                                 <div className="grid gap-3 sm:grid-cols-3">
                                   <div>
-                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Justification</p>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{t("Justification")}</p>
                                     <p className="mt-0.5 text-sm text-slate-700">{r.justification || '—'}</p>
                                   </div>
                                   <div>
-                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Reviewer Remarks</p>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{t("Reviewer Remarks")}</p>
                                     <p className="mt-0.5 text-sm text-slate-700">{r.reviewer_remarks || '—'}</p>
                                   </div>
                                   <div>
-                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Submitted</p>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{t("Submitted")}</p>
                                     <p className="mt-0.5 text-sm text-slate-700">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</p>
                                   </div>
                                 </div>
@@ -685,8 +679,8 @@ function ProgressContent() {
           onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingProgressLog(null); }}>
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="mb-5 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Edit Progress Entry</p>
-              <button type="button" onClick={() => setEditingProgressLog(null)} aria-label="Close"
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Edit Progress Entry")}</p>
+              <button type="button" onClick={() => setEditingProgressLog(null)} aria-label={t("Close")}
                 className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -696,17 +690,17 @@ function ProgressContent() {
             </div>
             <form onSubmit={submitEditProgressLog} className="space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Completion % <span className="font-normal text-slate-400">(0 – 100)</span></label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Completion %")}{" "}<span className="font-normal text-slate-400">(0 – 100)</span></label>
                 <input type="number" min="0" max="100" step="0.1" value={editProgressPct} onChange={(e) => setEditProgressPct(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Summary <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea rows={3} value={editProgressSummary} onChange={(e) => setEditProgressSummary(e.target.value)} placeholder="What did you work on?"
+                <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Summary")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
+                <textarea rows={3} value={editProgressSummary} onChange={(e) => setEditProgressSummary(e.target.value)} placeholder={t("What did you work on?")}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                {submitting ? 'Please wait…' : 'SAVE'}
+                {submitting ? t("Please wait…") : t("SAVE")}
               </button>
             </form>
           </div>
@@ -717,18 +711,14 @@ function ProgressContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) setDeleteProgressConfirm(null); }}>
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-            <p className="text-lg font-semibold text-slate-900 mb-2">Delete this progress entry?</p>
-            <p className="text-sm text-slate-500 mb-6">
-              {deleteProgressConfirm.project_code} &middot; {Number(deleteProgressConfirm.completion_percentage).toFixed(0)}% &middot; this can't be undone.
-            </p>
+            <p className="text-lg font-semibold text-slate-900 mb-2">{t("Delete this progress entry?")}</p>
+            <p className="text-sm text-slate-500 mb-6">{t("{project_code} · {v}% · this can't be undone.", { project_code: deleteProgressConfirm.project_code, v: Number(deleteProgressConfirm.completion_percentage).toFixed(0) })}</p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setDeleteProgressConfirm(null)}
-                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-                Cancel
-              </button>
+                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{t("Cancel")}</button>
               <button type="button" onClick={confirmDeleteProgressLog} disabled={submitting}
                 className="flex-1 rounded-2xl py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {submitting ? 'Please wait…' : 'Delete'}
+                {submitting ? t("Please wait…") : t("Delete")}
               </button>
             </div>
           </div>
@@ -740,8 +730,8 @@ function ProgressContent() {
           onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingBudgetRequest(null); }}>
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="mb-5 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Edit Budget Request</p>
-              <button type="button" onClick={() => setEditingBudgetRequest(null)} aria-label="Close"
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Edit Budget Request")}</p>
+              <button type="button" onClick={() => setEditingBudgetRequest(null)} aria-label={t("Close")}
                 className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -751,17 +741,17 @@ function ProgressContent() {
             </div>
             <form onSubmit={submitEditBudgetRequest} className="space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Additional Hours Requested</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Additional Hours Requested")}</label>
                 <input type="number" min="0.5" step="0.5" value={editBudgetHours} onChange={(e) => setEditBudgetHours(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Justification <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea rows={3} value={editBudgetJustification} onChange={(e) => setEditBudgetJustification(e.target.value)} placeholder="Explain why additional hours are needed…"
+                <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Justification")}{" "}<span className="font-normal text-slate-400">{t("(optional)")}</span></label>
+                <textarea rows={3} value={editBudgetJustification} onChange={(e) => setEditBudgetJustification(e.target.value)} placeholder={t("Explain why additional hours are needed…")}
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <button type="submit" disabled={submitting} className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition" style={{ background: '#0c3b8f' }}>
-                {submitting ? 'Please wait…' : 'SAVE'}
+                {submitting ? t("Please wait…") : t("SAVE")}
               </button>
             </form>
           </div>
@@ -772,18 +762,14 @@ function ProgressContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) setDeleteBudgetConfirm(null); }}>
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-            <p className="text-lg font-semibold text-slate-900 mb-2">Delete this budget request?</p>
-            <p className="text-sm text-slate-500 mb-6">
-              {deleteBudgetConfirm.project_code} &middot; {deleteBudgetConfirm.requested_hours} hrs &middot; this can't be undone.
-            </p>
+            <p className="text-lg font-semibold text-slate-900 mb-2">{t("Delete this budget request?")}</p>
+            <p className="text-sm text-slate-500 mb-6">{t("{project_code} · {requested_hours} hrs · this can't be undone.", { project_code: deleteBudgetConfirm.project_code, requested_hours: deleteBudgetConfirm.requested_hours })}</p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setDeleteBudgetConfirm(null)}
-                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-                Cancel
-              </button>
+                className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{t("Cancel")}</button>
               <button type="button" onClick={confirmDeleteBudgetRequest} disabled={submitting}
                 className="flex-1 rounded-2xl py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition">
-                {submitting ? 'Please wait…' : 'Delete'}
+                {submitting ? t("Please wait…") : t("Delete")}
               </button>
             </div>
           </div>
@@ -794,8 +780,9 @@ function ProgressContent() {
 }
 
 export default function ProgressPage() {
+  const { t } = useT();
   return (
-    <Suspense fallback={<div className="p-8 text-slate-400 text-sm">Loading…</div>}>
+    <Suspense fallback={<div className="p-8 text-slate-400 text-sm">{t("Loading…")}</div>}>
       <ProgressContent />
     </Suspense>
   );

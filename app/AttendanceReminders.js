@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
 import { readPendingClockOut, retryPendingClockOut, formatClockOutTime } from './pendingClockOut';
+import { useT } from './i18n/LanguageProvider';
 
 // Short beep via Web Audio API — no audio asset needed.
 function playBeep() {
@@ -72,6 +73,7 @@ function isLunchWindow(sgt) {
 }
 
 export default function AttendanceReminders() {
+  const { t } = useT();
   const [clockInReminder, setClockInReminder] = useState(false);
   const [stillWorkingSession, setStillWorkingSession] = useState(null); // { attendanceId, userId }
   const [autoClockedOutNotice, setAutoClockedOutNotice] = useState(false);
@@ -245,7 +247,7 @@ export default function AttendanceReminders() {
         <div className="fixed bottom-6 right-6 z-50 w-80">
           <div className="relative rounded-[10px] border-[1.5px] border-amber-200 bg-amber-50 shadow-lg p-7">
             <button type="button" onClick={dismissClockInReminder}
-              className="absolute top-3 right-3 text-amber-500 hover:text-amber-700" aria-label="Dismiss">
+              className="absolute top-3 right-3 text-amber-500 hover:text-amber-700" aria-label={t("Dismiss")}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -257,14 +259,12 @@ export default function AttendanceReminders() {
                 </svg>
               </span>
               <div>
-                <p className="text-[15px] font-bold text-amber-900 leading-snug">You haven't clocked in yet</p>
-                <p className="mt-1 text-xs text-amber-700">It's past 8:30am today</p>
+                <p className="text-[15px] font-bold text-amber-900 leading-snug">{t("You haven't clocked in yet")}</p>
+                <p className="mt-1 text-xs text-amber-700">{t("It's past 8:30am today")}</p>
               </div>
             </div>
             <Link href="/attendance"
-              className="block w-full text-center rounded-md bg-amber-600 text-white text-sm font-bold py-3.5 hover:bg-amber-700 transition">
-              Clock in now
-            </Link>
+              className="block w-full text-center rounded-md bg-amber-600 text-white text-sm font-bold py-3.5 hover:bg-amber-700 transition">{t("Clock in now")}</Link>
           </div>
         </div>
       )}
@@ -272,7 +272,7 @@ export default function AttendanceReminders() {
       {stillWorkingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="relative w-full max-w-sm rounded-3xl bg-white shadow-2xl p-6 text-center">
-            <button type="button" onClick={dismissStillWorking} aria-label="Dismiss"
+            <button type="button" onClick={dismissStillWorking} aria-label={t("Dismiss")}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -283,14 +283,12 @@ export default function AttendanceReminders() {
                 <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">Still working?</h2>
-            <p className="text-sm text-slate-500 mb-6">
-              You'll be auto-clocked out in 30 minutes if you don't confirm.
-            </p>
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">{t("Still working?")}</h2>
+            <p className="text-sm text-slate-500 mb-6">{t("You'll be auto-clocked out in 30 minutes if you don't confirm.")}</p>
             <button type="button" onClick={confirmStillWorking} disabled={confirming}
               className="w-full rounded-2xl py-3.5 text-sm font-bold text-white disabled:opacity-60 transition"
               style={{ background: '#0c3b8f' }}>
-              {confirming ? 'Please wait…' : 'Continue'}
+              {confirming ? t("Please wait…") : t("Continue")}
             </button>
           </div>
         </div>
@@ -298,18 +296,14 @@ export default function AttendanceReminders() {
 
       {sentClockOutTime && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
-          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white flex items-center gap-3">
-            Your clock-out at {sentClockOutTime} has been saved.
-            <button type="button" onClick={() => setSentClockOutTime('')} className="text-slate-300 hover:text-white" aria-label="Dismiss">×</button>
+          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white flex items-center gap-3">{t("Your clock-out at {sentClockOutTime} has been saved.", { sentClockOutTime: sentClockOutTime })}{" "}<button type="button" onClick={() => setSentClockOutTime('')} className="text-slate-300 hover:text-white" aria-label={t("Dismiss")}>×</button>
           </div>
         </div>
       )}
 
       {autoClockedOutNotice && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
-          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white flex items-center gap-3">
-            You were automatically clocked out after 4 hours of inactivity.
-            <button type="button" onClick={() => setAutoClockedOutNotice(false)} className="text-slate-300 hover:text-white" aria-label="Dismiss">×</button>
+          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white flex items-center gap-3">{t("You were automatically clocked out after 4 hours of inactivity.")}{" "}<button type="button" onClick={() => setAutoClockedOutNotice(false)} className="text-slate-300 hover:text-white" aria-label={t("Dismiss")}>×</button>
           </div>
         </div>
       )}

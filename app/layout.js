@@ -1,5 +1,6 @@
 import './globals.css';
 import AppShell from './AppShell';
+import { LanguageProvider } from './i18n/LanguageProvider';
 
 export const metadata = {
   title: 'Nextan Staff Portal',
@@ -10,9 +11,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <AppShell>{children}</AppShell>
+        <LanguageProvider>
+          <AppShell>{children}</AppShell>
+        </LanguageProvider>
       </body>
     </html>
   );
 }
-

@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { authHeaders } from '../authSession';
+import { useT, getLocale } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -18,7 +19,7 @@ function categoryLabel(cat) {
   return 'Notification';
 }
 
-function statusBadge(status) {
+function statusBadge(status, t) {
   const s = String(status || '').toUpperCase();
   const map = {
     UNREAD: 'bg-blue-50 text-blue-700',
@@ -27,10 +28,11 @@ function statusBadge(status) {
     REJECTED: 'bg-red-50 text-red-600',
     PENDING: 'bg-yellow-50 text-yellow-700',
   };
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-500'}`}>{s}</span>;
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-500'}`}>{t(s)}</span>;
 }
 
 export default function InboxPage() {
+  const { t } = useT();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [items, setItems] = useState([]);
@@ -81,19 +83,19 @@ export default function InboxPage() {
   const unreadCount = items.filter((i) => i.status === 'UNREAD').length;
 
   const FILTERS = [
-    { key: 'ALL', label: `All (${items.length})` },
-    { key: 'LEAVE', label: 'Leave' },
-    { key: 'BUDGET', label: 'Budget' },
-    { key: 'NOTIFICATION', label: 'Notifications' },
+    { key: 'ALL', label: t("All ({length})", { length: items.length }) },
+    { key: 'LEAVE', label: t("Leave") },
+    { key: 'BUDGET', label: t("Budget") },
+    { key: 'NOTIFICATION', label: t("Notifications") },
   ];
 
   return (
     <div className="p-8">
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Inbox</h1>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Inbox")}</h1>
         <p className="mt-2 text-sm text-slate-500">
-          {loading ? '…' : `${unreadCount} unread · ${items.length} total`}
+          {loading ? '…' : t("{unreadCount} unread · {length} total", { unreadCount: unreadCount, length: items.length })}
         </p>
       </div>
 
@@ -105,17 +107,17 @@ export default function InboxPage() {
               className={`rounded-t-xl px-4 py-2.5 text-sm font-semibold transition ${
                 activeFilter === f.key ? 'bg-[#e8edf8] text-[#1a3a8f]' : 'text-slate-500 hover:text-slate-700'
               }`}>
-              {f.label}
+              {t(f.label)}
             </button>
           ))}
         </div>
 
         {loading ? (
-          <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
+          <p className="px-6 py-8 text-sm text-slate-400">{t("Loading…")}</p>
         ) : loadError ? (
           <p className="px-6 py-8 text-sm text-red-600">{loadError}</p>
         ) : filtered.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-slate-400">No items to display.</p>
+          <p className="px-6 py-8 text-sm text-slate-400">{t("No items to display.")}</p>
         ) : (
           <ul className="divide-y divide-slate-50">
             {filtered.map((item, i) => (
@@ -124,22 +126,22 @@ export default function InboxPage() {
                 className={`grid grid-cols-[72px_1fr_72px] sm:grid-cols-[96px_1fr_96px] items-center gap-3 px-4 sm:px-6 py-4 cursor-pointer hover:bg-slate-50 transition ${item.status === 'UNREAD' ? 'bg-blue-50/20' : 'opacity-60'}`}>
                 <div className="flex-shrink-0">
                   <span className="block w-full truncate rounded-xl px-2 py-1 text-center text-[11px] sm:text-xs font-semibold bg-slate-100 text-slate-500">
-                    {categoryLabel(item.category)}
+                    {t(categoryLabel(item.category))}
                   </span>
                 </div>
                 <div className="min-w-0">
                   <p className={`text-sm truncate ${item.status === 'UNREAD' ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
-                    {item.title}
+                    {t(item.title)}
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">{item.subtitle}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">{t(item.subtitle)}</p>
                   {item.created_at && (
                     <p className="text-xs text-slate-400 mt-1 truncate">
-                      {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
+                      {new Date(item.created_at).toLocaleString(getLocale(), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
                     </p>
                   )}
                 </div>
                 <div className="flex-shrink-0 flex justify-end">
-                  {statusBadge(item.status)}
+                  {statusBadge(item.status, t)}
                 </div>
               </li>
             ))}
@@ -155,28 +157,26 @@ export default function InboxPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="rounded-xl px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-500">
-                    {categoryLabel(selectedItem.category)}
+                    {t(categoryLabel(selectedItem.category))}
                   </span>
-                  {statusBadge(selectedItem.status)}
+                  {statusBadge(selectedItem.status, t)}
                 </div>
-                <h2 className="text-lg font-semibold text-slate-900 break-words">{selectedItem.title}</h2>
+                <h2 className="text-lg font-semibold text-slate-900 break-words">{t(selectedItem.title)}</h2>
               </div>
               <button onClick={() => setSelectedItem(null)}
                 className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 text-xl leading-none flex-shrink-0">&times;</button>
             </div>
             <div className="px-6 py-5">
-              <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{selectedItem.subtitle}</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{t(selectedItem.subtitle)}</p>
               {selectedItem.created_at && (
                 <p className="mt-4 text-xs text-slate-400">
-                  {new Date(selectedItem.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
+                  {new Date(selectedItem.created_at).toLocaleString(getLocale(), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
                 </p>
               )}
             </div>
             <div className="flex justify-end px-6 pb-6 pt-2">
               <button onClick={() => setSelectedItem(null)}
-                className="rounded-2xl bg-[#1a3a8f] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12307a] transition">
-                Close
-              </button>
+                className="rounded-2xl bg-[#1a3a8f] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12307a] transition">{t("Close")}</button>
             </div>
           </div>
         </div>

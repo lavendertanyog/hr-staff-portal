@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { authHeaders, endSession } from './authSession';
+import { useT } from './i18n/LanguageProvider';
 
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
@@ -45,6 +46,7 @@ function NavIcon({ name, size = 20 }) {
 let _staff_lastVerified = 0;
 
 export default function SidebarClient({ isDrawer = false, onClose, collapsed = false }) {
+  const { t } = useT();
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -132,7 +134,7 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
     return (
       <aside className="flex flex-col bg-white" style={{ width: 280, minHeight: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 50, boxShadow: '0 20px 60px rgba(15,23,42,0.18)' }}>
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <span className="text-sm font-semibold text-slate-900">Navigation</span>
+          <span className="text-sm font-semibold text-slate-900">{t("Navigation")}</span>
           <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -142,7 +144,7 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
         </div>
 
         <div className="flex items-center justify-center" style={{ padding: '28px 24px 20px' }}>
-          <img src="/nextan-logo.png" alt="Nextan" width={150} height={45} className="object-contain" />
+          <img src="/nextan-logo.png" alt={t("Nextan")} width={150} height={45} className="object-contain" />
         </div>
 
         <nav className="flex-1 px-3" style={{ paddingTop: 8 }}>
@@ -159,7 +161,7 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
                   fontWeight: active ? 600 : 500,
                 }}>
                 <NavIcon name={item.icon} size={18} />
-                {item.label}
+                {t(item.label)}
               </Link>
             );
           })}
@@ -167,17 +169,17 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
 
         <div className="px-3 pb-5 pt-3" style={{ borderTop: '1px solid #f0f0f0' }}>
           <div className="flex items-center gap-3 rounded-2xl" style={{ background: '#f5f7fc', padding: '12px 14px' }}>
-            <Link href="/profile" className="flex items-center gap-3 flex-1 overflow-hidden" title="View profile">
+            <Link href="/profile" className="flex items-center gap-3 flex-1 overflow-hidden" title={t("View profile")}>
               <div className="flex items-center justify-center rounded-full text-white text-sm font-bold flex-shrink-0"
                 style={{ width: 38, height: 38, background: '#1a3a8f', fontSize: 13 }}>
                 {initials}
               </div>
               <div className="flex-1 overflow-hidden">
                 <p className="text-sm font-semibold truncate" style={{ color: '#111827', lineHeight: 1.3 }}>{displayName}</p>
-                <p className="text-xs truncate" style={{ color: '#6b7280', marginTop: 1 }}>Staff</p>
+                <p className="text-xs truncate" style={{ color: '#6b7280', marginTop: 1 }}>{t("Staff")}</p>
               </div>
             </Link>
-            <button onClick={handleLogout} title="Log out"
+            <button onClick={handleLogout} title={t("Log out")}
               className="flex-shrink-0 flex items-center justify-center rounded-lg transition hover:bg-red-50"
               style={{ width: 30, height: 30, color: '#9ca3af' }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -220,11 +222,11 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
           {collapsed ? (
             <span aria-hidden="true" style={{ display: 'block', height: 20 }} />
           ) : !logoMissing ? (
-            <img src="/nextan-logo.png" alt="Nextan" width={156} height={48}
+            <img src="/nextan-logo.png" alt={t("Nextan")} width={156} height={48}
               className="object-contain brightness-0 invert"
               onError={() => setLogoMissing(true)} />
           ) : (
-            <span className="text-sm font-bold text-white tracking-tight">nextan</span>
+            <span className="text-sm font-bold text-white tracking-tight">{t("nextan")}</span>
           )}
         </div>
 
@@ -234,8 +236,8 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
             const active = pathname.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}
-                title={item.label}
-                aria-label={item.label}
+                title={t(item.label)}
+                aria-label={t(item.label)}
                 className="flex flex-col items-center justify-center transition-all"
                 style={{
                   width: collapsed ? (active ? 44 : 40) : (active ? 80 : 69),
@@ -247,7 +249,7 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
                   color: active ? '#16307a' : '#aab8e0',
                 }}>
                 <NavIcon name={item.icon} size={active ? 20 : 18} />
-                {!collapsed && <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, lineHeight: 1 }}>{item.label}</span>}
+                {!collapsed && <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, lineHeight: 1 }}>{t(item.label)}</span>}
               </Link>
             );
           })}
@@ -257,7 +259,7 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
             flat bottom, no gap, so it reads as cut off by the screen's edge. */}
         <div ref={menuRef}>
           <div style={{ position: 'absolute', bottom: 0, left: (RAIL_W - PILL_W) / 2, width: PILL_W }}>
-            <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
+            <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label={t("Settings")}
               className="flex items-center justify-center"
               style={{
                 width: PILL_W, height: collapsed ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
@@ -270,9 +272,9 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
             <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
               style={{ bottom: collapsed ? 72 : 101, left: (RAIL_W - PILL_W) / 2, width: 150 }}>
               <Link href="/profile" onClick={() => setMenuOpen(false)}
-                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
+                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Profile")}</Link>
               <button type="button" onClick={handleLogout}
-                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Log out</button>
+                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">{t("Log out")}</button>
             </div>
           )}
         </div>

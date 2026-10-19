@@ -3,6 +3,8 @@
 // laptop mid-request doesn't lose it: the next time any Staff portal page opens, or the connection
 // comes back, AttendanceReminders sends it again with the original time.
 
+import { getLocale } from './i18n/LanguageProvider';
+
 const KEY = 'staff_pending_clockout';
 const MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -30,7 +32,7 @@ export function clearPendingClockOut() {
 
 export function formatClockOutTime(iso) {
   try {
-    return new Date(iso).toLocaleTimeString('en-SG', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Singapore' });
+    return new Date(iso).toLocaleTimeString(getLocale(), { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Singapore' });
   } catch { return ''; }
 }
 
