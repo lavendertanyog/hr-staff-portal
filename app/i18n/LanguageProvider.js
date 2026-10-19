@@ -31,11 +31,20 @@ export function translateDate(text) {
 
 // English text is the key. Anything without a translation shows as written, so a missing line never
 // breaks a screen. `{name}` placeholders are filled from `params`.
+// Values kept in capitals or lower case in the data (SICK, pending, IN_PROGRESS) match the entry written as
+// "Sick", "Pending", "In progress".
+function enumKey(dictionary, text) {
+  const spaced = text.replace(/_/g, ' ').trim().toLowerCase();
+  const plain = spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return Object.prototype.hasOwnProperty.call(dictionary, plain) ? plain : null;
+}
+
 export function translate(lang, text, params) {
   let out = text;
   if (typeof text === 'string') {
     const dictionary = DICTIONARIES[lang];
     if (dictionary && Object.prototype.hasOwnProperty.call(dictionary, text)) out = dictionary[text];
+    else if (lang === 'zh' && dictionary && /^[A-Za-z][A-Za-z_ ]*$/.test(text) && /^[A-Z_ ]+$|^[a-z_ ]+$/.test(text) && enumKey(dictionary, text)) out = dictionary[enumKey(dictionary, text)];
     else if (lang === 'zh') {
       // sentences the server writes with names, dates and amounts filled in
       for (const [pattern, build] of PATTERNS) {
