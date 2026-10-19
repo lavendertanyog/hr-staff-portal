@@ -26,6 +26,10 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [languageSaved, setLanguageSaved] = useState(false);
+  const showLanguageSaved = () => {
+    setLanguageSaved(true);
+    setTimeout(() => setLanguageSaved(false), 3000);
+  };
   const [devicesRefreshKey, setDevicesRefreshKey] = useState(0);
   const SECTIONS = ['password', 'profile', 'language', 'devices'];
   const [section, setSection] = useState('password');
@@ -200,7 +204,7 @@ export default function SettingsPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Language")}</p>
                 <p className="mt-2 text-sm text-slate-500">{t("Used for menus, buttons and emails")}</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <button type="button" onClick={() => { setLanguage('en'); setLanguageSaved(true); }} aria-pressed={lang === 'en'}
+                  <button type="button" onClick={() => { setLanguage('en'); showLanguageSaved(); }} aria-pressed={lang === 'en'}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left transition ${lang === 'en' ? 'border-2 border-[#1a3a8f] bg-[#f4f7ff]' : 'border border-slate-200 hover:bg-slate-50'}`}>
                     <span>
                       <span className="block text-sm font-semibold text-slate-900">English</span>
@@ -208,7 +212,7 @@ export default function SettingsPage() {
                     </span>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={lang === 'en' ? '#1a3a8f' : '#cbd5e1'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>{lang === 'en' && <path d="M8 12l3 3 5-6"/>}</svg>
                   </button>
-                  <button type="button" onClick={() => { setLanguage('zh'); setLanguageSaved(true); }} aria-pressed={lang === 'zh'}
+                  <button type="button" onClick={() => { setLanguage('zh'); showLanguageSaved(); }} aria-pressed={lang === 'zh'}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left transition ${lang === 'zh' ? 'border-2 border-[#1a3a8f] bg-[#f4f7ff]' : 'border border-slate-200 hover:bg-slate-50'}`}>
                     <span>
                       <span className="block text-sm font-semibold text-slate-900">中文</span>
@@ -217,7 +221,6 @@ export default function SettingsPage() {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={lang === 'zh' ? '#1a3a8f' : '#cbd5e1'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>{lang === 'zh' && <path d="M8 12l3 3 5-6"/>}</svg>
                   </button>
                 </div>
-                {languageSaved && <p className="mt-3 text-xs text-emerald-600">{t("Language saved")}</p>}
               </div>
           </div>
         )}
@@ -228,6 +231,11 @@ export default function SettingsPage() {
         )}
         </div>
       </div>
+      {languageSaved && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
+          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white">{t("Language saved")}</div>
+        </div>
+      )}
     </div>
   );
 }
