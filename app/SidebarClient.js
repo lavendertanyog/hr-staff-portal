@@ -272,7 +272,7 @@ export default function SidebarClient({ isDrawer = false, onClose, collapsed = f
             <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
               style={{ bottom: collapsed ? 72 : 101, left: (RAIL_W - PILL_W) / 2, width: 150 }}>
               <Link href="/profile" onClick={() => setMenuOpen(false)}
-                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Profile")}</Link>
+                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Settings")}</Link>
               <button type="button" onClick={handleLogout}
                 className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">{t("Log out")}</button>
             </div>

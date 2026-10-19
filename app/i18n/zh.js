@@ -438,6 +438,8 @@ const zh = {
   'View profile': '查看个人资料',
   'Log out': '退出登录',
   'Settings': '设置',
+  'Saved devices': '已保存的设备',
+  'Your password, profile, language and saved devices.': '您的密码、个人资料、语言和已保存的设备。',
   "What's new": '新功能',
   'Search': '搜索',
   'No matches for "{query}"': '没有与“{query}”匹配的结果',

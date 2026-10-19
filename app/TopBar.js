@@ -49,7 +49,7 @@ const SEARCH_INDEX = [
   { label: 'Calendar', href: '/calendar', section: 'Page', keywords: 'public holidays who is on leave team out of office' },
   { label: 'Progress', href: '/progress', section: 'Page', keywords: 'weekly log budget project' },
   { label: 'Inbox', href: '/inbox', section: 'Page', keywords: 'notifications messages' },
-  { label: 'Profile', href: '/profile', section: 'Page', keywords: 'account settings password change' },
+  { label: 'Settings', href: '/profile', section: 'Page', keywords: 'profile account password language devices' },
   { label: 'Clock In / Clock Out', href: '/attendance', section: 'Action', keywords: 'clock in out attendance start end session live' },
   { label: 'Apply Leave', href: '/leave', section: 'Action', keywords: 'apply for leave request time off new' },
   { label: 'Log Progress', href: '/progress', section: 'Action', keywords: 'weekly project log update hours' },
@@ -249,7 +249,7 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30">
                 <Link href="/profile" onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Profile")}</Link>
+                  className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Settings")}</Link>
                 <button type="button" onClick={handleLogout}
                   className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">{t("Log out")}</button>
               </div>
