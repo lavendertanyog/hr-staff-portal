@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import SidebarClient from './SidebarClient';
+import SidebarClient, { PAGE_BG } from './SidebarClient';
+import AttendanceReminders from './AttendanceReminders';
 import UpdateNotice from './UpdateNotice';
 import LanguageWelcome from './i18n/LanguageWelcome';
-import AttendanceReminders from './AttendanceReminders';
 import TopBar from './TopBar';
 
 const SIDEBAR_PREFIXES = ['/dashboard', '/attendance', '/leave', '/calendar', '/progress', '/claims', '/inbox', '/profile', '/whats-new'];
@@ -15,10 +15,12 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // The desktop rail can collapse to icons only (TopBar hamburger); remembered in this browser.
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return typeof window !== 'undefined' && localStorage.getItem('sidebar_collapsed') === '1'; } catch { return false; }
-  });
+  // Desktop rail collapsed to icons only; toggled by the top bar's menu button and remembered
+  // in this browser. Read after mount so the server and first client render match.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try { setCollapsed(localStorage.getItem('sidebar_collapsed') === '1'); } catch {}
+  }, []);
   const toggleCollapsed = () => setCollapsed((c) => {
     const next = !c;
     try { localStorage.setItem('sidebar_collapsed', next ? '1' : '0'); } catch {}
@@ -57,43 +59,45 @@ export default function AppShell({ children }) {
     return <main className="min-h-screen bg-gray-50">{children}</main>;
   }
 
+  if (isMobile) {
+    return (
+      <div className="min-h-screen" style={{ background: PAGE_BG }}>
+        {sidebarOpen && (
+          <div className="fixed inset-0 z-30 bg-slate-950/30" onClick={() => setSidebarOpen(false)} />
+        )}
+        {sidebarOpen && <SidebarClient isDrawer onClose={() => setSidebarOpen(false)} />}
+        <LanguageWelcome />
+        <UpdateNotice sessionKey="staff_portal_user" />
+        <main ref={scrollRef}>
+          <AttendanceReminders />
+          <TopBar onMenuClick={() => setSidebarOpen(true)} />
+          {children}
+        </main>
+      </div>
+    );
+  }
+
+  // Desktop: the page background is navy, so the icon rail is just that backdrop showing beside
+  // the rounded content card; there's no seam between them to misalign.
   return (
-    <div
-      className="flex min-h-screen"
-      // The whole page background is navy on desktop — the "rail" is just this backdrop
-      // showing through wherever the white content card doesn't cover it, so its rounded
-      // corners never need pixel-matched patches behind them; there's no seam to misalign.
-      style={isMobile ? undefined : { background: '#16307a' }}
-    >
-      {isMobile && sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-slate-950/30" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {(!isMobile || sidebarOpen) && (
-        <SidebarClient isDrawer={isMobile} onClose={() => setSidebarOpen(false)} collapsed={collapsed} />
-      )}
-
+    <div className="flex h-screen overflow-hidden" style={{ background: '#16307a' }}>
+      <SidebarClient collapsed={collapsed} />
       <LanguageWelcome />
       <UpdateNotice sessionKey="staff_portal_user" />
-
-      <main
-        className="flex-1 flex flex-col"
-        style={isMobile ? { minHeight: '100vh', background: '#f9fafb' } : {
+      <main className="flex-1 min-w-0 flex flex-col"
+        style={{
           margin: '10px 10px 10px 0',
-          background: '#ffffff',
+          background: PAGE_BG,
           borderRadius: 32,
           overflow: 'hidden',
-          height: 'calc(100vh - 20px)',
           boxShadow: '0 12px 30px rgba(15, 43, 122, 0.08)',
-        }}
-      >
+        }}>
         {/* Vertical padding on this wrapper insets the scrollable element (and therefore its
-            native scrollbar) from the card's own top/bottom rounded corners — otherwise the
-            scrollbar ends up sitting right on the curve and gets visually clipped by it. */}
-        <div className="flex-1 flex flex-col" style={{ minHeight: 0, padding: isMobile ? 0 : '24px 0' }}>
-          <div ref={scrollRef} className={`flex-1 overflow-y-auto${isMobile ? '' : ' page-scrollbar'}`} style={isMobile ? undefined : { paddingLeft: 20, paddingRight: 16 }}>
+            scrollbar) from the card's rounded corners, so the scrollbar never sits on the curve. */}
+        <div className="flex-1 flex flex-col" style={{ minHeight: 0, padding: '16px 0' }}>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto page-scrollbar" style={{ paddingLeft: 12, paddingRight: 8 }}>
             <AttendanceReminders />
-            <TopBar onMenuClick={isMobile ? () => setSidebarOpen(true) : toggleCollapsed} menuLabel={isMobile ? 'Open menu' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'} />
+            <TopBar onMenuClick={toggleCollapsed} menuExpanded={!collapsed} />
             {children}
           </div>
         </div>

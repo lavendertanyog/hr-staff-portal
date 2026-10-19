@@ -4,6 +4,21 @@
 // the next number. Entries from before the numbering began have no version.
 export const WHATS_NEW = [
   {
+    id: 10,
+    date: '16 Oct 2026',
+    version: '1.5',
+    title: 'A fresh new look',
+    body: 'The portal has a cleaner design, and the Dashboard now shows what matters today at a glance.',
+    points: [
+      'Dashboard greets you with your clock-in status and a Clock in / Clock out button',
+      'Coming up shows your next leave and public holidays',
+      'This week shows your hours timeline next to your project budgets',
+      'My statistics shows a progress ring for each of your projects; click one to open Progress',
+      'The menu button next to search hides or shows the sidebar labels; Profile and Log out are at the bottom of the sidebar',
+      'Leave has a new plane icon, and the Calendar has a cleaner month view',
+    ],
+  },
+  {
     id: 9,
     date: '16 Oct 2026',
     version: '1.4',
