@@ -233,7 +233,12 @@ export default function SettingsPage() {
       </div>
       {languageSaved && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
-          <div className="rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white">{t("Language saved")}</div>
+          <div className="flex items-center gap-2.5 rounded-full py-2.5 pl-3 pr-4 text-sm font-medium shadow-lg border bg-slate-900 border-slate-950 text-white">
+            <span className="flex items-center justify-center rounded-full border-2 border-emerald-400" style={{ width: 20, height: 20 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            </span>
+            {t("Language saved")}
+          </div>
         </div>
       )}
     </div>
