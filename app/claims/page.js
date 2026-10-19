@@ -7,6 +7,7 @@ import { authHeaders } from '../authSession';
 import { useConfirm } from '../ConfirmDialog';
 import { formatLeaveDate, openMcFile } from '../leaveFormat';
 import { receiptFileToDataUrl } from '../receiptImage';
+import { useT } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 const PAGE_SIZE = 6;
@@ -109,6 +110,7 @@ function invalidFields(d) {
 }
 
 function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onCharge, onAddCharge, onRemoveCharge, onReplacePhoto, onRescan, onRetryPhoto, onRemove }) {
+  const { t } = useT();
   const fileRef = useRef(null);
   const { form, invalid } = draft;
   const cur = form.currency || 'SGD';
@@ -136,10 +138,10 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
     <div className={`rounded-2xl border ${draft.error ? 'border-red-300' : 'border-slate-200'} bg-slate-50 p-5`}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-          {draft.claimId ? 'Editing claim' : count > 1 ? `Receipt ${index + 1} of ${count}` : 'Receipt'}
+          {draft.claimId ? t("Editing claim") : count > 1 ? t("Receipt {v} of {count}", { v: index + 1, count: count }) : t("Receipt")}
         </p>
         <button type="button" onClick={onRemove} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
-          {draft.claimId ? 'Cancel edit' : 'Remove'}
+          {draft.claimId ? t("Cancel edit") : t("Remove")}
         </button>
       </div>
 
@@ -149,93 +151,87 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
           <div className={`flex min-h-[200px] items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed ${invalid.receipt ? 'border-red-400' : 'border-slate-300'} bg-white`}>
             {draft.receipt
               // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={draft.receipt} alt="Receipt" className="max-h-[320px] w-full cursor-zoom-in object-contain" onClick={() => openMcFile(draft.receipt)} />
+              ? <img src={draft.receipt} alt={t("Receipt")} className="max-h-[320px] w-full cursor-zoom-in object-contain" onClick={() => openMcFile(draft.receipt)} />
               : draft.claimId && !draft.receiptChanged
                 ? (
                   <div className="px-6 text-center">
-                    <p className="text-sm text-slate-500">{draft.receiptLoading ? 'Loading the saved photo…' : "The saved photo couldn't be loaded right now. It's still kept with this claim."}</p>
+                    <p className="text-sm text-slate-500">{draft.receiptLoading ? t("Loading the saved photo…") : t("The saved photo couldn't be loaded right now. It's still kept with this claim.")}</p>
                     {!draft.receiptLoading && (
-                      <button type="button" onClick={onRetryPhoto} className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Try again</button>
+                      <button type="button" onClick={onRetryPhoto} className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{t("Try again")}</button>
                     )}
                   </div>
                 )
-                : <p className="px-6 text-center text-sm text-slate-400">No photo</p>}
+                : <p className="px-6 text-center text-sm text-slate-400">{t("No photo")}</p>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onReplacePhoto(e.target.files?.[0] || null); e.target.value = ''; }} />
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={() => fileRef.current?.click()} disabled={draft.scanning}
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-              Change photo
-            </button>
+              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{t("Change photo")}</button>
             {draft.receipt && (
               <button type="button" onClick={onRescan} disabled={draft.scanning}
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-                Read again
-              </button>
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{t("Read again")}</button>
             )}
           </div>
-          {draft.scanning && <p className="mt-3 rounded-xl bg-[#EAF0FF] px-3 py-2 text-xs font-medium text-[#1a3a8f]">Reading receipt…</p>}
+          {draft.scanning && <p className="mt-3 rounded-xl bg-[#EAF0FF] px-3 py-2 text-xs font-medium text-[#1a3a8f]">{t("Reading receipt…")}</p>}
           {!draft.scanning && draft.scanNote && (
-            <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium ${draft.scanNote.type === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>{draft.scanNote.text}</p>
+            <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium ${draft.scanNote.type === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>{t(draft.scanNote.text)}</p>
           )}
         </div>
 
         {/* Fields */}
         <div className={`grid gap-4 sm:grid-cols-2 ${draft.scanning ? 'pointer-events-none opacity-50' : ''}`}>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Date of purchase</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Date of purchase")}</label>
             <input type="date" max={sgtToday()} value={form.purchaseDate} onChange={(e) => onField('purchaseDate', e.target.value)} className={inputCls(invalid.purchaseDate)} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Shop, restaurant or company</label>
-            <input value={form.merchant} onChange={(e) => onField('merchant', e.target.value)} maxLength={200} className={inputCls(invalid.merchant)} placeholder="e.g. Kopitiam" />
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Shop, restaurant or company")}</label>
+            <input value={form.merchant} onChange={(e) => onField('merchant', e.target.value)} maxLength={200} className={inputCls(invalid.merchant)} placeholder={t("e.g. Kopitiam")} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Category</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Category")}</label>
             <select value={form.category} onChange={(e) => onField('category', e.target.value)} className={inputCls(invalid.category)}>
-              <option value="">Choose a category</option>
-              {categories.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+              <option value="">{t("Choose a category")}</option>
+              {categories.map((c) => <option key={c.code} value={c.code}>{t(c.label)}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-[96px_1fr] gap-3">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Currency</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Currency")}</label>
               <input value={form.currency} onChange={(e) => onField('currency', e.target.value.toUpperCase().slice(0, 3))} className={inputCls(false)} />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Amount paid</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Amount paid")}</label>
               <input type="number" min="0.01" step="0.01" inputMode="decimal" value={form.totalAmount} onChange={(e) => onField('totalAmount', e.target.value)} className={inputCls(invalid.totalAmount)} placeholder="0.00" />
             </div>
           </div>
           {fx && (
             <p className={`sm:col-span-2 -mt-2 rounded-xl px-3 py-2 text-xs ${fx.missing || fx.failed ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>
               {fx.failed
-                ? "Couldn't check the exchange rate right now. You can still submit; the SGD amount is worked out when the claim is saved."
+                ? t("Couldn't check the exchange rate right now. You can still submit; the SGD amount is worked out when the claim is saved.")
                 : fx.missing
-                ? `No exchange rate found for ${fxCurrency} on this date. You can still submit; HR will convert it.`
+                ? t("No exchange rate found for {fxCurrency} on this date. You can still submit; HR will convert it.", { fxCurrency: fxCurrency })
                 : <>
-                    {total > 0 ? <><span className="font-semibold">≈ SGD {(total * fx.rate).toFixed(2)}</span> · </> : null}
-                    1 {fxCurrency} = {Number(fx.rate)} SGD ({fx.source} for {formatLeaveDate(fx.rateDate)}). You are reimbursed in SGD at this rate.
-                  </>}
+                    {total > 0 ? <><span className="font-semibold">{t("≈ SGD {v}", { v: (total * fx.rate).toFixed(2) })}</span> · </> : null}{t("1 {fxCurrency} = {Number} SGD ({source} for {formatLeaveDate}). You are reimbursed in SGD at this rate.", { fxCurrency: fxCurrency, Number: Number(fx.rate), source: fx.source, formatLeaveDate: formatLeaveDate(fx.rateDate) })}</>}
             </p>
           )}
           <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Project (optional)</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Project (optional)")}</label>
             <select value={form.projectCode} onChange={(e) => onField('projectCode', e.target.value)} className={inputCls(false)}>
-              <option value="">Not for a project</option>
+              <option value="">{t("Not for a project")}</option>
               {projects.map((p) => <option key={p.project_code} value={p.project_code}>{p.project_code} · {p.project_name}</option>)}
             </select>
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Items purchased</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Items purchased")}</label>
             <div className="space-y-2">
               {form.items.map((it, i) => (
                 <div key={i} className="grid grid-cols-[1fr_72px_110px_auto] gap-2">
-                  <input value={it.description} onChange={(e) => onItem(i, 'description', e.target.value)} maxLength={200} placeholder="Item" className={smallInputCls} />
-                  <input type="number" min="0" step="1" value={it.quantity} onChange={(e) => onItem(i, 'quantity', e.target.value)} placeholder="Qty" className={smallInputCls} />
-                  <input type="number" step="0.01" value={it.amount} onChange={(e) => onItem(i, 'amount', e.target.value)} placeholder="Amount" className={smallInputCls} />
-                  <button type="button" onClick={() => onRemoveItem(i)} aria-label="Remove item"
+                  <input value={it.description} onChange={(e) => onItem(i, 'description', e.target.value)} maxLength={200} placeholder={t("Item")} className={smallInputCls} />
+                  <input type="number" min="0" step="1" value={it.quantity} onChange={(e) => onItem(i, 'quantity', e.target.value)} placeholder={t("Qty")} className={smallInputCls} />
+                  <input type="number" step="0.01" value={it.amount} onChange={(e) => onItem(i, 'amount', e.target.value)} placeholder={t("Amount")} className={smallInputCls} />
+                  <button type="button" onClick={() => onRemoveItem(i)} aria-label={t("Remove item")}
                     className="flex h-9 w-9 items-center justify-center self-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                   </button>
@@ -243,25 +239,25 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
               ))}
             </div>
             <div className="mt-2">
-              <button type="button" onClick={onAddItem} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">+ Add item</button>
+              <button type="button" onClick={onAddItem} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{t("+ Add item")}</button>
             </div>
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Charges and tax</label>
-            <p className="mb-2 text-xs text-slate-400">Lines between the items and the total, as printed: service charge, each tax (for example SST 8% or GST 9%), rounding or a discount. Amounts are in {cur}.</p>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">{t("Charges and tax")}</label>
+            <p className="mb-2 text-xs text-slate-400">{t("Lines between the items and the total, as printed: service charge, each tax (for example SST 8% or GST 9%), rounding or a discount. Amounts are in {cur}.", { cur: cur })}</p>
             {form.charges.length > 0 && (
               <div className="space-y-2">
                 {form.charges.map((ch, i) => (
                   <div key={i} className="grid grid-cols-[130px_1fr_72px_110px_auto] gap-2">
-                    <select value={ch.kind} onChange={(e) => onCharge(i, 'kind', e.target.value)} aria-label="Type" className={smallInputCls}>
-                      {CHARGE_KINDS.map((k) => <option key={k.code} value={k.code}>{k.label}</option>)}
+                    <select value={ch.kind} onChange={(e) => onCharge(i, 'kind', e.target.value)} aria-label={t("Type")} className={smallInputCls}>
+                      {CHARGE_KINDS.map((k) => <option key={k.code} value={k.code}>{t(k.label)}</option>)}
                     </select>
-                    <input value={ch.label} onChange={(e) => onCharge(i, 'label', e.target.value)} maxLength={60} placeholder="As printed, e.g. SST 8%" aria-label="Label" className={smallInputCls} />
-                    <input type="number" min="0" max="100" step="0.01" value={ch.rate} onChange={(e) => onCharge(i, 'rate', e.target.value)} placeholder="%" aria-label="Rate (%)" className={smallInputCls} />
+                    <input value={ch.label} onChange={(e) => onCharge(i, 'label', e.target.value)} maxLength={60} placeholder={t("As printed, e.g. SST 8%")} aria-label={t("Label")} className={smallInputCls} />
+                    <input type="number" min="0" max="100" step="0.01" value={ch.rate} onChange={(e) => onCharge(i, 'rate', e.target.value)} placeholder="%" aria-label={t("Rate (%)")} className={smallInputCls} />
                     <input type="number" step="0.01" value={ch.amount} onChange={(e) => onCharge(i, 'amount', e.target.value)}
-                      placeholder={ch.kind === 'DISCOUNT' ? 'Amount off' : 'Amount'} aria-label="Amount" className={smallInputCls} />
-                    <button type="button" onClick={() => onRemoveCharge(i)} aria-label="Remove charge"
+                      placeholder={ch.kind === 'DISCOUNT' ? t("Amount off") : t("Amount")} aria-label={t("Amount")} className={smallInputCls} />
+                    <button type="button" onClick={() => onRemoveCharge(i)} aria-label={t("Remove charge")}
                       className="flex h-9 w-9 items-center justify-center self-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
@@ -270,24 +266,21 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
               </div>
             )}
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <button type="button" onClick={onAddCharge} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">+ Add charge or tax</button>
+              <button type="button" onClick={onAddCharge} className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{t("+ Add charge or tax")}</button>
               <label className="flex items-center gap-2 text-xs text-slate-600">
-                <input type="checkbox" checked={form.taxInclusive} onChange={(e) => onField('taxInclusive', e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
-                Prices already include tax (tax is not added on top)
-              </label>
+                <input type="checkbox" checked={form.taxInclusive} onChange={(e) => onField('taxInclusive', e.target.checked)} className="h-4 w-4 rounded border-slate-300" />{t("Prices already include tax (tax is not added on top)")}</label>
             </div>
             {hasAmounts && (
-              <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${mismatch ? 'bg-amber-50 text-amber-700' : 'bg-white text-slate-500'}`}>
-                Items {money(cur, itemsTotal)}{form.charges.length > 0 ? ` + charges and tax ${money(cur, chargesTotal)}` : ''} = {money(cur, addsUpTo)}
-                {mismatch ? `, but the amount paid is ${money(cur, total)}. Check the lines, or add the missing charge, tax or rounding.` : ''}
+              <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${mismatch ? 'bg-amber-50 text-amber-700' : 'bg-white text-slate-500'}`}>{t("Items {money}", { money: money(cur, itemsTotal) })}{form.charges.length > 0 ? t(" + charges and tax {money}", { money: money(cur, chargesTotal) }) : ''} = {money(cur, addsUpTo)}
+                {mismatch ? t(", but the amount paid is {money}. Check the lines, or add the missing charge, tax or rounding.", { money: money(cur, total) }) : ''}
               </p>
             )}
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Notes (optional)</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Notes (optional)")}</label>
             <textarea rows={2} value={form.notes} onChange={(e) => onField('notes', e.target.value)} maxLength={1000}
-              className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="What was it for? e.g. client lunch with ABC Pte Ltd" />
+              className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder={t("What was it for? e.g. client lunch with ABC Pte Ltd")} />
           </div>
           {draft.error && <p className="sm:col-span-2 text-sm font-medium text-red-600">{draft.error}</p>}
         </div>
@@ -297,6 +290,7 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
 }
 
 export default function ClaimsPage() {
+  const { t } = useT();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -383,7 +377,7 @@ export default function ClaimsPage() {
       const res = await axios.post(`${API_BASE}/api/v1/claims/scan`, { receiptImage: dataUrl }, { headers: authHeaders() });
       const body = res.data || {};
       if (!body.available) {
-        updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: body.message || 'Receipt scanning is unavailable. Please fill in the details yourself.' } }));
+        updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: body.message || t("Receipt scanning is unavailable. Please fill in the details yourself.") } }));
         return;
       }
       const s = body.data || {};
@@ -392,7 +386,7 @@ export default function ClaimsPage() {
         scanning: false,
         scanId: body.scanId || null,
         invalid: {},
-        scanNote: body.message ? { type: 'warn', text: body.message } : { type: 'info', text: 'Filled in from the receipt. Check every field before you submit.' },
+        scanNote: body.message ? { type: 'warn', text: body.message } : { type: 'info', text: t("Filled in from the receipt. Check every field before you submit.") },
         form: {
           ...d.form,
           purchaseDate: s.purchaseDate || d.form.purchaseDate,
@@ -408,7 +402,7 @@ export default function ClaimsPage() {
         },
       }));
     } catch (err) {
-      updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: err.response?.data?.error || "We couldn't read the receipt. Please fill in the details yourself." } }));
+      updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: err.response?.data?.error || t("We couldn't read the receipt. Please fill in the details yourself.") } }));
     }
   };
 
@@ -417,14 +411,14 @@ export default function ClaimsPage() {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
     const room = MAX_RECEIPTS - drafts.length;
-    if (room <= 0) { showToast(`You can add up to ${MAX_RECEIPTS} receipts at a time.`, 'error'); return; }
-    if (files.length > room) showToast(`Only the first ${room} photo(s) were added (${MAX_RECEIPTS} at a time).`, 'error');
+    if (room <= 0) { showToast(t("You can add up to {MAX_RECEIPTS} receipts at a time.", { MAX_RECEIPTS: MAX_RECEIPTS }), 'error'); return; }
+    if (files.length > room) showToast(t("Only the first {room} photo(s) were added ({MAX_RECEIPTS} at a time).", { room: room, MAX_RECEIPTS: MAX_RECEIPTS }), 'error');
     const added = [];
     for (const file of files.slice(0, room)) {
       try {
         added.push(newDraft(await receiptFileToDataUrl(file)));
       } catch (err) {
-        showToast(err.message || 'A photo could not be used.', 'error');
+        showToast(t(err.message || 'A photo could not be used.'), 'error');
       }
     }
     if (added.length === 0) return;
@@ -446,14 +440,14 @@ export default function ClaimsPage() {
       // A new receipt is read straight away; when editing, the details already entered are kept.
       if (draft && !draft.claimId) await scanDraft(key, dataUrl);
     } catch (err) {
-      showToast(err.message || 'This photo could not be used.', 'error');
+      showToast(t(err.message || 'This photo could not be used.'), 'error');
     }
   };
 
   const removeDraft = (key) => setDrafts((list) => list.filter((d) => d.key !== key));
 
   const clearDrafts = async () => {
-    if (drafts.length > 1 && !(await confirm({ title: 'Clear receipts', message: `Remove all ${drafts.length} receipts you haven't submitted?`, confirmLabel: 'Clear', danger: true }))) return;
+    if (drafts.length > 1 && !(await confirm({ title: t("Clear receipts"), message: t("Remove all {length} receipts you haven't submitted?", { length: drafts.length }), confirmLabel: 'Clear', danger: true }))) return;
     setDrafts([]);
   };
 
@@ -468,7 +462,7 @@ export default function ClaimsPage() {
       return { ...d, invalid: bad };
     }));
     if (drafts.some((d) => Object.values(invalidFields(d)).some(Boolean)) || anyInvalid) {
-      showToast('Please fill in the highlighted field(s).', 'error');
+      showToast(t("Please fill in the highlighted field(s)."), 'error');
       return;
     }
     setSubmitting(true);
@@ -486,7 +480,7 @@ export default function ClaimsPage() {
             await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined }, { headers: authHeaders() });
           } catch (err) {
             if (err.response?.status !== 409 || !err.response?.data?.duplicate) throw err;
-            const again = await confirm({ title: 'Possible duplicate', message: err.response.data.error, confirmLabel: 'Submit anyway' });
+            const again = await confirm({ title: t("Possible duplicate"), message: err.response.data.error, confirmLabel: 'Submit anyway' });
             if (!again) {
               updateDraft(d.key, (x) => ({ ...x, error: 'Not submitted: possible duplicate of a claim you already made.' }));
               continue;
@@ -503,7 +497,7 @@ export default function ClaimsPage() {
     setDrafts((list) => list.filter((d) => !done.has(d.key)));
     setSubmitting(false);
     if (submitted || updated) {
-      showToast(updated ? 'Claim updated.' : `Submitted ${submitted} claim${submitted === 1 ? '' : 's'}.`, 'success');
+      showToast(t(updated ? 'Claim updated.' : `Submitted ${submitted} claim${submitted === 1 ? '' : 's'}.`), 'success');
       loadClaims();
     }
   };
@@ -513,7 +507,7 @@ export default function ClaimsPage() {
       const res = await axios.get(`${API_BASE}/api/v1/claims/${claimId}/receipt`, { headers: authHeaders() });
       openMcFile(res.data?.data?.receiptImage);
     } catch (err) {
-      showToast(err.response?.data?.error || 'Failed to open the receipt.', 'error');
+      showToast(t(err.response?.data?.error || 'Failed to open the receipt.'), 'error');
     }
   };
 
@@ -531,7 +525,7 @@ export default function ClaimsPage() {
   };
 
   const startEdit = async (c) => {
-    if (drafts.length > 0 && !(await confirm({ title: 'Edit claim', message: "Remove the receipts you haven't submitted and edit this claim instead?", confirmLabel: 'Edit claim' }))) return;
+    if (drafts.length > 0 && !(await confirm({ title: t("Edit claim"), message: t("Remove the receipts you haven't submitted and edit this claim instead?"), confirmLabel: 'Edit claim' }))) return;
     const draft = newDraft(null, {
       claimId: c.claim_id,
       receiptChanged: false,
@@ -556,8 +550,8 @@ export default function ClaimsPage() {
 
   const deleteClaim = async (c) => {
     const ok = await confirm({
-      title: 'Delete claim',
-      message: `Delete your claim for ${c.merchant}, ${money(c.currency, c.total_amount)}? This can't be undone.`,
+      title: t("Delete claim"),
+      message: t("Delete your claim for {merchant}, {v}? This can't be undone.", { merchant: c.merchant, v: money(c.currency, c.total_amount) }),
       confirmLabel: 'Delete',
       danger: true,
     });
@@ -565,10 +559,10 @@ export default function ClaimsPage() {
     try {
       await axios.delete(`${API_BASE}/api/v1/claims/${c.claim_id}`, { headers: authHeaders() });
       setDrafts((list) => list.filter((d) => d.claimId !== c.claim_id));
-      showToast('Claim deleted.', 'success');
+      showToast(t("Claim deleted."), 'success');
       loadClaims();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Failed to delete the claim.', 'error');
+      showToast(t(err.response?.data?.error || 'Failed to delete the claim.'), 'error');
     }
   };
 
@@ -588,18 +582,18 @@ export default function ClaimsPage() {
   return (
     <div className="p-8">
       <div className="mb-8 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Claims</h1>
-        <p className="mt-2 text-sm text-slate-500">Add photos of your receipts. Each one is read for you; check the details and submit. Your manager, then HR, approve each claim, and it is paid with your salary.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Staff Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Claims")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Add photos of your receipts. Each one is read for you; check the details and submit. Your manager, then HR, approve each claim, and it is paid with your salary.")}</p>
       </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">In review</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("In review")}</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{loading ? '—' : inReview.length}</p>
         </div>
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Approved, to be paid</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Approved, to be paid")}</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{loading ? '—' : approvedUnpaid.length}</p>
         </div>
       </div>
@@ -607,18 +601,14 @@ export default function ClaimsPage() {
       {/* New claims from receipt photos */}
       <div ref={formRef} className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{editing ? 'Edit claim' : 'New claims'}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{editing ? t("Edit claim") : t("New claims")}</p>
           {drafts.length > 0 && !editing && (
             <div className="flex flex-wrap items-center gap-2">
-              {scanProgress && <span className="text-xs font-medium text-[#1a3a8f]">Reading receipt {Math.min(scanProgress.done + 1, scanProgress.total)} of {scanProgress.total}…</span>}
+              {scanProgress && <span className="text-xs font-medium text-[#1a3a8f]">{t("Reading receipt {v} of {total}…", { v: Math.min(scanProgress.done + 1, scanProgress.total), total: scanProgress.total })}</span>}
               <button type="button" onClick={() => addInputRef.current?.click()} disabled={drafts.length >= MAX_RECEIPTS || anyScanning}
-                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-                + Add more receipts
-              </button>
+                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{t("+ Add more receipts")}</button>
               <button type="button" onClick={clearDrafts} disabled={submitting}
-                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-                Clear
-              </button>
+                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{t("Clear")}</button>
             </div>
           )}
         </div>
@@ -630,8 +620,8 @@ export default function ClaimsPage() {
           <button type="button" onClick={() => addInputRef.current?.click()}
             className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center hover:border-[#1540A8] hover:bg-[#EAF0FF] transition">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1540A8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" /></svg>
-            <span className="text-sm font-semibold text-[#1540A8]">Add receipt photos</span>
-            <span className="text-xs text-slate-500">Take photos or choose up to {MAX_RECEIPTS} at once. Each receipt becomes its own claim.</span>
+            <span className="text-sm font-semibold text-[#1540A8]">{t("Add receipt photos")}</span>
+            <span className="text-xs text-slate-500">{t("Take photos or choose up to {MAX_RECEIPTS} at once. Each receipt becomes its own claim.", { MAX_RECEIPTS: MAX_RECEIPTS })}</span>
           </button>
         ) : (
           <>
@@ -654,7 +644,7 @@ export default function ClaimsPage() {
             <div className="mt-5 flex justify-end">
               <button type="button" onClick={submitAll} disabled={submitting || anyScanning}
                 className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F] disabled:opacity-60">
-                {submitting ? 'Submitting…' : editing ? 'Save changes' : drafts.length > 1 ? `Submit all (${drafts.length})` : 'Submit claim'}
+                {submitting ? t("Submitting…") : editing ? t("Save changes") : drafts.length > 1 ? t("Submit all ({length})", { length: drafts.length }) : t("Submit claim")}
               </button>
             </div>
           </>
@@ -664,12 +654,12 @@ export default function ClaimsPage() {
       {/* My claims */}
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6 pb-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">My claims</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("My claims")}</p>
           <div className="flex flex-wrap gap-2">
             {FILTERS.map((f) => (
               <button key={f.key} type="button" onClick={() => setFilter(f.key)}
                 className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${filter === f.key ? 'bg-[#1540A8] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                {f.label}
+                {t(f.label)}
               </button>
             ))}
           </div>
@@ -678,21 +668,21 @@ export default function ClaimsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-[0.22em] text-[0.65rem]">
               <tr>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Merchant</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3 text-right">Amount</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">{t("Date")}</th>
+                <th className="px-4 py-3">{t("Merchant")}</th>
+                <th className="px-4 py-3">{t("Category")}</th>
+                <th className="px-4 py-3 text-right">{t("Amount")}</th>
+                <th className="px-4 py-3">{t("Status")}</th>
+                <th className="px-4 py-3 text-right">{t("Actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-sm text-slate-400 text-center">Loading…</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-sm text-slate-400 text-center">{t("Loading…")}</td></tr>
               ) : loadError ? (
                 <tr><td colSpan={6} className="px-6 py-8 text-sm text-red-600 text-center">{loadError}</td></tr>
               ) : pageRows.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-sm text-slate-400 text-center">No claims yet.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-sm text-slate-400 text-center">{t("No claims yet.")}</td></tr>
               ) : pageRows.map((c) => (
                 <React.Fragment key={c.claim_id}>
                   <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setExpandedId(expandedId === c.claim_id ? null : c.claim_id)}>
@@ -707,10 +697,10 @@ export default function ClaimsPage() {
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLOR[c.status] || 'bg-slate-100 text-slate-600'}`}>{STATUS_LABEL[c.status] || c.status}</span>
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" onClick={() => viewReceipt(c.claim_id)} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Receipt</button>
+                      <button type="button" onClick={() => viewReceipt(c.claim_id)} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{t("Receipt")}</button>
                       {c.status === 'PENDING' && (<>
-                        <button type="button" onClick={() => startEdit(c)} className="ml-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Edit</button>
-                        <button type="button" onClick={() => deleteClaim(c)} className="ml-2 rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">Delete</button>
+                        <button type="button" onClick={() => startEdit(c)} className="ml-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{t("Edit")}</button>
+                        <button type="button" onClick={() => deleteClaim(c)} className="ml-2 rounded-xl border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">{t("Delete")}</button>
                       </>)}
                     </td>
                   </tr>
@@ -719,20 +709,20 @@ export default function ClaimsPage() {
                       <td colSpan={6} className="px-6 py-4 text-sm text-slate-600">
                         <div className="grid gap-4 md:grid-cols-2">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Items</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{t("Items")}</p>
                             {c.items?.length ? (
                               <ul className="mt-2 space-y-1">
                                 {c.items.map((it, i) => (
                                   <li key={i} className="flex justify-between gap-4">
-                                    <span>{it.quantity ? `${Number(it.quantity)} × ` : ''}{it.description}</span>
+                                    <span>{it.quantity ? `${Number(it.quantity)} × ` : ''}{t(it.description)}</span>
                                     <span className="whitespace-nowrap">{it.amount != null ? Number(it.amount).toFixed(2) : ''}</span>
                                   </li>
                                 ))}
                               </ul>
-                            ) : <p className="mt-2 text-slate-400">No items listed.</p>}
+                            ) : <p className="mt-2 text-slate-400">{t("No items listed.")}</p>}
                             {c.charges?.length > 0 && (
                               <>
-                                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Charges and tax</p>
+                                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{t("Charges and tax")}</p>
                                 <ul className="mt-2 space-y-1">
                                   {c.charges.map((ch, i) => (
                                     <li key={i} className="flex justify-between gap-4">
@@ -741,18 +731,18 @@ export default function ClaimsPage() {
                                     </li>
                                   ))}
                                 </ul>
-                                {c.tax_inclusive && <p className="mt-1 text-xs text-slate-400">Prices include tax, so tax isn&apos;t added on top.</p>}
+                                {c.tax_inclusive && <p className="mt-1 text-xs text-slate-400">{t("Prices include tax, so tax isn't added on top.")}</p>}
                               </>
                             )}
                           </div>
                           <div className="space-y-1">
-                            <p><span className="text-slate-400">Submitted:</span> {formatLeaveDate(c.created_at)}</p>
-                            {fxDetail(c) && <p><span className="text-slate-400">Exchange rate:</span> {fxDetail(c)}</p>}
-                            {c.project_code && <p><span className="text-slate-400">Project:</span> {c.project_code}{c.project_name ? ` · ${c.project_name}` : ''}</p>}
-                            {c.notes && <p><span className="text-slate-400">Notes:</span> {c.notes}</p>}
-                            {c.manager_remarks && <p><span className="text-slate-400">Manager:</span> {c.manager_remarks}</p>}
-                            {c.hr_remarks && <p><span className="text-slate-400">HR:</span> {c.hr_remarks}</p>}
-                            {c.status === 'PAID' && <p><span className="text-slate-400">Paid:</span> {formatLeaveDate(c.paid_at)}{c.paid_reference ? ` (${c.paid_reference})` : ''}</p>}
+                            <p><span className="text-slate-400">{t("Submitted:")}</span> {formatLeaveDate(c.created_at)}</p>
+                            {fxDetail(c) && <p><span className="text-slate-400">{t("Exchange rate:")}</span> {fxDetail(c)}</p>}
+                            {c.project_code && <p><span className="text-slate-400">{t("Project:")}</span> {c.project_code}{c.project_name ? ` · ${c.project_name}` : ''}</p>}
+                            {c.notes && <p><span className="text-slate-400">{t("Notes:")}</span> {c.notes}</p>}
+                            {c.manager_remarks && <p><span className="text-slate-400">{t("Manager:")}</span> {c.manager_remarks}</p>}
+                            {c.hr_remarks && <p><span className="text-slate-400">{t("HR:")}</span> {c.hr_remarks}</p>}
+                            {c.status === 'PAID' && <p><span className="text-slate-400">{t("Paid:")}</span> {formatLeaveDate(c.paid_at)}{c.paid_reference ? ` (${c.paid_reference})` : ''}</p>}
                           </div>
                         </div>
                       </td>
@@ -765,9 +755,9 @@ export default function ClaimsPage() {
         </div>
         {pageCount > 1 && (
           <div className="flex items-center justify-end gap-2 px-6 py-4">
-            <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">Prev</button>
-            <span className="text-xs text-slate-500">Page {page} of {pageCount}</span>
-            <button type="button" disabled={page === pageCount} onClick={() => setPage((p) => p + 1)} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">Next</button>
+            <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{t("Prev")}</button>
+            <span className="text-xs text-slate-500">{t("Page {page} of {pageCount}", { page: page, pageCount: pageCount })}</span>
+            <button type="button" disabled={page === pageCount} onClick={() => setPage((p) => p + 1)} className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{t("Next")}</button>
           </div>
         )}
       </div>
@@ -778,7 +768,7 @@ export default function ClaimsPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
           <div className={`rounded-full px-4 py-2.5 text-sm font-medium shadow-lg border ${
             toast.type === 'error' ? 'bg-red-600 border-red-700 text-white' : 'bg-slate-900 border-slate-950 text-white'
-          }`}>{toast.text}</div>
+          }`}>{t(toast.text)}</div>
         </div>
       )}
     </div>
