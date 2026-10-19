@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { authHeaders } from '../authSession';
 import RememberedDevices from './RememberedDevices';
-import LanguageSwitch from '../i18n/LanguageSwitch';
 import { useT } from '../i18n/LanguageProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
@@ -18,7 +17,7 @@ function formatRole(role) {
 }
 
 export default function SettingsPage() {
-  const { t } = useT();
+  const { t, lang, setLanguage } = useT();
   const [user, setUser] = useState(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -199,9 +198,24 @@ export default function SettingsPage() {
               {/* Language card */}
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t("Language")}</p>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-                  <p className="text-sm text-slate-500">{t("Used for menus, buttons and emails")}</p>
-                  <LanguageSwitch size={15} onChange={() => setLanguageSaved(true)} />
+                <p className="mt-2 text-sm text-slate-500">{t("Used for menus, buttons and emails")}</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button type="button" onClick={() => { setLanguage('en'); setLanguageSaved(true); }} aria-pressed={lang === 'en'}
+                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left transition ${lang === 'en' ? 'border-2 border-[#1a3a8f] bg-[#f4f7ff]' : 'border border-slate-200 hover:bg-slate-50'}`}>
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">English</span>
+                      <span className="block text-xs text-slate-500">{t("Default")}</span>
+                    </span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={lang === 'en' ? '#1a3a8f' : '#cbd5e1'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>{lang === 'en' && <path d="M8 12l3 3 5-6"/>}</svg>
+                  </button>
+                  <button type="button" onClick={() => { setLanguage('zh'); setLanguageSaved(true); }} aria-pressed={lang === 'zh'}
+                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left transition ${lang === 'zh' ? 'border-2 border-[#1a3a8f] bg-[#f4f7ff]' : 'border border-slate-200 hover:bg-slate-50'}`}>
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">中文</span>
+                      <span className="block text-xs text-slate-500">{t("Mandarin, simplified")}</span>
+                    </span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={lang === 'zh' ? '#1a3a8f' : '#cbd5e1'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>{lang === 'zh' && <path d="M8 12l3 3 5-6"/>}</svg>
+                  </button>
                 </div>
                 {languageSaved && <p className="mt-3 text-xs text-emerald-600">{t("Language saved")}</p>}
               </div>

@@ -438,6 +438,8 @@ const zh = {
   'View profile': '查看个人资料',
   'Log out': '退出登录',
   'Settings': '设置',
+  'Default': '默认',
+  'Mandarin, simplified': '简体中文',
   'Saved devices': '已保存的设备',
   'Your password, profile, language and saved devices.': '您的密码、个人资料、语言和已保存的设备。',
   "What's new": '新功能',
