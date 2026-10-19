@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import SidebarClient, { PAGE_BG } from './SidebarClient';
 import AttendanceReminders from './AttendanceReminders';
 import TopBar from './TopBar';
+import WalkthroughTour from './WalkthroughTour';
 
 const SIDEBAR_PREFIXES = ['/dashboard', '/attendance', '/leave', '/calendar', '/progress', '/claims', '/inbox', '/profile', '/whats-new'];
 const MOBILE_MEDIA_QUERY = '(max-width: 860px)';
@@ -66,6 +67,7 @@ export default function AppShell({ children }) {
         {sidebarOpen && <SidebarClient isDrawer onClose={() => setSidebarOpen(false)} />}
         <main ref={scrollRef}>
           <AttendanceReminders />
+          <WalkthroughTour />
           <TopBar onMenuClick={() => setSidebarOpen(true)} />
           {children}
         </main>
@@ -91,6 +93,7 @@ export default function AppShell({ children }) {
         <div className="flex-1 flex flex-col" style={{ minHeight: 0, padding: '16px 0' }}>
           <div ref={scrollRef} className="flex-1 overflow-y-auto page-scrollbar" style={{ paddingLeft: 12, paddingRight: 8 }}>
             <AttendanceReminders />
+            <WalkthroughTour />
             <TopBar onMenuClick={toggleCollapsed} menuExpanded={!collapsed} />
             {children}
           </div>

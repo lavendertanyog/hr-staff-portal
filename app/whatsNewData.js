@@ -2,6 +2,16 @@
 // jargon). Newest first. `id` just needs to increase; it's what "seen" is tracked against.
 export const WHATS_NEW = [
   {
+    id: 8,
+    date: '19 Oct 2026',
+    title: 'A quick tour of the portal',
+    body: 'The first time you log in, a short walkthrough points out each page in the sidebar and what it is for.',
+    points: [
+      'Use Next and Back to move through it, or Skip tour to close it; it only shows once',
+      'Take it again any time from your Profile page',
+    ],
+  },
+  {
     id: 7,
     date: '13 Oct 2026',
     title: 'A fresh new look',
