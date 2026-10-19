@@ -4,6 +4,22 @@
 // the next number. Entries from before the numbering began have no version.
 export const WHATS_NEW = [
   {
+    id: 9,
+    date: '16 Oct 2026',
+    version: '1.4',
+    title: 'Claim expenses from a receipt photo',
+    body: 'Open Claims, add photos of your receipts, and the portal fills in the date, shop, items and amount for you. Check the details, submit, and your manager and then HR approve each claim. Approved claims are paid with your salary.',
+    points: [
+      'Add up to 10 receipts at once; each one becomes its own claim',
+      'Always check every field before you submit; you can correct anything the photo reading got wrong',
+      'If the photo can’t be read, just type the details in yourself',
+      'Service charge, each tax (such as SST or GST), rounding and discounts are listed under Charges and tax, and the form checks they add up to the amount paid',
+      'Receipts in another currency, such as MYR, show the SGD amount at the exchange rate for the purchase date; you are reimbursed in SGD',
+      'You can edit or delete a claim until your manager reviews it',
+      'Your Inbox tells you when a claim is approved, rejected or paid',
+    ],
+  },
+  {
     id: 8,
     date: '12 Oct 2026',
     version: '1.3',
