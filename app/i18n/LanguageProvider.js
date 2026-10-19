@@ -39,6 +39,8 @@ function enumKey(dictionary, text) {
   return Object.prototype.hasOwnProperty.call(dictionary, plain) ? plain : null;
 }
 
+const WORD_PARAMS = new Set(['v', 'v2', 'kind', 'tabNoun', 'category', 'status', 'roleLabel', 'type']);
+
 export function translate(lang, text, params) {
   let out = text;
   if (typeof text === 'string') {
@@ -54,7 +56,12 @@ export function translate(lang, text, params) {
     }
   }
   if (params && typeof out === 'string') {
-    out = out.replace(/\{(\w+)\}/g, (match, key) => (key in params ? String(params[key]) : match));
+    out = out.replace(/\{(\w+)\}/g, (match, key) => {
+      if (!(key in params)) return match;
+      const value = params[key];
+      // words filled in by the code (Approved, leave, budget...) are translated too
+      return lang === 'zh' && WORD_PARAMS.has(key) && typeof value === 'string' ? String(translate(lang, value)) : String(value);
+    });
   }
   return out;
 }

@@ -1,4 +1,5 @@
 import content from './zh-content';
+import more from './zh-more';
 
 // Mandarin (simplified) text, keyed by the English text. Drafted, not yet reviewed by a native speaker.
 // Terms used throughout: Clock in = 上班打卡, Clock out = 下班打卡, Attendance = 考勤, Leave = 休假,
@@ -555,4 +556,4 @@ const zh = {
   'Clock-in & "still working?" reminders': '上班打卡和“还在工作吗？”提醒',
   "A reminder appears hourly if you haven't clocked in by 8:30am on a weekday (staff aren't expected to clock in at 8:30am on weekends, so this reminder doesn't apply then). Once clocked in — any day, including weekends — you'll be asked to confirm you're still working periodically, and auto clocked-out after 4 hours since your last check-in if you miss it. Only the forced auto clock-out pauses over lunch (12–2pm); the reminder itself keeps checking in as usual.": '工作日如果您在上午 8:30 前还没有上班打卡，系统每小时会提醒您一次（周末无需在 8:30 打卡，因此周末不会提醒）。打卡后（任何一天，包括周末），系统会定期请您确认仍在工作；如果您没有确认，在您上次确认后满 4 小时将自动下班打卡。只有强制自动下班打卡会在午休时间（12–2 点）暂停，提醒本身仍会照常进行。',
 };
-export default { ...zh, ...content };
+export default { ...zh, ...more, ...content };

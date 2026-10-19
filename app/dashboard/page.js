@@ -478,8 +478,8 @@ export default function StaffDashboard() {
         return {
           key: `leave-${l.leave_id}`,
           date: start,
-          when: days === 1 ? `${weekday(start)} · 1 day` : `Until ${dayMonth(end)} · ${days} days`,
-          title: LEAVE_LABELS[String(l.category)] || t("Leave"),
+          when: days === 1 ? t("{weekday} · 1 day", { weekday: weekday(start) }) : t("Until {date} · {days} days", { date: dayMonth(end), days: days }),
+          title: t(LEAVE_LABELS[String(l.category)] || "Leave"),
           badge: status === 'APPROVED' ? 'Approved' : 'Pending',
           badgeClass: BADGE_COLORS[status],
         };
@@ -490,7 +490,7 @@ export default function StaffDashboard() {
       .map((h) => ({
         key: `holiday-${h.ymd}`,
         date: h.ymd,
-        when: `${weekday(h.ymd)} · Public holiday`,
+        when: t("{weekday} · Public holiday", { weekday: weekday(h.ymd) }),
         title: h.name,
         badge: 'Holiday',
         badgeClass: BADGE_COLORS.HOLIDAY,
@@ -553,7 +553,7 @@ export default function StaffDashboard() {
             </svg>
             <div className="relative max-w-lg">
               <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#aab8e0]">{todayLabel || 'Staff Dashboard'}</p>
-              <h1 className="mt-3 text-4xl font-extrabold tracking-tight">{greeting}, {firstName}</h1>
+              <h1 className="mt-3 text-4xl font-extrabold tracking-tight">{t(greeting)}, {firstName}</h1>
               <p className="mt-3 flex items-center gap-2 text-sm text-[#d6def5]">
                 {loading ? t("Checking your attendance…") : activeSession ? (
                   <>
@@ -590,7 +590,7 @@ export default function StaffDashboard() {
                   <div key={u.key} className={`${CARD} flex flex-col gap-2 px-6 py-5`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-2xl font-extrabold tracking-tight text-slate-900">{dayMonth(u.date)}</span>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${u.badgeClass}`}>{u.badge}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${u.badgeClass}`}>{t(u.badge)}</span>
                     </div>
                     <span className="text-xs text-slate-400">{u.when}</span>
                     <span className="truncate text-sm font-bold text-slate-800">{t(u.title)}</span>
