@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { endSession } from './authSession';
 import { WHATS_NEW_LATEST_ID, WHATS_NEW_SEEN_KEY } from './whatsNewData';
 import { useT } from './i18n/LanguageProvider';
-import LanguageSwitch from './i18n/LanguageSwitch';
 
 function deriveNameFromEmail(email) {
   return String(email || '').split('@')[0].split('.').filter(Boolean)
@@ -207,7 +206,6 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
 
         {/* Right icons */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <span className="mr-3 hidden sm:inline-flex"><LanguageSwitch size={13} /></span>
           <WhatsNewButton />
           {/* Notification bell */}
           <Link href="/inbox" aria-label={t("Notifications")} title={t("Notifications")}
