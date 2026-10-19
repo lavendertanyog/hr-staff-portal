@@ -249,16 +249,18 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
 
         {showMonth ? (
           <div className="overflow-x-auto">
-            <div className="min-w-[640px]">
-              <div className="grid grid-cols-7 border-b border-slate-100">
+            {/* Weekdays are navy pills; the days below have no boxes, just a line under each week. */}
+            <div className="min-w-[640px] px-4 pb-4">
+              <div className="grid grid-cols-7 pt-4 pb-2">
                 {WEEKDAYS.map((d) => (
-                  <span key={d} className="border-r border-slate-100 py-3 text-center text-xs font-semibold text-slate-400 last:border-r-0">{d}</span>
+                  <span key={d} className="px-1">
+                    <span className="block rounded-full bg-[#16307a] py-2 text-center text-xs font-bold uppercase tracking-[0.12em] text-white">{d}</span>
+                  </span>
                 ))}
               </div>
               <div className="grid grid-cols-7">
                 {gridCells.map((d, i) => {
-                  const isLastCol = (i + 1) % 7 === 0;
-                  if (!d) return <div key={i} className={`min-h-[110px] border-b border-slate-100 bg-slate-50/40 ${isLastCol ? '' : 'border-r'}`} />;
+                  if (!d) return <div key={i} className="min-h-[110px] border-b border-slate-200" />;
                   const iso = toISODateStr(d);
                   const holiday = holidayByDate[iso];
                   const onLeave = leaveByDate[iso] || [];
@@ -282,7 +284,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                       )}
                     </>
                   );
-                  const cellClass = `min-h-[110px] p-2 flex flex-col items-end text-left border-b border-slate-100 ${isLastCol ? '' : 'border-r'}`;
+                  const cellClass = 'min-h-[110px] p-2 flex flex-col items-start text-left border-b border-slate-200';
                   return hasDetails ? (
                     <button key={i} type="button" onClick={() => setDayOpen(iso)} aria-label={`${longDate(iso)}: details`}
                       className={`${cellClass} transition hover:bg-slate-50`}>

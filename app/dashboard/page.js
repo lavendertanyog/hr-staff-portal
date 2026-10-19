@@ -6,6 +6,7 @@ import axios from 'axios';
 import Link from 'next/link';
 import Chart from 'chart.js/auto';
 import { authHeaders } from '../authSession';
+import { WHATS_NEW } from '../whatsNewData';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -79,6 +80,50 @@ function clockHourLabel(hour) {
   return `${displayHour} ${period}`;
 }
 
+// A YYYY-MM-DD calendar date as-is, or a full timestamp converted to its SGT date.
+function toYMD(value) {
+  const s = String(value || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
+}
+
+function sgtTodayYMD() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
+}
+
+// "16 Oct" and "Fri" for a YYYY-MM-DD date.
+function dayMonth(ymd) {
+  return new Date(ymd + 'T00:00:00').toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
+}
+function weekday(ymd) {
+  return new Date(ymd + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' });
+}
+
+// Rings from the outside in. They differ in lightness as well as hue so they stay distinguishable.
+const RING_COLORS = ['#1540A8', '#e48ab0', '#8fa6e6', '#16307a'];
+const RING_RADII = [84, 66, 48, 30];
+
+const LEAVE_LABELS = { ANNUAL: 'Annual leave', EMERGENCY: 'Emergency leave', SICK: 'Sick leave' };
+const BADGE_COLORS = {
+  APPROVED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-700',
+  PENDING: 'bg-yellow-100 text-yellow-700',
+  HOLIDAY: 'bg-[#E8EEFF] text-[#1a3a8f]',
+};
+
+// Card surface used across the new dashboard: white, no border, a soft navy-tinted shadow.
+const CARD = 'rounded-3xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(22,48,122,0.18)]';
+
+function ArrowLink({ href, children }) {
+  return (
+    <Link href={href} className="flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-[#1540A8]">
+      {children}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+    </Link>
+  );
+}
+
 export default function StaffDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -86,9 +131,12 @@ export default function StaffDashboard() {
   const [inbox, setInbox] = useState([]);
   // Counted over the whole inbox feed (same as the Inbox page), not just the 6 shown here
   const [unreadCount, setUnreadCount] = useState(0);
-  const [leaveBalance, setLeaveBalance] = useState(null);
+  const [allocations, setAllocations] = useState([]);
+  const [progressHistory, setProgressHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(null);
+  const [myLeave, setMyLeave] = useState([]);
+  const [holidays, setHolidays] = useState([]);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   // Weekly project log
@@ -119,15 +167,21 @@ export default function StaffDashboard() {
     Promise.all([
       axios.get(`${API_BASE}/api/v1/projects/active-list?userId=${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/users/${uid}/inbox`, { headers: authHeaders() }).catch(() => null),
-      axios.get(`${API_BASE}/api/v1/leave/balance/${uid}`).catch(() => null),
+      axios.get(`${API_BASE}/api/v1/allocations/${uid}`).catch(() => null),
+      axios.get(`${API_BASE}/api/v1/projects/progress-history/${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/attendance/active-session/${uid}`).catch(() => null),
-    ]).then(([projRes, inboxRes, balRes, sessionRes]) => {
+      axios.get(`${API_BASE}/api/v1/leave/my-requests/${uid}`).catch(() => null),
+      axios.get(`${API_BASE}/api/v1/public-holidays`).catch(() => null),
+    ]).then(([projRes, inboxRes, allocRes, historyRes, sessionRes, leaveRes, holidayRes]) => {
       setProjects(projRes?.data?.data || []);
       const inboxItems = inboxRes?.data?.data || [];
       setInbox(inboxItems.slice(0, 6));
       setUnreadCount(inboxItems.filter((i) => i.status === 'UNREAD').length);
-      setLeaveBalance(balRes?.data?.data || null);
+      setAllocations(allocRes?.data?.data || []);
+      setProgressHistory(historyRes?.data?.data || []);
       setActiveSession(sessionRes?.data?.data || null);
+      setMyLeave(leaveRes?.data?.data || []);
+      setHolidays(holidayRes?.data?.data || []);
     }).finally(() => setLoading(false));
   }, [user?.user_id]);
 
@@ -395,170 +449,392 @@ export default function StaffDashboard() {
   }, [selectedSessionId, sessionRows]);
 
   const staffName = deriveNameFromEmail(user?.email) || user?.full_name || 'Staff';
-  const leaveDate = new Date().toLocaleDateString('en-SG', { day: 'numeric', month: 'long' });
+  const firstName = staffName.split(' ')[0];
+  const today = sgtTodayYMD();
 
-  const stats = [
-    {
-      label: 'Active Sessions',
-      value: loading ? '—' : (elapsedLabel || 'Not clocked in'),
-      href: '/attendance',
-      live: !!elapsedLabel,
-    },
-    { label: `Leave taken as of ${leaveDate}`, value: loading ? '—' : leaveBalance ? `${leaveBalance.usedDays} days` : '—', href: '/leave' },
-    { label: 'Unread Notifications', value: loading ? '—' : unreadCount, href: '/inbox' },
-  ];
+  // Only worked out once the user is loaded (always client-side), so the server render and the
+  // first client render match and the time-based text never causes a hydration mismatch.
+  const greeting = useMemo(() => {
+    if (!user) return 'Welcome back';
+    const hour = Number(new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', hour12: false }));
+    return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  }, [user]);
+  const todayLabel = user
+    ? new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'short', day: 'numeric', month: 'short' })
+    : '';
+
+  // Next three things on the calendar: the user's own approved or pending leave that hasn't
+  // ended yet, and upcoming public holidays.
+  const upcoming = useMemo(() => {
+    const leaveItems = myLeave
+      .filter((l) => ['APPROVED', 'PENDING'].includes(String(l.workflow_status)) && toYMD(l.end_date) >= today)
+      .map((l) => {
+        const start = toYMD(l.start_date);
+        const end = toYMD(l.end_date);
+        const days = Math.round((new Date(end + 'T00:00:00') - new Date(start + 'T00:00:00')) / 86400000) + 1;
+        const status = String(l.workflow_status);
+        return {
+          key: `leave-${l.leave_id}`,
+          date: start,
+          when: days === 1 ? `${weekday(start)} · 1 day` : `Until ${dayMonth(end)} · ${days} days`,
+          title: LEAVE_LABELS[String(l.category)] || 'Leave',
+          badge: status === 'APPROVED' ? 'Approved' : 'Pending',
+          badgeClass: BADGE_COLORS[status],
+        };
+      });
+    const holidayItems = holidays
+      .map((h) => ({ ...h, ymd: toYMD(h.holiday_date) }))
+      .filter((h) => h.ymd >= today)
+      .map((h) => ({
+        key: `holiday-${h.ymd}`,
+        date: h.ymd,
+        when: `${weekday(h.ymd)} · Public holiday`,
+        title: h.name,
+        badge: 'Holiday',
+        badgeClass: BADGE_COLORS.HOLIDAY,
+      }));
+    return [...leaveItems, ...holidayItems].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
+  }, [myLeave, holidays, today]);
+
+  const budgetProjects = useMemo(() => projects
+    .filter((p) => Number(p.budget_hours) > 0)
+    .map((p) => {
+      const pct = Math.round((Number(p.total_tracked_hours || 0) / Number(p.budget_hours)) * 100);
+      return {
+        code: p.project_code,
+        name: p.project_name || p.project_code,
+        pct,
+        color: pct >= 100 ? '#dc2626' : pct >= 80 ? '#d97706' : '#1540A8',
+      };
+    })
+    .slice(0, 5), [projects]);
+
+  // One ring per project the user is allocated to, showing its latest logged completion %
+  // (progress history comes back newest first) — the same number the Progress page shows.
+  const myProjects = useMemo(() => {
+    const seen = new Set();
+    return allocations
+      .filter((a) => a.project_code && !seen.has(a.project_code) && seen.add(a.project_code))
+      .map((a) => {
+        const log = progressHistory.find((h) => h.project_code === a.project_code);
+        return {
+          code: a.project_code,
+          name: a.project_name || a.project_code,
+          pct: log ? Math.round(Math.min(100, Math.max(0, Number(log.completion_percentage || 0)))) : 0,
+        };
+      });
+  }, [allocations, progressHistory]);
+  const ringProjects = myProjects.slice(0, RING_COLORS.length);
+  const overallPct = myProjects.length
+    ? Math.round(myProjects.reduce((sum, p) => sum + p.pct, 0) / myProjects.length)
+    : 0;
+
+  const latestNews = WHATS_NEW[0];
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {staffName}</h1>
-        <p className="mt-2 text-sm text-slate-500">Manage your attendance, leave, and project progress in one place.</p>
-      </div>
+    <div className="px-6 pb-8 pt-2 sm:px-8">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
 
-      {/* Stat cards */}
-      <div className="grid gap-6 xl:grid-cols-3 mb-10">
-        {stats.map((item) => (
-          <Link key={item.label} href={item.href}
-            className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-slate-300 cursor-pointer">
-            <div className="flex items-center gap-2">
-              {item.live && <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />}
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{item.label}</p>
-            </div>
-            <p className="mt-4 text-3xl font-semibold text-slate-950 tabular-nums">{item.value}</p>
-          </Link>
-        ))}
-      </div>
+        {/* ── Main column ── */}
+        <div className="flex min-w-0 flex-col gap-8">
 
-      {/* Quick actions */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 mb-5">Quick Actions</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: activeSession ? 'Clock Out' : 'Clock In', href: '/attendance', bg: '#EEF4FF', color: '#1a3a8f' },
-            { label: 'Apply Leave', href: '/leave', bg: '#EEFBF3', color: '#166534' },
-            { label: 'Log Progress', href: '/progress', bg: '#FFFBEB', color: '#92400e' },
-            { label: 'Request Budget', href: '/progress?tab=budget', bg: '#FDF4FF', color: '#6b21a8' },
-          ].map((a) => (
-            <Link key={a.href} href={a.href}
-              className="rounded-2xl px-4 py-4 text-sm font-semibold transition hover:opacity-90"
-              style={{ background: a.bg, color: a.color }}>
-              {a.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Weekly project log */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Weekly Project Log</p>
-          <div className="flex items-center gap-2 flex-wrap ml-auto">
-            <div className="flex items-center gap-1">
-              <button type="button"
-                onClick={() => (logRange === 'week' ? setWeekOffset((o) => o - 1) : setMonthOffset((o) => Math.max(minMonthOffset, o - 1)))}
-                disabled={logRange === 'month' && monthOffset <= minMonthOffset}
-                aria-label={logRange === 'week' ? 'Previous week' : 'Previous month'}
-                className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">‹</button>
-              <span className="text-xs text-slate-500 min-w-[104px] text-center">{rangeLabel}</span>
-              <button type="button"
-                onClick={() => (logRange === 'week' ? setWeekOffset((o) => Math.min(0, o + 1)) : setMonthOffset((o) => Math.min(0, o + 1)))}
-                disabled={logRange === 'week' ? weekOffset >= 0 : monthOffset >= 0}
-                aria-label={logRange === 'week' ? 'Next week' : 'Next month'}
-                className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center disabled:opacity-40">›</button>
-            </div>
-            <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-              {[{ k: 'week', l: 'Week' }, { k: 'month', l: 'Month' }].map((r) => (
-                <button key={r.k} type="button" onClick={() => setLogRange(r.k)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${logRange === r.k ? 'bg-white shadow-sm text-[#0c3b8f]' : 'text-slate-500'}`}>
-                  {r.l}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {!logLoading && legendItems.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {legendItems.map((item) => (
-              <span key={item.code} className="flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                <span className="w-2 h-2 rounded-sm" style={{ background: item.color }} />
-                {item.code}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {logLoading ? (
-          <p className="text-sm text-slate-400 text-center py-10">Loading…</p>
-        ) : (
-          <>
-            <div style={logRange === 'month' ? { maxHeight: 480, overflowY: 'auto' } : undefined}>
-              <div style={{ position: 'relative', width: '100%', height: logRange === 'week' ? 280 : Math.max(280, ganttLabels.length * 32) }}>
-                <canvas ref={chartRef} role="img" aria-label="Timeline of attendance sessions, one row per day" />
+          {/* Greeting and clock-in */}
+          <section className="relative overflow-hidden rounded-3xl px-8 py-9 text-white sm:px-10" style={{ background: '#16307a' }}>
+            <svg className="pointer-events-none absolute -right-10 -top-16 hidden sm:block" width="340" height="340" viewBox="0 0 360 360" fill="none" aria-hidden="true">
+              <circle cx="180" cy="180" r="150" stroke="#2f56b8" strokeWidth="2" />
+              <circle cx="180" cy="180" r="112" stroke="#2f56b8" strokeWidth="2" strokeDasharray="4 8" />
+              <circle cx="180" cy="180" r="74" fill="#1a3a8f" stroke="#E8EEFF" strokeWidth="3" />
+              <path d="M180 130v50l32 20" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="180" cy="180" r="8" fill="#f0c9dc" />
+              <circle cx="300" cy="96" r="14" fill="#f0c9dc" />
+              <circle cx="64" cy="250" r="9" fill="#E8EEFF" />
+            </svg>
+            <div className="relative max-w-lg">
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#aab8e0]">{todayLabel || 'Staff Dashboard'}</p>
+              <h1 className="mt-3 text-4xl font-extrabold tracking-tight">{greeting}, {firstName}</h1>
+              <p className="mt-3 flex items-center gap-2 text-sm text-[#d6def5]">
+                {loading ? 'Checking your attendance…' : activeSession ? (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
+                    <span>Clocked in since {fmtTimeSGT(activeSession.clock_in_time)} · <span className="tabular-nums">{elapsedLabel}</span></span>
+                  </>
+                ) : 'You haven’t clocked in yet.'}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link href="/attendance"
+                  className="flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-[#16307a] transition hover:bg-[#E8EEFF]">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                  {activeSession ? 'Clock out' : 'Clock in'}
+                </Link>
+                <Link href="/attendance"
+                  className="rounded-2xl border border-[#4a6bc4] px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
+                  Manual entry
+                </Link>
               </div>
             </div>
-            {sessionRows.length === 0 && (
-              <p className="mt-2 text-xs text-slate-400 text-center">No attendance logged in this period yet.</p>
+          </section>
+
+          {/* Coming up */}
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-extrabold text-slate-900">Coming up</h2>
+              <ArrowLink href="/calendar">View calendar</ArrowLink>
+            </div>
+            {loading ? (
+              <div className={`${CARD} px-6 py-8 text-center text-sm text-slate-400`}>Loading…</div>
+            ) : upcoming.length === 0 ? (
+              <div className={`${CARD} px-6 py-8 text-center text-sm text-slate-400`}>Nothing coming up. Your approved leave and public holidays will show here.</div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                {upcoming.map((u) => (
+                  <div key={u.key} className={`${CARD} flex flex-col gap-2 px-6 py-5`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-2xl font-extrabold tracking-tight text-slate-900">{dayMonth(u.date)}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${u.badgeClass}`}>{u.badge}</span>
+                    </div>
+                    <span className="text-xs text-slate-400">{u.when}</span>
+                    <span className="truncate text-sm font-bold text-slate-800">{u.title}</span>
+                  </div>
+                ))}
+              </div>
             )}
-            {selectedSession && (
-              <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    {formatShort(selectedSession.day)} · {fmtTimeSGT(selectedSession.clock_in_time)} – {selectedSession.clock_out_time ? fmtTimeSGT(selectedSession.clock_out_time) : 'still active'}
-                  </p>
-                  <button type="button" onClick={() => setSelectedSessionId(null)} className="text-xs text-slate-400 hover:text-slate-600">Close</button>
+          </section>
+
+          {/* This week: attendance timeline and project budgets, side by side */}
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-extrabold text-slate-900">This {logRange === 'week' ? 'week' : 'month'}</h2>
+              <ArrowLink href="/progress">Progress</ArrowLink>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+              <div className={`${CARD} min-w-0 p-6`}>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Hours worked</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <button type="button"
+                        onClick={() => (logRange === 'week' ? setWeekOffset((o) => o - 1) : setMonthOffset((o) => Math.max(minMonthOffset, o - 1)))}
+                        disabled={logRange === 'month' && monthOffset <= minMonthOffset}
+                        aria-label={logRange === 'week' ? 'Previous week' : 'Previous month'}
+                        className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-50 text-slate-500 hover:bg-[#E8EEFF] hover:text-[#1540A8] disabled:opacity-40">‹</button>
+                      <span className="min-w-[110px] text-center text-xs font-semibold text-slate-500">{rangeLabel}</span>
+                      <button type="button"
+                        onClick={() => (logRange === 'week' ? setWeekOffset((o) => Math.min(0, o + 1)) : setMonthOffset((o) => Math.min(0, o + 1)))}
+                        disabled={logRange === 'week' ? weekOffset >= 0 : monthOffset >= 0}
+                        aria-label={logRange === 'week' ? 'Next week' : 'Next month'}
+                        className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-50 text-slate-500 hover:bg-[#E8EEFF] hover:text-[#1540A8] disabled:opacity-40">›</button>
+                    </div>
+                    <div className="flex gap-1 rounded-full bg-slate-50 p-1">
+                      {[{ k: 'week', l: 'Week' }, { k: 'month', l: 'Month' }].map((r) => (
+                        <button key={r.k} type="button" onClick={() => setLogRange(r.k)}
+                          className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${logRange === r.k ? 'bg-[#1540A8] text-white' : 'text-slate-500 hover:text-slate-700'}`}>
+                          {r.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <ul className="space-y-1.5">
-                  {(selectedSession.allocations || []).map((a, i) => (
-                    <li key={`${a.project_code}-${i}`} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-700">{a.project_code}</span>
-                      <span className="font-semibold text-slate-900 tabular-nums">{Number(a.hours || 0).toFixed(2)}h</span>
+                {!logLoading && legendItems.length > 0 && (
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {legendItems.map((item) => (
+                      <span key={item.code} className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                        <span className="h-2 w-2 rounded-sm" style={{ background: item.color }} />
+                        {item.code}
+                      </span>
+                    ))}
+                  </div>
+                )}
+  
+                {logLoading ? (
+                  <p className="py-10 text-center text-sm text-slate-400">Loading…</p>
+                ) : (
+                  <>
+                    <div style={logRange === 'month' ? { maxHeight: 480, overflowY: 'auto' } : undefined}>
+                      <div style={{ position: 'relative', width: '100%', height: logRange === 'week' ? 280 : Math.max(280, ganttLabels.length * 32) }}>
+                        <canvas ref={chartRef} role="img" aria-label="Timeline of attendance sessions, one row per day" />
+                      </div>
+                    </div>
+                    {sessionRows.length === 0 && (
+                      <p className="mt-2 text-center text-xs text-slate-400">No attendance logged in this period yet.</p>
+                    )}
+                    {selectedSession && (
+                      <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            {formatShort(selectedSession.day)} · {fmtTimeSGT(selectedSession.clock_in_time)} – {selectedSession.clock_out_time ? fmtTimeSGT(selectedSession.clock_out_time) : 'still active'}
+                          </p>
+                          <button type="button" onClick={() => setSelectedSessionId(null)} className="text-xs text-slate-400 hover:text-slate-600">Close</button>
+                        </div>
+                        <ul className="space-y-1.5">
+                          {(selectedSession.allocations || []).map((a, i) => (
+                            <li key={`${a.project_code}-${i}`} className="flex items-center justify-between text-sm">
+                              <span className="text-slate-700">{a.project_code}</span>
+                              <span className="font-semibold tabular-nums text-slate-900">{Number(a.hours || 0).toFixed(2)}h</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className={`${CARD} min-w-0 px-6 py-5`}>
+                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Project budget used</span>
+                {loading ? (
+                  <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
+                ) : budgetProjects.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-400">None of your projects has an hours budget yet.</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {budgetProjects.map((p) => (
+                      <li key={p.code} className="grid grid-cols-[minmax(0,1fr)_minmax(80px,180px)_48px] items-center gap-4 py-3.5">
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-slate-800">{p.name}</span>
+                          <span className="block text-xs text-slate-400">{p.code}</span>
+                        </span>
+                        <span className="block h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                          <span className="block h-full rounded-full" style={{ width: `${Math.min(100, p.pct)}%`, background: p.color }} />
+                        </span>
+                        <span className="text-right text-sm font-bold tabular-nums text-slate-900">{p.pct}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* ── Side column ── */}
+        <aside className="flex min-w-0 flex-col gap-6 rounded-3xl bg-white p-6 xl:self-start">
+          {/* My statistics: one progress ring per project */}
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-extrabold text-slate-900">My statistics</h2>
+              <ArrowLink href="/progress">Progress</ArrowLink>
+            </div>
+            {loading ? (
+              <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
+            ) : myProjects.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">You aren&apos;t allocated to any projects yet.</p>
+            ) : (
+              <>
+                <div className="relative mx-auto" style={{ width: 200, height: 200 }}>
+                  <svg width="200" height="200" viewBox="0 0 200 200" aria-hidden="true">
+                    {ringProjects.map((p, i) => {
+                      const r = RING_RADII[i];
+                      const c = 2 * Math.PI * r;
+                      return (
+                        <g key={p.code} transform="rotate(-90 100 100)">
+                          <circle cx="100" cy="100" r={r} fill="none" stroke="#EEF2FB" strokeWidth="11" />
+                          {p.pct > 0 && (
+                            <circle cx="100" cy="100" r={r} fill="none" stroke={RING_COLORS[i]} strokeWidth="11" strokeLinecap="round"
+                              strokeDasharray={`${((c * p.pct) / 100).toFixed(1)} ${c.toFixed(1)}`} />
+                          )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                  {ringProjects.length < 4 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-2xl font-extrabold text-slate-900 tabular-nums">{overallPct}%</span>
+                      <span className="text-xs text-slate-400">Overall</span>
+                    </div>
+                  )}
+                </div>
+                <ul className="mt-5 flex flex-col gap-1">
+                  {ringProjects.map((p, i) => (
+                    <li key={p.code}>
+                      <Link href="/progress"
+                        className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-[#F7F9FD]">
+                        <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: RING_COLORS[i] }} aria-hidden="true" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-slate-800">{p.name}</span>
+                          <span className="block text-xs text-slate-400">{p.code}</span>
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-slate-900">{p.pct}%</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                      </Link>
                     </li>
                   ))}
+                  {myProjects.length > ringProjects.length && (
+                    <li>
+                      <Link href="/progress" className="block px-3 py-2 text-xs font-semibold text-slate-500 hover:text-[#1540A8]">
+                        +{myProjects.length - ringProjects.length} more on Progress
+                      </Link>
+                    </li>
+                  )}
                 </ul>
-              </div>
+              </>
             )}
-          </>
-        )}
-      </div>
+          </section>
 
-      {/* Recent inbox */}
-      <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Recent Activity</p>
-            <p className="mt-1 font-semibold text-slate-900">Inbox</p>
-          </div>
-          <Link href="/inbox" className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
-            View all
-          </Link>
-        </div>
-        {loading ? (
-          <p className="px-6 py-8 text-sm text-slate-400">Loading…</p>
-        ) : inbox.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-slate-400">No recent activity.</p>
-        ) : (
-          <ul className="divide-y divide-slate-50">
-            {inbox.map((item, i) => (
-              <li key={item.notification_id || i}
-                className={`px-6 py-4 flex items-start justify-between gap-4 hover:bg-slate-50 transition ${item.status === 'READ' ? 'opacity-50' : ''}`}>
-                <div className="min-w-0">
-                  <p className={`text-sm truncate ${item.status === 'UNREAD' ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>{item.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">{item.subtitle}</p>
-                </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  item.status === 'UNREAD' ? 'bg-blue-50 text-blue-700' :
-                  item.status === 'APPROVED' ? 'bg-green-50 text-green-700' :
-                  item.status === 'REJECTED' ? 'bg-red-50 text-red-600' :
-                  'bg-gray-100 text-gray-500'
-                }`}>{item.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+          {/* Quick actions */}
+          <section>
+            <h2 className="mb-4 text-base font-extrabold text-slate-900">Quick actions</h2>
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { label: 'Apply leave', href: '/leave' },
+                { label: 'Log progress', href: '/progress' },
+                { label: 'New claim', href: '/claims' },
+                { label: 'Request budget', href: '/progress?tab=budget' },
+              ].map((a) => (
+                <Link key={a.label} href={a.href}
+                  className="flex h-12 items-center justify-center rounded-2xl bg-[#E8EEFF] px-2 text-center text-sm font-bold text-[#16307a] transition hover:bg-[#dbe4ff]">
+                  {a.label}
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* Recent inbox */}
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-extrabold text-slate-900">
+                Inbox{unreadCount > 0 && <span className="ml-2 rounded-full bg-[#1540A8] px-2 py-0.5 text-xs font-bold text-white">{unreadCount}</span>}
+              </h2>
+              <ArrowLink href="/inbox">All</ArrowLink>
+            </div>
+            {loading ? (
+              <p className="py-4 text-sm text-slate-400">Loading…</p>
+            ) : inbox.length === 0 ? (
+              <p className="py-4 text-sm text-slate-400">No recent activity.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {inbox.slice(0, 4).map((item, i) => (
+                  <li key={item.notification_id || i} className="flex items-start justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <p className={`truncate text-sm ${item.status === 'UNREAD' ? 'font-bold text-slate-900' : 'text-slate-600'}`}>{item.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">{item.subtitle}</p>
+                    </div>
+                    {item.status === 'UNREAD' && <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-[#1540A8]" aria-label="Unread" />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* What's new */}
+          {latestNews && (
+            <section className="relative flex min-h-[190px] flex-col justify-end overflow-hidden rounded-3xl p-6 text-white" style={{ background: '#0f2463' }}>
+              <svg className="pointer-events-none absolute -right-8 -top-8" width="190" height="190" viewBox="0 0 200 200" fill="none" aria-hidden="true">
+                <rect x="70" y="40" width="88" height="112" rx="12" transform="rotate(12 114 96)" fill="#1a3a8f" stroke="#aab8e0" strokeWidth="2" />
+                <path d="M96 76h40M94 92h40M92 108h26" stroke="#E8EEFF" strokeWidth="4" strokeLinecap="round" transform="rotate(12 114 96)" />
+                <circle cx="66" cy="132" r="22" fill="#f0c9dc" />
+                <path d="M57 132l6 6 12-12" stroke="#16307a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <p className="relative text-xs font-bold uppercase tracking-[0.24em] text-[#aab8e0]">What&apos;s new</p>
+              <p className="relative mt-1.5 text-base font-extrabold leading-snug">{latestNews.title}</p>
+              <Link href="/whats-new" className="relative mt-3 flex items-center gap-2 text-sm font-semibold text-white hover:text-[#E8EEFF]">
+                Read more
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              </Link>
+            </section>
+          )}
+        </aside>
       </div>
     </div>
   );
 }
+
