@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { authHeaders } from '../authSession';
 import RememberedDevices from './RememberedDevices';
+import { START_TOUR_EVENT } from '../WalkthroughTour';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -110,6 +111,15 @@ export default function ProfilePage() {
             )) : (
               <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: '#e8edf8', color: '#1a3a8f' }}>Staff</span>
             )}
+          </div>
+
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Getting started</p>
+            <p className="mt-2 text-sm text-slate-500">A quick look around the portal and what each page is for.</p>
+            <button type="button" onClick={() => window.dispatchEvent(new Event(START_TOUR_EVENT))}
+              className="mt-4 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+              Take the tour again
+            </button>
           </div>
         </div>
 
