@@ -159,9 +159,7 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const menuRef = useRef(null);
-  const notifRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -173,7 +171,6 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
   useEffect(() => {
     const onClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -213,24 +210,14 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
           <span className="mr-3 hidden sm:inline-flex"><LanguageSwitch size={13} /></span>
           <WhatsNewButton />
           {/* Notification bell */}
-          <div className="relative" ref={notifRef}>
-            <button type="button" onClick={() => setNotifOpen((v) => !v)} aria-label={t("Notifications")}
-              className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-              style={{ width: 36, height: 36 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-              </svg>
-            </button>
-            {notifOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-200 bg-white shadow-lg p-4 z-30">
-                <p className="text-sm font-semibold text-slate-800 mb-1">{t("Notifications")}</p>
-                <p className="text-xs text-slate-500">{t("Check your Inbox for updates.")}</p>
-                <Link href="/inbox" onClick={() => setNotifOpen(false)}
-                  className="mt-3 inline-block text-xs font-semibold" style={{ color: '#1a3a8f' }}>{t("Go to Inbox →")}</Link>
-              </div>
-            )}
-          </div>
+          <Link href="/inbox" aria-label={t("Notifications")} title={t("Notifications")}
+            className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
+            style={{ width: 36, height: 36 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+          </Link>
 
           {/* Calendar / leave shortcut */}
           <Link href="/leave" aria-label={t("Leave calendar")}
