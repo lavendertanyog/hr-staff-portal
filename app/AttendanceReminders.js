@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
 import { showBrowserNotification } from './pwa';
+import { timeZoneForCountry, zonedWallClock } from './officeTime';
 
 // Short beep via Web Audio API — no audio asset needed.
 function playBeep() {
@@ -35,30 +36,31 @@ const AUTO_CLOCKOUT_HOURS = 4;
 const LUNCH_START_HOUR = 12;
 const LUNCH_END_HOUR = 14;
 
-function sgtNow() {
-  // Singapore has no DST, so a fixed +8h offset from UTC is always correct. IMPORTANT: the
-  // returned Date's *UTC* getters (getUTCHours, getUTCDate, etc.) hold the SGT wall-clock
-  // value — never call the local-timezone getters (getHours, getDate, ...) on it, since those
-  // re-apply whatever timezone the device itself is set to (e.g. a Singapore-based staff
-  // member's own laptop is already UTC+8, which would double-shift the result by 16 hours).
-  const now = new Date();
-  return new Date(now.getTime() + 8 * 60 * 60 * 1000);
+function officeNow() {
+  // The current wall-clock time in the signed-in staff member's own office time zone (set by
+  // HR; Singapore by default), so the 8:30am reminder and lunch hold follow their own clock.
+  // IMPORTANT: the returned Date's *UTC* getters (getUTCHours, getUTCDate, etc.) hold the office
+  // wall-clock value — never call the local-timezone getters (getHours, getDate, ...) on it,
+  // since those re-apply whatever timezone the device itself is set to and double-shift it.
+  let user = null;
+  try { user = JSON.parse(sessionStorage.getItem('staff_portal_user') || 'null'); } catch { user = null; }
+  return zonedWallClock(new Date(), timeZoneForCountry(user?.home_office_country));
 }
-function todaySGTString() {
-  return sgtNow().toISOString().slice(0, 10);
+function todayOfficeString() {
+  return officeNow().toISOString().slice(0, 10);
 }
 // Weekdays only for now — no public holiday calendar wired up yet, so a holiday that falls on
 // a weekday will still show reminders until that's scoped separately.
-function isWeekday(sgt) {
-  const day = sgt.getUTCDay(); // sgt's UTC getters hold the SGT wall-clock value (see sgtNow)
+function isWeekday(local) {
+  const day = local.getUTCDay(); // local's UTC getters hold the office wall-clock value (see officeNow)
   return day !== 0 && day !== 6;
 }
 // Lunch (12pm-2pm) only pauses the hard auto clock-out — people are reasonably away from their
 // desk then. The "still working?" prompt keeps appearing and the countdown keeps running as
 // normal through lunch, so a 9am clock-in still gets its first checkpoint around 12:30pm; it's
 // only the forced clock-out at the 4-hour mark that's held off until lunch ends.
-function isLunchWindow(sgt) {
-  const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
+function isLunchWindow(local) {
+  const hourDecimal = local.getUTCHours() + local.getUTCMinutes() / 60;
   return hourDecimal >= LUNCH_START_HOUR && hourDecimal < LUNCH_END_HOUR;
 }
 
@@ -92,12 +94,12 @@ export default function AttendanceReminders() {
           // it stops entirely rather than continuing to nag past the point a normal shift would
           // reasonably start. Dismissing only silences the current hourly slot, same pattern as
           // the "still working?" checkpoints.
-          const today = todaySGTString();
-          const sgt = sgtNow();
-          const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
+          const today = todayOfficeString();
+          const local = officeNow();
+          const hourDecimal = local.getUTCHours() + local.getUTCMinutes() / 60;
           const pastReminderTime = hourDecimal >= 8.5;
           const beforeNoon = hourDecimal < 12;
-          if (pastReminderTime && beforeNoon && isWeekday(sgt)) {
+          if (pastReminderTime && beforeNoon && isWeekday(local)) {
             const slot = Math.floor(hourDecimal - 8.5); // 0 = 8:30-9:29, 1 = 9:30-10:29, 2 = 10:30-11:29, 3 = 11:30-11:59
             const dismissKey = `staff_clockin_dismissed_slot_${today}`;
             const dismissedSlot = parseInt(sessionStorage.getItem(dismissKey) || '-1', 10);
@@ -126,7 +128,7 @@ export default function AttendanceReminders() {
         // Unlike the 8:30am clock-in reminder, this cycle is NOT weekend-suppressed — staff
         // aren't expected to clock in at 8:30am on a weekend, but if someone chooses to clock in
         // anyway, the still-working checkpoints and auto-clockout apply exactly as on a weekday.
-        const duringLunch = isLunchWindow(sgtNow());
+        const duringLunch = isLunchWindow(officeNow());
 
         if (hoursSinceConfirm >= AUTO_CLOCKOUT_HOURS && !duringLunch) {
           // Hard deadline missed, and it's not lunch — auto clock-out, once.
@@ -184,10 +186,10 @@ export default function AttendanceReminders() {
   }, [pathname, check]);
 
   const dismissClockInReminder = () => {
-    const sgt = sgtNow();
-    const hourDecimal = sgt.getUTCHours() + sgt.getUTCMinutes() / 60;
+    const local = officeNow();
+    const hourDecimal = local.getUTCHours() + local.getUTCMinutes() / 60;
     const slot = Math.floor(hourDecimal - 8.5);
-    sessionStorage.setItem(`staff_clockin_dismissed_slot_${todaySGTString()}`, String(slot));
+    sessionStorage.setItem(`staff_clockin_dismissed_slot_${todayOfficeString()}`, String(slot));
     setClockInReminder(false);
   };
 

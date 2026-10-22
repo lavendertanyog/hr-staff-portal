@@ -49,6 +49,18 @@ function NavIcon({ name, size = 20 }) {
 // The content card's colour (see AppShell). The open tab's capsule uses it too.
 export const PAGE_BG = '#F7F9FD';
 
+// Keeps the saved user's office country (set by HR) current without a re-login, so attendance
+// times switch to the right time zone on the next page load after HR changes it.
+function syncOfficeCountry(country) {
+  if (!country) return;
+  try {
+    const u = JSON.parse(sessionStorage.getItem('staff_portal_user') || 'null');
+    if (u && u.home_office_country !== country) {
+      sessionStorage.setItem('staff_portal_user', JSON.stringify({ ...u, home_office_country: country }));
+    }
+  } catch { /* storage unavailable — keep the saved user as it is */ }
+}
+
 // Module-level: resets on every full page reload.
 let _staff_lastVerified = 0;
 
@@ -95,6 +107,7 @@ export default function SidebarClient({ isDrawer = false, collapsed = false, onC
       .then((payload) => {
         if (!payload.success) { handleLogout(); return; }
         const { user_roles, user_role, account_status } = payload.data;
+        syncOfficeCountry(payload.data.home_office_country);
         const roles = Array.isArray(user_roles) && user_roles.length > 0 ? user_roles : [user_role].filter(Boolean);
         const active = String(account_status || 'active').toLowerCase() === 'active';
         const VALID = ['staff', 'manager', 'account_manager', 'hr'];
@@ -118,6 +131,7 @@ export default function SidebarClient({ isDrawer = false, collapsed = false, onC
         .then((payload) => {
           if (!payload.success) { handleLogout(); return; }
           const { user_roles, user_role, account_status } = payload.data;
+          syncOfficeCountry(payload.data.home_office_country);
           const roles = Array.isArray(user_roles) && user_roles.length > 0 ? user_roles : [user_role].filter(Boolean);
           const hasAccess = String(account_status || 'active').toLowerCase() === 'active' && roles.some((r) => VALID.includes(r));
           _staff_lastVerified = Date.now();
