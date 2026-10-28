@@ -6,11 +6,11 @@ import axios from 'axios';
 import { authHeaders } from '../authSession';
 import { useConfirm } from '../ConfirmDialog';
 import { formatLeaveDate, openMcFile } from '../leaveFormat';
-import { receiptFileToDataUrl } from '../receiptImage';
+import { RECEIPT_ACCEPT, cropReceipts, isPdfReceipt, receiptFileToDataUrl, smallReceipts } from '../receiptImage';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 const PAGE_SIZE = 6;
-const MAX_RECEIPTS = 10; // per upload; each one is scanned, and scans are limited per person per day
+const MAX_RECEIPTS = 10; // files per upload; each one is scanned, and scans are limited per person per day
 
 const STATUS_LABEL = {
   PENDING: 'Waiting for manager',
@@ -69,11 +69,39 @@ const emptyForm = () => ({
 });
 const chargesFromApi = (list) => (list || []).map((ch) => ({ kind: ch.kind, label: ch.label || '', rate: ch.rate ?? '', amount: ch.amount ?? '' }));
 let draftSeq = 0;
-// One receipt being prepared. claimId is set when it edits a claim already submitted.
-const newDraft = (receipt, extra = {}) => ({
-  key: `d${++draftSeq}`, claimId: null, receipt, receiptChanged: true, scanning: false,
-  scanNote: null, scanId: null, form: emptyForm(), invalid: {}, error: '', ...extra,
+// One receipt being prepared. claimId is set when it edits a claim already submitted. A photo or
+// PDF holding several receipts becomes one draft per receipt; they share its fileId, and
+// scanIndex says which receipt of scanId each one is. source is the original File (cropped from
+// at full resolution); cropUrl is the receipt cut out of it, when it was read on its own.
+const newDraft = (receipt, extra = {}) => {
+  const key = `d${++draftSeq}`;
+  return {
+    key, fileId: key, claimId: null, receipt, receiptChanged: true, scanning: false,
+    scanNote: null, scanId: null, scanIndex: null, form: emptyForm(), invalid: {}, error: '', ...extra,
+  };
+};
+
+// The form with a scanned receipt's fields filled in; anything the scan couldn't read is kept.
+const formFromScan = (form, s) => ({
+  ...form,
+  purchaseDate: s.purchaseDate || form.purchaseDate,
+  merchant: s.merchant || form.merchant,
+  category: s.category || form.category,
+  currency: s.currency || form.currency,
+  totalAmount: s.totalAmount != null ? String(s.totalAmount) : form.totalAmount,
+  items: s.items?.length
+    ? s.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' }))
+    : form.items,
+  charges: Array.isArray(s.charges) ? chargesFromApi(s.charges) : form.charges,
+  taxInclusive: s.taxInclusive === true,
 });
+
+const scanNoteFor = (s, position, count) => {
+  if (s.message) return { type: 'warn', text: count > 1 ? `Receipt ${position} of ${count} in this file. ${s.message}` : s.message };
+  return { type: 'info', text: count > 1
+    ? `Receipt ${position} of ${count} in this file, filled in as its own claim. Check every field before you submit.`
+    : 'Filled in from the receipt. Check every field before you submit.' };
+};
 
 const inputCls = (bad) => `w-full rounded-xl border ${bad ? 'border-red-400' : 'border-slate-300'} px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500`;
 const smallInputCls = 'rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -108,7 +136,7 @@ function invalidFields(d) {
   };
 }
 
-function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onCharge, onAddCharge, onRemoveCharge, onReplacePhoto, onRescan, onRetryPhoto, onRemove }) {
+function ReceiptCard({ draft, index, count, categories, projects, onField, onItem, onAddItem, onRemoveItem, onCharge, onAddCharge, onRemoveCharge, onReplacePhoto, onRescan, onRetryPhoto, onClearer, onRemove }) {
   const fileRef = useRef(null);
   const { form, invalid } = draft;
   const cur = form.currency || 'SGD';
@@ -147,25 +175,33 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
         {/* Photo */}
         <div>
           <div className={`flex min-h-[200px] items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed ${invalid.receipt ? 'border-red-400' : 'border-slate-300'} bg-white`}>
-            {draft.receipt
+            {draft.receipt && isPdfReceipt(draft.receipt)
+              ? (
+                <button type="button" onClick={() => openMcFile(draft.receipt)} className="flex flex-col items-center gap-2 px-6 py-8 text-center">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#1540A8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                  <span className="text-sm font-semibold text-[#1540A8]">PDF receipt</span>
+                  <span className="text-xs text-slate-400">Click to open</span>
+                </button>
+              )
+              : draft.receipt
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={draft.receipt} alt="Receipt" className="max-h-[320px] w-full cursor-zoom-in object-contain" onClick={() => openMcFile(draft.receipt)} />
               : draft.claimId && !draft.receiptChanged
                 ? (
                   <div className="px-6 text-center">
-                    <p className="text-sm text-slate-500">{draft.receiptLoading ? 'Loading the saved photo…' : "The saved photo couldn't be loaded right now. It's still kept with this claim."}</p>
+                    <p className="text-sm text-slate-500">{draft.receiptLoading ? 'Loading the saved receipt…' : "The saved receipt couldn't be loaded right now. It's still kept with this claim."}</p>
                     {!draft.receiptLoading && (
                       <button type="button" onClick={onRetryPhoto} className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Try again</button>
                     )}
                   </div>
                 )
-                : <p className="px-6 text-center text-sm text-slate-400">No photo</p>}
+                : <p className="px-6 text-center text-sm text-slate-400">No receipt</p>}
           </div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onReplacePhoto(e.target.files?.[0] || null); e.target.value = ''; }} />
+          <input ref={fileRef} type="file" accept={RECEIPT_ACCEPT} className="hidden" onChange={(e) => { onReplacePhoto(e.target.files?.[0] || null); e.target.value = ''; }} />
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={() => fileRef.current?.click()} disabled={draft.scanning}
               className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-              Change photo
+              Change file
             </button>
             {draft.receipt && (
               <button type="button" onClick={onRescan} disabled={draft.scanning}
@@ -175,7 +211,16 @@ function ReceiptCard({ draft, index, count, categories, projects, onField, onIte
             )}
           </div>
           {draft.scanning && <p className="mt-3 rounded-xl bg-[#EAF0FF] px-3 py-2 text-xs font-medium text-[#1a3a8f]">Reading receipt…</p>}
-          {!draft.scanning && draft.scanNote && (
+          {!draft.scanning && draft.lowRes && (
+            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+              <p>This receipt is too small in the photo to read reliably, so amounts and dates may be wrong. Please upload a clearer photo.</p>
+              <button type="button" onClick={onClearer}
+                className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100">
+                Upload a clearer photo
+              </button>
+            </div>
+          )}
+          {!draft.scanning && draft.scanNote && !(draft.lowRes && draft.scanNote.type === 'info') && (
             <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium ${draft.scanNote.type === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-[#EAF0FF] text-[#1a3a8f]'}`}>{draft.scanNote.text}</p>
           )}
         </div>
@@ -313,8 +358,19 @@ export default function ClaimsPage() {
   const [scanProgress, setScanProgress] = useState(null); // { done, total }
   const [submitting, setSubmitting] = useState(false);
   const addInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const formRef = useRef(null);
+  // Files with receipts too small to read, waiting for the person to choose a clearer photo or
+  // keep this one (one dialog at a time), and the file a chosen clearer photo replaces.
+  const [clearerAsks, setClearerAsks] = useState([]); // [{ fileId, small, total }]
+  const retakeFor = useRef(null);
+  const retakeFileRef = useRef(null);
+  const retakeCameraRef = useRef(null);
+  // Phones and tablets get a "Take photo" button that opens the camera straight away.
+  const [hasCamera, setHasCamera] = useState(false);
+  useEffect(() => { setHasCamera(window.matchMedia('(pointer: coarse)').matches); }, []);
   const editing = drafts.some((d) => d.claimId);
+  const fileCount = new Set(drafts.map((d) => d.fileId)).size; // split cards share one file
 
   // List
   const [filter, setFilter] = useState('ALL');
@@ -377,61 +433,121 @@ export default function ClaimsPage() {
     ...d, form: { ...d.form, charges: d.form.charges.filter((_, j) => j !== i) },
   }));
 
-  const scanDraft = async (key, dataUrl) => {
+  const postScan = async (receiptImage, parentScanId) => (
+    (await axios.post(`${API_BASE}/api/v1/claims/scan`, { receiptImage, parentScanId }, { headers: authHeaders() })).data || {}
+  );
+
+  // Reads one receipt cropped out of a file, on its own: { scanId, receipt } or null. A crop can
+  // catch the edge of a neighbouring receipt, so the one nearest its middle is used.
+  const readCrop = async (crop, parentScanId) => {
+    try {
+      const body = await postScan(crop, parentScanId);
+      const found = body.available ? body.data?.receipts || [] : [];
+      if (found.length === 0) return null;
+      const offCentre = (r) => (r.box ? ((r.box[0] + r.box[2]) / 2 - 500) ** 2 + ((r.box[1] + r.box[3]) / 2 - 500) ** 2 : Infinity);
+      return { scanId: body.scanId || null, receipt: found.reduce((best, r) => (offCentre(r) < offCentre(best) ? r : best)) };
+    } catch {
+      return null;
+    }
+  };
+
+  // Reads the card's file. With split, every receipt found after the first gets its own card
+  // right after this one (same file), and receipts that share a photo or PDF page with another
+  // are then cropped out of the original (`source`, full resolution) and read again on their
+  // own, since small print on a picture of several receipts is often misread. Without split
+  // (reading a card again when its file was already split, or editing a claim), only this
+  // card's own receipt is filled in.
+  const scanDraft = async (key, { dataUrl, source = null, fileId, split = true }) => {
     updateDraft(key, (d) => ({ ...d, scanning: true, scanNote: null }));
     try {
-      const res = await axios.post(`${API_BASE}/api/v1/claims/scan`, { receiptImage: dataUrl }, { headers: authHeaders() });
-      const body = res.data || {};
+      const body = await postScan(dataUrl);
       if (!body.available) {
         updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: body.message || 'Receipt scanning is unavailable. Please fill in the details yourself.' } }));
         return;
       }
-      const s = body.data || {};
-      updateDraft(key, (d) => ({
-        ...d,
-        scanning: false,
-        scanId: body.scanId || null,
-        invalid: {},
-        scanNote: body.message ? { type: 'warn', text: body.message } : { type: 'info', text: 'Filled in from the receipt. Check every field before you submit.' },
-        form: {
-          ...d.form,
-          purchaseDate: s.purchaseDate || d.form.purchaseDate,
-          merchant: s.merchant || d.form.merchant,
-          category: s.category || d.form.category,
-          currency: s.currency || d.form.currency,
-          totalAmount: s.totalAmount != null ? String(s.totalAmount) : d.form.totalAmount,
-          items: s.items?.length
-            ? s.items.map((it) => ({ description: it.description, quantity: it.quantity ?? '', amount: it.amount ?? '' }))
-            : d.form.items,
-          charges: Array.isArray(s.charges) ? chargesFromApi(s.charges) : d.form.charges,
-          taxInclusive: s.taxInclusive === true,
-        },
+      const receipts = body.data?.receipts || [];
+      const scanId = body.scanId || null;
+      if (!split) {
+        updateDraft(key, (d) => {
+          const s = receipts.find((r) => r.scanIndex === d.scanIndex) || receipts[0] || {};
+          return { ...d, scanning: false, scanId, scanIndex: s.scanIndex ?? null, invalid: {}, scanNote: scanNoteFor(s, 1, 1), form: formFromScan(d.form, s) };
+        });
+        return;
+      }
+
+      const count = receipts.length;
+      const perPage = {};
+      receipts.forEach((r) => { perPage[r.page] = (perPage[r.page] || 0) + 1; });
+      const toCrop = receipts.map((r) => Boolean(r.box) && perPage[r.page] > 1);
+      // Receipts too small in the photo to read reliably are still filled in, but the person is
+      // asked for a clearer photo.
+      const small = await smallReceipts(source || dataUrl, receipts);
+      const first = receipts[0] || {};
+      const more = receipts.slice(1).map((s, i) => newDraft(dataUrl, {
+        fileId, source, scanId, scanIndex: s.scanIndex, scanning: toCrop[i + 1], lowRes: small[i + 1],
+        scanNote: toCrop[i + 1] ? null : scanNoteFor(s, i + 2, count), form: formFromScan(emptyForm(), s),
+      }));
+      const keys = [key, ...more.map((m) => m.key)];
+      setDrafts((list) => {
+        const at = list.findIndex((d) => d.key === key);
+        if (at < 0) return list;
+        const d = list[at];
+        const filled = {
+          ...d, scanning: toCrop[0], scanId, scanIndex: first.scanIndex ?? null, invalid: {}, lowRes: small[0],
+          scanNote: toCrop[0] ? null : scanNoteFor(first, 1, count), form: formFromScan(d.form, first),
+        };
+        return [...list.slice(0, at), filled, ...more, ...list.slice(at + 1)];
+      });
+      if (count > 1) showToast(`Found ${count} receipts in one file. Each is its own claim.`, 'success');
+      const smallCount = small.filter(Boolean).length;
+      if (smallCount > 0) setClearerAsks((q) => [...q.filter((a) => a.fileId !== fileId), { fileId, small: smallCount, total: count }]);
+      if (!toCrop.some(Boolean)) return;
+
+      let crops;
+      try {
+        crops = await cropReceipts(source || dataUrl, receipts.map((r, i) => (toCrop[i] ? r : { ...r, box: null })));
+      } catch {
+        crops = receipts.map(() => null);
+      }
+      await Promise.all(receipts.map(async (s, i) => {
+        if (!toCrop[i]) return;
+        const read = crops[i] ? await readCrop(crops[i], scanId) : null;
+        updateDraft(keys[i], (d) => (read
+          ? {
+            ...d, scanning: false, scanId: read.scanId, scanIndex: read.receipt.scanIndex, cropUrl: crops[i], parentScanId: scanId,
+            scanNote: scanNoteFor(read.receipt, i + 1, count), form: formFromScan(d.form, read.receipt),
+          }
+          : {
+            ...d, scanning: false,
+            scanNote: { type: 'warn', text: `Receipt ${i + 1} of ${count} in this file. It couldn't be read on its own, so it was filled in from the whole file, and small print may be wrong. Check every field.` },
+          }));
       }));
     } catch (err) {
       updateDraft(key, (d) => ({ ...d, scanning: false, scanNote: { type: 'warn', text: err.response?.data?.error || "We couldn't read the receipt. Please fill in the details yourself." } }));
     }
   };
 
-  // Several photos at once: each becomes its own card, read one after another.
+  // Several files at once: each becomes its own card (more if it holds several receipts), read one after another.
   const addPhotos = async (fileList) => {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
-    const room = MAX_RECEIPTS - drafts.length;
-    if (room <= 0) { showToast(`You can add up to ${MAX_RECEIPTS} receipts at a time.`, 'error'); return; }
-    if (files.length > room) showToast(`Only the first ${room} photo(s) were added (${MAX_RECEIPTS} at a time).`, 'error');
+    const room = MAX_RECEIPTS - fileCount;
+    if (room <= 0) { showToast(`You can add up to ${MAX_RECEIPTS} files at a time.`, 'error'); return; }
+    if (files.length > room) showToast(`Only the first ${room} file(s) were added (${MAX_RECEIPTS} at a time).`, 'error');
     const added = [];
     for (const file of files.slice(0, room)) {
       try {
-        added.push(newDraft(await receiptFileToDataUrl(file)));
+        added.push(newDraft(await receiptFileToDataUrl(file), { source: file }));
       } catch (err) {
-        showToast(err.message || 'A photo could not be used.', 'error');
+        showToast(err.message || 'A file could not be used.', 'error');
       }
     }
     if (added.length === 0) return;
     setDrafts((list) => [...list, ...added]);
     setScanProgress({ done: 0, total: added.length });
     for (let i = 0; i < added.length; i += 1) {
-      await scanDraft(added[i].key, added[i].receipt);
+      const d = added[i];
+      await scanDraft(d.key, { dataUrl: d.receipt, source: d.source, fileId: d.fileId });
       setScanProgress({ done: i + 1, total: added.length });
     }
     setScanProgress(null);
@@ -442,12 +558,66 @@ export default function ClaimsPage() {
     try {
       const dataUrl = await receiptFileToDataUrl(file);
       const draft = drafts.find((d) => d.key === key);
-      updateDraft(key, (d) => ({ ...d, receipt: dataUrl, receiptChanged: true, invalid: { ...d.invalid, receipt: false } }));
+      // A new file isn't shared with any other card, even if the old one was.
+      const fileId = `f${++draftSeq}`;
+      updateDraft(key, (d) => ({
+        ...d, fileId, source: file, cropUrl: null, parentScanId: null, lowRes: false, receipt: dataUrl, receiptChanged: true, scanIndex: null,
+        invalid: { ...d.invalid, receipt: false },
+      }));
       // A new receipt is read straight away; when editing, the details already entered are kept.
-      if (draft && !draft.claimId) await scanDraft(key, dataUrl);
+      if (draft && !draft.claimId) await scanDraft(key, { dataUrl, source: file, fileId });
     } catch (err) {
-      showToast(err.message || 'This photo could not be used.', 'error');
+      showToast(err.message || 'This file could not be used.', 'error');
     }
+  };
+
+  // A clearer photo for a file: the cards made from it are replaced by the ones read from the new
+  // photo, starting from an empty form so nothing misread is kept.
+  const retakeFile = async (fileId, file) => {
+    const group = drafts.filter((d) => d.fileId === fileId);
+    if (!file || group.length === 0) return;
+    const [first, ...rest] = group;
+    const drop = new Set(rest.map((d) => d.key));
+    setDrafts((list) => list.filter((d) => !drop.has(d.key)).map((d) => (d.key === first.key ? { ...d, form: emptyForm(), scanNote: null } : d)));
+    await replacePhoto(first.key, file);
+  };
+
+  // Opens the camera or the file picker for a clearer photo. It must run in the click itself, or
+  // the browser blocks the picker.
+  const pickClearer = (fileId, useCamera) => {
+    retakeFor.current = fileId;
+    setClearerAsks((q) => q.filter((a) => a.fileId !== fileId));
+    (useCamera ? retakeCameraRef : retakeFileRef).current?.click();
+  };
+
+  const keepPhoto = (fileId) => setClearerAsks((q) => q.filter((a) => a.fileId !== fileId));
+  // From a card's "Upload a clearer photo" button: ask about its file again.
+  const askClearer = (fileId) => {
+    const group = drafts.filter((d) => d.fileId === fileId);
+    setClearerAsks((q) => [{ fileId, small: group.filter((d) => d.lowRes).length, total: group.length }, ...q.filter((a) => a.fileId !== fileId)]);
+  };
+  // The dialog shown: the first file still on the page that is waiting for an answer.
+  const clearerAsk = clearerAsks.find((a) => drafts.some((d) => d.fileId === a.fileId)) || null;
+  useEffect(() => {
+    if (!clearerAsk) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') keepPhoto(clearerAsk.fileId); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [clearerAsk]);
+
+  // Reading a card again: a receipt cropped out of a bigger file reads its crop again; otherwise
+  // the file is read again, and split only if it isn't already split into other cards.
+  const rescanDraft = async (d) => {
+    if (d.cropUrl) {
+      updateDraft(d.key, (x) => ({ ...x, scanning: true, scanNote: null }));
+      const read = await readCrop(d.cropUrl, d.parentScanId);
+      updateDraft(d.key, (x) => (read
+        ? { ...x, scanning: false, scanId: read.scanId, scanIndex: read.receipt.scanIndex, invalid: {}, scanNote: scanNoteFor(read.receipt, 1, 1), form: formFromScan(x.form, read.receipt) }
+        : { ...x, scanning: false, scanNote: { type: 'warn', text: "We couldn't read the receipt again. Check the details yourself." } }));
+      return;
+    }
+    const split = !d.claimId && !drafts.some((o) => o.key !== d.key && o.fileId === d.fileId);
+    await scanDraft(d.key, { dataUrl: d.receipt, source: d.source, fileId: d.fileId, split });
   };
 
   const removeDraft = (key) => setDrafts((list) => list.filter((d) => d.key !== key));
@@ -483,7 +653,7 @@ export default function ClaimsPage() {
           updated += 1;
         } else {
           try {
-            await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined }, { headers: authHeaders() });
+            await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined, scanIndex: d.scanIndex ?? undefined }, { headers: authHeaders() });
           } catch (err) {
             if (err.response?.status !== 409 || !err.response?.data?.duplicate) throw err;
             const again = await confirm({ title: 'Possible duplicate', message: err.response.data.error, confirmLabel: 'Submit anyway' });
@@ -491,7 +661,7 @@ export default function ClaimsPage() {
               updateDraft(d.key, (x) => ({ ...x, error: 'Not submitted: possible duplicate of a claim you already made.' }));
               continue;
             }
-            await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined, confirmDuplicate: true }, { headers: authHeaders() });
+            await axios.post(`${API_BASE}/api/v1/claims`, { ...payload, receiptImage: d.receipt, scanId: d.scanId || undefined, scanIndex: d.scanIndex ?? undefined, confirmDuplicate: true }, { headers: authHeaders() });
           }
           submitted += 1;
         }
@@ -590,7 +760,7 @@ export default function ClaimsPage() {
       <div className="mb-8 pl-3">
         <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Claims</h1>
-        <p className="mt-2 text-sm text-slate-500">Add photos of your receipts. Each one is read for you; check the details and submit. Your manager, then HR, approve each claim, and it is paid with your salary.</p>
+        <p className="mt-2 text-sm text-slate-500">Add photos or PDFs of your receipts. Each receipt is read for you, even when one photo or PDF holds several; check the details and submit. Your manager, then HR, approve each claim, and it is paid with your salary.</p>
       </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
@@ -610,8 +780,14 @@ export default function ClaimsPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{editing ? 'Edit claim' : 'New claims'}</p>
           {drafts.length > 0 && !editing && (
             <div className="flex flex-wrap items-center gap-2">
-              {scanProgress && <span className="text-xs font-medium text-[#1a3a8f]">Reading receipt {Math.min(scanProgress.done + 1, scanProgress.total)} of {scanProgress.total}…</span>}
-              <button type="button" onClick={() => addInputRef.current?.click()} disabled={drafts.length >= MAX_RECEIPTS || anyScanning}
+              {scanProgress && <span className="text-xs font-medium text-[#1a3a8f]">Reading file {Math.min(scanProgress.done + 1, scanProgress.total)} of {scanProgress.total}…</span>}
+              {hasCamera && (
+                <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={fileCount >= MAX_RECEIPTS || anyScanning}
+                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+                  Take photo
+                </button>
+              )}
+              <button type="button" onClick={() => addInputRef.current?.click()} disabled={fileCount >= MAX_RECEIPTS || anyScanning}
                 className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
                 + Add more receipts
               </button>
@@ -623,16 +799,33 @@ export default function ClaimsPage() {
           )}
         </div>
 
-        <input ref={addInputRef} type="file" accept="image/*" multiple className="hidden"
+        <input ref={addInputRef} type="file" accept={RECEIPT_ACCEPT} multiple className="hidden"
           onChange={(e) => { addPhotos(e.target.files); e.target.value = ''; }} />
+        {/* capture opens the camera straight away on a phone (full resolution, unlike a photo resent through a chat app). */}
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+          onChange={(e) => { addPhotos(e.target.files); e.target.value = ''; }} />
+        <input ref={retakeFileRef} type="file" accept={RECEIPT_ACCEPT} className="hidden"
+          onChange={(e) => { retakeFile(retakeFor.current, e.target.files?.[0] || null); e.target.value = ''; }} />
+        <input ref={retakeCameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+          onChange={(e) => { retakeFile(retakeFor.current, e.target.files?.[0] || null); e.target.value = ''; }} />
 
         {drafts.length === 0 ? (
-          <button type="button" onClick={() => addInputRef.current?.click()}
-            className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center hover:border-[#1540A8] hover:bg-[#EAF0FF] transition">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1540A8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" /></svg>
-            <span className="text-sm font-semibold text-[#1540A8]">Add receipt photos</span>
-            <span className="text-xs text-slate-500">Take photos or choose up to {MAX_RECEIPTS} at once. Each receipt becomes its own claim.</span>
-          </button>
+          <div className={`grid gap-3 ${hasCamera ? 'sm:grid-cols-2' : ''}`}>
+            {hasCamera && (
+              <button type="button" onClick={() => cameraInputRef.current?.click()}
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center hover:border-[#1540A8] hover:bg-[#EAF0FF] transition">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1540A8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+                <span className="text-sm font-semibold text-[#1540A8]">Take photo</span>
+                <span className="text-xs text-slate-500">Hold the camera close so the print is sharp. Several receipts can go in one photo.</span>
+              </button>
+            )}
+            <button type="button" onClick={() => addInputRef.current?.click()}
+              className={`flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 text-center hover:border-[#1540A8] hover:bg-[#EAF0FF] transition ${hasCamera ? 'py-10' : 'py-12'}`}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1540A8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" /></svg>
+              <span className="text-sm font-semibold text-[#1540A8]">{hasCamera ? 'Choose photos or PDFs' : 'Add receipt photos or PDFs'}</span>
+              <span className="text-xs text-slate-500">Choose up to {MAX_RECEIPTS} files at once. Each receipt becomes its own claim, even when one photo or PDF holds several.</span>
+            </button>
+          </div>
         ) : (
           <>
             <div className="space-y-4">
@@ -646,8 +839,9 @@ export default function ClaimsPage() {
                   onAddCharge={() => addCharge(d.key)}
                   onRemoveCharge={(idx) => removeCharge(d.key, idx)}
                   onReplacePhoto={(file) => replacePhoto(d.key, file)}
-                  onRescan={() => scanDraft(d.key, d.receipt)}
+                  onRescan={() => rescanDraft(d)}
                   onRetryPhoto={() => loadSavedPhoto(d.key, d.claimId)}
+                  onClearer={() => askClearer(d.fileId)}
                   onRemove={() => removeDraft(d.key)} />
               ))}
             </div>
@@ -773,6 +967,45 @@ export default function ClaimsPage() {
       </div>
 
       {confirmDialog}
+      {clearerAsk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) keepPhoto(clearerAsk.fileId); }}>
+          <div role="alertdialog" aria-modal="true" aria-label="Photo too small to read"
+            className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Photo too small to read</p>
+              <button type="button" onClick={() => keepPhoto(clearerAsk.fileId)} aria-label="Close"
+                className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <p className="mt-4 text-sm text-slate-700">
+              {clearerAsk.total > 1
+                ? `${clearerAsk.small === clearerAsk.total ? 'The receipts' : `${clearerAsk.small} of the ${clearerAsk.total} receipts`} in this photo are too small to read reliably, so amounts and dates may be wrong.`
+                : 'The receipt in this photo is too small to read reliably, so amounts and dates may be wrong.'}
+            </p>
+            <p className="mt-2 text-sm text-slate-700">
+              Please upload a clearer photo: take it close to the receipt{clearerAsk.total > 1 ? 's' : ''}, or use the original photo from your camera, not one sent through WhatsApp or Telegram.
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => keepPhoto(clearerAsk.fileId)}
+                className="rounded-2xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+                Keep this photo
+              </button>
+              {hasCamera && (
+                <button type="button" onClick={() => pickClearer(clearerAsk.fileId, true)}
+                  className="rounded-2xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+                  Take a new photo
+                </button>
+              )}
+              <button type="button" autoFocus onClick={() => pickClearer(clearerAsk.fileId, false)}
+                className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F]">
+                Choose a clearer photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-none">
