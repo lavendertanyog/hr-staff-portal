@@ -28,7 +28,7 @@ function statusBadge(status) {
     REJECTED: 'bg-red-50 text-red-600',
     PENDING: 'bg-yellow-50 text-yellow-700',
   };
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-500'}`}>{s}</span>;
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${map[s] || 'bg-gray-100 text-gray-500'}`}>{s === 'UNREAD' ? 'NEW' : s}</span>;
 }
 
 export default function InboxPage() {
@@ -95,7 +95,7 @@ export default function InboxPage() {
         <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
         <h1 className="mt-3 text-4xl font-semibold text-slate-950">Inbox</h1>
         <p className="mt-2 text-sm text-slate-500">
-          {loading ? '…' : `${unreadCount} unread · ${items.length} total`}
+          {loading ? '…' : `${unreadCount} new · ${items.length} total`}
         </p>
       </div>
 

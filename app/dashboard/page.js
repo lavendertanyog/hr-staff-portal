@@ -7,7 +7,8 @@ import Link from 'next/link';
 import Chart from 'chart.js/auto';
 import { authHeaders } from '../authSession';
 import { WHATS_NEW } from '../whatsNewData';
-import { DEFAULT_TIME_ZONE, timeZoneForCountry, zonedWallClock, holidayLabel } from '../officeTime';
+import ComingUp from '../ComingUp';
+import { timeZoneForCountry, zonedWallClock } from '../officeTime';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -81,37 +82,9 @@ function clockHourLabel(hour) {
   return `${displayHour} ${period}`;
 }
 
-// A YYYY-MM-DD calendar date as-is, or a full timestamp converted to its SGT date.
-function toYMD(value) {
-  const s = String(value || '');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
-}
-
-function todayYMD(timeZone = DEFAULT_TIME_ZONE) {
-  return new Date().toLocaleDateString('en-CA', { timeZone });
-}
-
-// "16 Oct" and "Fri" for a YYYY-MM-DD date.
-function dayMonth(ymd) {
-  return new Date(ymd + 'T00:00:00').toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
-}
-function weekday(ymd) {
-  return new Date(ymd + 'T00:00:00').toLocaleDateString('en-SG', { weekday: 'short' });
-}
-
 // Rings from the outside in. They differ in lightness as well as hue so they stay distinguishable.
 const RING_COLORS = ['#1540A8', '#e48ab0', '#8fa6e6', '#16307a'];
 const RING_RADII = [84, 66, 48, 30];
-
-const LEAVE_LABELS = { ANNUAL: 'Annual leave', EMERGENCY: 'Emergency leave', SICK: 'Sick leave' };
-const BADGE_COLORS = {
-  APPROVED: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-red-100 text-red-700',
-  PENDING: 'bg-yellow-100 text-yellow-700',
-  HOLIDAY: 'bg-[#E8EEFF] text-[#1a3a8f]',
-};
 
 // Card surface used across the new dashboard: white, no border, a soft navy-tinted shadow.
 const CARD = 'rounded-3xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(22,48,122,0.18)]';
@@ -138,8 +111,6 @@ export default function StaffDashboard() {
   const [progressHistory, setProgressHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(null);
-  const [myLeave, setMyLeave] = useState([]);
-  const [holidays, setHolidays] = useState([]);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   // Weekly project log
@@ -173,9 +144,7 @@ export default function StaffDashboard() {
       axios.get(`${API_BASE}/api/v1/allocations/${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/projects/progress-history/${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/attendance/active-session/${uid}`).catch(() => null),
-      axios.get(`${API_BASE}/api/v1/leave/my-requests/${uid}`).catch(() => null),
-      axios.get(`${API_BASE}/api/v1/public-holidays`, { params: { country: user?.home_office_country || 'SG' } }).catch(() => null),
-    ]).then(([projRes, inboxRes, allocRes, historyRes, sessionRes, leaveRes, holidayRes]) => {
+    ]).then(([projRes, inboxRes, allocRes, historyRes, sessionRes]) => {
       setProjects(projRes?.data?.data || []);
       const inboxItems = inboxRes?.data?.data || [];
       setInbox(inboxItems.slice(0, 6));
@@ -183,8 +152,6 @@ export default function StaffDashboard() {
       setAllocations(allocRes?.data?.data || []);
       setProgressHistory(historyRes?.data?.data || []);
       setActiveSession(sessionRes?.data?.data || null);
-      setMyLeave(leaveRes?.data?.data || []);
-      setHolidays(holidayRes?.data?.data || []);
     }).finally(() => setLoading(false));
   }, [user?.user_id]);
 
@@ -410,9 +377,24 @@ export default function StaffDashboard() {
     return { ganttLabels: labelsForDays, ganttDatasets: datasets };
   }, [logRange, fetchStart, fetchEnd, sessionRows, projectColorIndex, nowMinute, officeTz]);
 
+  // The data changes every minute while a session is active (its bar grows) and on every refetch
+  // when the window regains focus. Rebuilding the chart each time replayed its grow-in animation,
+  // so it visibly flashed; instead the existing chart takes the new data in place, with no
+  // animation. It is only built anew the first time, or when its canvas was replaced (the
+  // "Loading…" state swaps the canvas out).
+  const ganttDatasetsRef = useRef(ganttDatasets);
+  useEffect(() => { ganttDatasetsRef.current = ganttDatasets; }, [ganttDatasets]);
+
   useEffect(() => {
     if (!chartRef.current) return;
-    if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; }
+    const existing = chartInstance.current;
+    if (existing && existing.canvas === chartRef.current) {
+      existing.data.labels = ganttLabels;
+      existing.data.datasets = ganttDatasets;
+      existing.update('none');
+      return;
+    }
+    if (existing) existing.destroy();
 
     chartInstance.current = new Chart(chartRef.current, {
       type: 'bar',
@@ -438,13 +420,14 @@ export default function StaffDashboard() {
         onClick: (evt, elements) => {
           if (!elements.length) return;
           const { datasetIndex, index } = elements[0];
-          const sessionId = ganttDatasets[datasetIndex]?._sessionIds[index];
+          const sessionId = ganttDatasetsRef.current[datasetIndex]?._sessionIds[index];
           if (sessionId) setSelectedSessionId(sessionId);
         },
       },
     });
-    return () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } };
   }, [ganttLabels, ganttDatasets]);
+
+  useEffect(() => () => { if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; } }, []);
 
   const selectedSession = useMemo(() => {
     if (!selectedSessionId) return null;
@@ -453,7 +436,6 @@ export default function StaffDashboard() {
 
   const staffName = deriveNameFromEmail(user?.email) || user?.full_name || 'Staff';
   const firstName = staffName.split(' ')[0];
-  const today = todayYMD(officeTz);
 
   // Only worked out once the user is loaded (always client-side), so the server render and the
   // first client render match and the time-based text never causes a hydration mismatch.
@@ -465,39 +447,6 @@ export default function StaffDashboard() {
   const todayLabel = user
     ? new Date().toLocaleDateString('en-SG', { timeZone: officeTz, weekday: 'short', day: 'numeric', month: 'short' })
     : '';
-
-  // Next three things on the calendar: the user's own approved or pending leave that hasn't
-  // ended yet, and upcoming public holidays.
-  const upcoming = useMemo(() => {
-    const leaveItems = myLeave
-      .filter((l) => ['APPROVED', 'PENDING'].includes(String(l.workflow_status)) && toYMD(l.end_date) >= today)
-      .map((l) => {
-        const start = toYMD(l.start_date);
-        const end = toYMD(l.end_date);
-        const days = Math.round((new Date(end + 'T00:00:00') - new Date(start + 'T00:00:00')) / 86400000) + 1;
-        const status = String(l.workflow_status);
-        return {
-          key: `leave-${l.leave_id}`,
-          date: start,
-          when: days === 1 ? `${weekday(start)} · 1 day` : `Until ${dayMonth(end)} · ${days} days`,
-          title: LEAVE_LABELS[String(l.category)] || 'Leave',
-          badge: status === 'APPROVED' ? 'Approved' : 'Pending',
-          badgeClass: BADGE_COLORS[status],
-        };
-      });
-    const holidayItems = holidays
-      .map((h) => ({ ...h, ymd: toYMD(h.holiday_date) }))
-      .filter((h) => h.ymd >= today)
-      .map((h) => ({
-        key: `holiday-${h.holiday_id ?? h.ymd}`,
-        date: h.ymd,
-        when: `${weekday(h.ymd)} · Public holiday`,
-        title: holidayLabel(h),
-        badge: 'Holiday',
-        badgeClass: BADGE_COLORS.HOLIDAY,
-      }));
-    return [...leaveItems, ...holidayItems].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
-  }, [myLeave, holidays, today]);
 
   const budgetProjects = useMemo(() => projects
     .filter((p) => Number(p.budget_hours) > 0)
@@ -577,31 +526,7 @@ export default function StaffDashboard() {
             </div>
           </section>
 
-          {/* Coming up */}
-          <section className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-slate-900">Coming up</h2>
-              <ArrowLink href="/calendar">View calendar</ArrowLink>
-            </div>
-            {loading ? (
-              <div className={`${CARD} px-6 py-8 text-center text-sm text-slate-400`}>Loading…</div>
-            ) : upcoming.length === 0 ? (
-              <div className={`${CARD} px-6 py-8 text-center text-sm text-slate-400`}>Nothing coming up. Your approved leave and public holidays will show here.</div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-                {upcoming.map((u) => (
-                  <div key={u.key} className={`${CARD} flex flex-col gap-2 px-6 py-5`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-2xl font-extrabold tracking-tight text-slate-900">{dayMonth(u.date)}</span>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${u.badgeClass}`}>{u.badge}</span>
-                    </div>
-                    <span className="text-xs text-slate-400">{u.when}</span>
-                    <span className="truncate text-sm font-bold text-slate-800">{u.title}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          <ComingUp user={user} />
 
           {/* This week: attendance timeline and project budgets, side by side */}
           <section className="flex flex-col gap-4">
@@ -811,7 +736,7 @@ export default function StaffDashboard() {
                       <p className={`truncate text-sm ${item.status === 'UNREAD' ? 'font-bold text-slate-900' : 'text-slate-600'}`}>{item.title}</p>
                       <p className="mt-0.5 truncate text-xs text-slate-400">{item.subtitle}</p>
                     </div>
-                    {item.status === 'UNREAD' && <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-[#1540A8]" aria-label="Unread" />}
+                    {item.status === 'UNREAD' && <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-[#1540A8]" aria-label="New" />}
                   </li>
                 ))}
               </ul>
