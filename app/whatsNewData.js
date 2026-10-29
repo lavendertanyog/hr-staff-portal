@@ -2,6 +2,17 @@
 // jargon). Newest first. `id` just needs to increase; it's what "seen" is tracked against.
 export const WHATS_NEW = [
   {
+    id: 12,
+    date: '29 Oct 2026',
+    title: 'Take leave by the hour',
+    body: 'Need a couple of hours off? When you apply for annual or emergency leave, choose Hours, pick the day and how many hours (1 to 4).',
+    points: [
+      'Hours come off your leave balance as part of a day: 8 hours is 1 day, so 2 hours is 0.25 day',
+      'Your manager approves it like any other leave',
+      'Sick leave is still taken in full days',
+    ],
+  },
+  {
     id: 11,
     date: '28 Oct 2026',
     title: 'A tidier Dashboard',
