@@ -21,6 +21,9 @@ const shortDate = (s) => parseISO(s).toLocaleDateString('en-SG', { day: 'numeric
 const longDate = (s) => parseISO(s).toLocaleDateString('en-SG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const dayCount = (a, b) => Math.round((parseISO(b) - parseISO(a)) / 86400000) + 1;
 const rangeLabel = (a, b) => (a === b ? shortDate(a) : `${shortDate(a)} – ${shortDate(b)}`);
+// Leave by the hour (part of one day) has leave_hours; full-day leave doesn't.
+const leaveHours = (l) => (l?.leave_hours != null ? Number(l.leave_hours) : null);
+const leaveRangeLabel = (l) => (leaveHours(l) != null ? `${shortDate(l.start_date)} · ${leaveHours(l)} h` : rangeLabel(l.start_date, l.end_date));
 
 const svg = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
 const Chevron = ({ dir }) => (
@@ -141,7 +144,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
   while (gridCells.length % 7 !== 0) gridCells.push(null);
 
   const isMine = (l) => l.user_id === userId;
-  const leaveName = (l) => (isMine(l) ? 'You' : l.full_name);
+  const leaveName = (l) => `${isMine(l) ? 'You' : l.full_name}${leaveHours(l) != null ? ` · ${leaveHours(l)} h` : ''}`;
   const leavePill = (l) => (isMine(l) ? 'bg-[#1540A8] text-white' : 'bg-[#E8EEFF] text-[#1540A8]');
 
   const showMonth = listTab === 'all' && viewMode === 'month';
@@ -357,7 +360,9 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                           {!isHoliday && (
                             <p className="flex-shrink-0 text-right text-xs text-slate-500">
                               {rangeLabel(it.leave.start_date, it.leave.end_date)}
-                              <span className="block text-[11px] text-slate-400">{dayCount(it.leave.start_date, it.leave.end_date)} day{dayCount(it.leave.start_date, it.leave.end_date) === 1 ? '' : 's'}</span>
+                              <span className="block text-[11px] text-slate-400">
+                                {leaveHours(it.leave) != null ? `${leaveHours(it.leave)} h` : `${dayCount(it.leave.start_date, it.leave.end_date)} day${dayCount(it.leave.start_date, it.leave.end_date) === 1 ? '' : 's'}`}
+                              </span>
                             </p>
                           )}
                         </div>
@@ -396,7 +401,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                     {dayLeave.map((l) => (
                       <div key={l.leave_id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                         <span className="min-w-0 truncate text-sm font-medium text-slate-800">{isMine(l) ? `${l.full_name} (you)` : l.full_name}</span>
-                        <span className="flex-shrink-0 text-xs text-slate-500">{rangeLabel(l.start_date, l.end_date)}</span>
+                        <span className="flex-shrink-0 text-xs text-slate-500">{leaveRangeLabel(l)}</span>
                       </div>
                     ))}
                   </div>

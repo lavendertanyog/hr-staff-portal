@@ -67,7 +67,9 @@ export default function ComingUp({ user }) {
         return {
           key: `leave-${l.leave_id}`,
           date: start,
-          when: days === 1 ? `${weekday(start)} · 1 day` : `Until ${dayMonth(end)} · ${days} days`,
+          // Leave by the hour shows its hours; full-day leave its days.
+          when: l.leave_hours != null ? `${weekday(start)} · ${Number(l.leave_hours)} h`
+            : days === 1 ? `${weekday(start)} · 1 day` : `Until ${dayMonth(end)} · ${days} days`,
           title: LEAVE_LABELS[String(l.category)] || 'Leave',
           badge: status === 'APPROVED' ? 'Approved' : 'Pending',
           badgeClass: BADGE_COLORS[status],

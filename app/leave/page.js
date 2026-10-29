@@ -34,6 +34,20 @@ function countLeaveDays(startDate, endDate) {
   return { total, working };
 }
 
+// Leave by the hour: part of one day, for Annual or Emergency leave (sick leave stays full-day).
+// It counts against the balance as hours / LEAVE_DAY_HOURS days. Matches the backend's rules.
+const LEAVE_DAY_HOURS = 8;
+const HOUR_OPTIONS = [1, 1.5, 2, 2.5, 3, 3.5, 4];
+const leaveHoursOf = (r) => (r?.leave_hours != null ? Number(r.leave_hours) : null);
+// Days a request counts for: hours as a fraction of a day, otherwise every calendar day.
+const requestDays = (r) => {
+  const h = leaveHoursOf(r);
+  if (h != null) return h / LEAVE_DAY_HOURS;
+  return countLeaveDays(String(r.start_date).slice(0, 10), String(r.end_date).slice(0, 10))?.total || 0;
+};
+// Up to two decimals, without trailing zeros: 8, 8.25, 8.44.
+const fmtDays = (n) => String(Math.round(Number(n || 0) * 100) / 100);
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -353,20 +367,25 @@ export default function LeavePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [dateFieldErrors, setDateFieldErrors] = useState([]); // 'startDate' | 'endDate'
-  const leaveDayCount = countLeaveDays(startDate, endDate);
+  // Full day(s) or by the hour. By the hour is one date (startDate) and a number of hours.
+  const [byHours, setByHours] = useState(false);
+  const [hours, setHours] = useState(2);
+  const hourly = byHours && category !== 'SICK';
+  const leaveDayCount = hourly ? null : countLeaveDays(startDate, endDate);
+  const requestedDays = hourly ? (startDate ? hours / LEAVE_DAY_HOURS : null) : leaveDayCount?.total ?? null;
   // Days the request being edited already consumes from the balance — added back before checking
   // the limit, otherwise re-saving an existing ANNUAL/EMERGENCY request would double-count it.
   // Sick leave is never limited, so this only ever holds a non-zero value for the other two.
   const [editingOriginalDays, setEditingOriginalDays] = useState(0);
-  const effectiveRemaining = balance ? balance.remainingDays + editingOriginalDays : null;
-  const overBalance = category !== 'SICK' && leaveDayCount && effectiveRemaining !== null && leaveDayCount.total > effectiveRemaining;
+  const effectiveRemaining = balance ? Math.round((balance.remainingDays + editingOriginalDays) * 100) / 100 : null;
+  const overBalance = category !== 'SICK' && requestedDays != null && effectiveRemaining !== null && requestedDays > effectiveRemaining + 1e-9;
 
   // Notify the moment a selection goes over balance, rather than waiting for the user to hit
   // Submit — fires once per transition into the over-balance state, not on every render.
   const wasOverBalanceRef = useRef(false);
   useEffect(() => {
     if (overBalance && !wasOverBalanceRef.current) {
-      showToast(`Only ${effectiveRemaining} day${effectiveRemaining === 1 ? '' : 's'} left in your balance — pick a shorter range.`, 'error');
+      showToast(`Only ${fmtDays(effectiveRemaining)} day${effectiveRemaining === 1 ? '' : 's'} left in your balance — pick a shorter range.`, 'error');
     }
     wasOverBalanceRef.current = overBalance;
   }, [overBalance]);
@@ -406,6 +425,7 @@ export default function LeavePage() {
   // Calendar date click: first click = start, second click = end (must be >= start), third = reset
   const handleCalendarClick = (ymd) => {
     setDateFieldErrors([]);
+    if (hourly) { setStartDate(ymd); setEndDate(ymd); return; }
     if (!startDate || (startDate && endDate)) {
       setStartDate(ymd); setEndDate('');
     } else {
@@ -418,11 +438,12 @@ export default function LeavePage() {
     e.preventDefault();
     const missing = [];
     if (!startDate) missing.push('startDate');
-    if (!endDate) missing.push('endDate');
+    if (!endDate && !hourly) missing.push('endDate');
     if (missing.length > 0) {
       setDateFieldErrors(missing);
       showToast(
-        missing.length === 2 ? 'Please select a start and end date.' : `Please select ${missing[0] === 'startDate' ? 'a start' : 'an end'} date.`,
+        hourly ? 'Please select the date.'
+          : missing.length === 2 ? 'Please select a start and end date.' : `Please select ${missing[0] === 'startDate' ? 'a start' : 'an end'} date.`,
         'error'
       );
       return;
@@ -430,26 +451,28 @@ export default function LeavePage() {
     // Annual and emergency leave draw from the same balance and are capped by it; sick leave is
     // never limited, matching the backend's balance calculation (ANNUAL + EMERGENCY only).
     if (overBalance) {
-      showToast(`Only ${effectiveRemaining} day${effectiveRemaining === 1 ? '' : 's'} left in your balance — pick a shorter range.`, 'error');
+      showToast(`Only ${fmtDays(effectiveRemaining)} day${effectiveRemaining === 1 ? '' : 's'} left in your balance — pick a shorter range.`, 'error');
       return;
     }
     setDateFieldErrors([]);
     setSubmitting(true);
     try {
       const mcFileUrl = mcFile ? await fileToBase64(mcFile) : undefined;
+      // By the hour is a single day, so the end date is the start date.
+      const period = hourly ? { startDate, endDate: startDate, hours } : { startDate, endDate };
       if (editingId) {
         await axios.patch(`${API_BASE}/api/v1/leave/${editingId}`, {
-          userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
+          userId: user.user_id, category, ...period, reason: reason.trim() || undefined, mcFileUrl,
         });
         showToast('Leave request updated successfully.', 'success');
       } else {
         await axios.post(`${API_BASE}/api/v1/leave/apply`, {
-          userId: user.user_id, category, startDate, endDate, reason: reason.trim() || undefined, mcFileUrl,
+          userId: user.user_id, category, ...period, reason: reason.trim() || undefined, mcFileUrl,
         });
         showToast('Leave request submitted successfully.', 'success');
       }
       setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setEditingId(null);
-      setMcFile(null); setMcFileError(''); setEditingOriginalDays(0);
+      setMcFile(null); setMcFileError(''); setEditingOriginalDays(0); setByHours(false); setHours(2);
       await fetchData(user.user_id);
     } catch (err) { showToast(err.response?.data?.error || 'Submission failed.', 'error'); }
     finally { setSubmitting(false); }
@@ -469,7 +492,9 @@ export default function LeavePage() {
     const rEnd = String(r.end_date).slice(0, 10);
     setStartDate(rStart);
     setEndDate(rEnd);
-    setEditingOriginalDays(r.category === 'SICK' ? 0 : (countLeaveDays(rStart, rEnd)?.total || 0));
+    setByHours(leaveHoursOf(r) != null);
+    setHours(leaveHoursOf(r) ?? 2);
+    setEditingOriginalDays(r.category === 'SICK' ? 0 : requestDays(r));
     setReason(r.reason || '');
     setMcFile(null); setMcFileError('');
     setDateFieldErrors([]);
@@ -504,7 +529,7 @@ export default function LeavePage() {
   const categoryDayStats = (cat) => activeRequests
     .filter((r) => r.category === cat)
     .reduce((acc, r) => {
-      const days = countLeaveDays(String(r.start_date).slice(0, 10), String(r.end_date).slice(0, 10))?.total || 0;
+      const days = requestDays(r);
       if (r.workflow_status === 'APPROVED') acc.used += days;
       else if (r.workflow_status === 'PENDING') acc.pending += days;
       return acc;
@@ -580,22 +605,22 @@ export default function LeavePage() {
                         <p className="mt-1 text-xs text-slate-400">Shared balance &middot; {balance ? balance.totalDays : '—'} days</p>
                       </div>
                       <span className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: '#E6F1FB', color: '#0C447C' }}>
-                        {balance ? balance.remainingDays : '—'} left
+                        {balance ? fmtDays(balance.remainingDays) : '—'} left
                       </span>
                     </div>
                     <p className="mt-4 text-3xl font-semibold text-slate-950 leading-none">
-                      {balance ? balance.remainingDays : '—'}<span className="text-sm font-normal text-slate-400"> / {balance ? balance.totalDays : '—'} days</span>
+                      {balance ? fmtDays(balance.remainingDays) : '—'}<span className="text-sm font-normal text-slate-400"> / {balance ? balance.totalDays : '—'} days</span>
                     </p>
                     <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden flex">
                       <div className="h-full" style={{ width: `${annualUsedPct}%`, background: START_COLOR }} />
                       <div className="h-full" style={{ width: `${annualPendingPct}%`, background: '#FAEEDA' }} />
                     </div>
                     <div className="mt-2.5 flex gap-4 text-xs text-slate-500">
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: START_COLOR }} />{annualUsed} used</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#FAEEDA' }} />{annualPending} pending</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: START_COLOR }} />{fmtDays(annualUsed)} used</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#FAEEDA' }} />{fmtDays(annualPending)} pending</span>
                     </div>
                     <p className="mt-3 text-xs text-slate-400">
-                      Annual: {annualStats.used} used, {annualStats.pending} pending &middot; Emergency: {emergencyStats.used} used, {emergencyStats.pending} pending
+                      Annual: {fmtDays(annualStats.used)} used, {fmtDays(annualStats.pending)} pending &middot; Emergency: {fmtDays(emergencyStats.used)} used, {fmtDays(emergencyStats.pending)} pending
                     </p>
                   </div>
 
@@ -632,7 +657,7 @@ export default function LeavePage() {
       {showForm && (
         <>
           <div className="mb-4">
-            <button onClick={() => { setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setEditingOriginalDays(0); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); }}
+            <button onClick={() => { setShowForm(false); setStartDate(''); setEndDate(''); setReason(''); setEditingId(null); setEditingOriginalDays(0); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); setByHours(false); setHours(2); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
               style={{ background: '#64748b' }}>
               ← Back
@@ -651,7 +676,7 @@ export default function LeavePage() {
                     return (
                       <label key={c} className="flex items-center gap-2 cursor-pointer select-none">
                         <input type="radio" name="category" value={c} checked={selected}
-                          onChange={() => setCategory(c)} className="sr-only" />
+                          onChange={() => { setCategory(c); if (c === 'SICK') setByHours(false); }} className="sr-only" />
                         <span className={`flex items-center justify-center w-4 h-4 rounded-full border-2 transition ${selected ? 'border-[#0c3b8f]' : 'border-slate-300'}`}>
                           {selected && <span className="w-2 h-2 rounded-full bg-[#0c3b8f]" />}
                         </span>
@@ -664,9 +689,50 @@ export default function LeavePage() {
                 </div>
               </div>
 
-              {/* Dates: type directly, or click the calendar on the right. Each field's dot/border
+              {/* Full day(s) or by the hour. Sick leave is full-day only (it goes with an MC). */}
+              {category !== 'SICK' && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Duration</label>
+                  <div className="inline-flex gap-1 rounded-full bg-slate-100 p-1">
+                    {[{ k: false, l: 'Full day(s)' }, { k: true, l: 'Hours' }].map((o) => (
+                      <button key={o.l} type="button"
+                        onClick={() => { setByHours(o.k); setDateFieldErrors([]); if (o.k && startDate) setEndDate(startDate); }}
+                        className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${byHours === o.k ? 'bg-[#0c3b8f] text-white' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {hourly ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: START_COLOR }} />
+                      Date
+                      <InfoTip text="Type the date, or click it on the calendar." />
+                    </label>
+                    <input type="date" value={startDate}
+                      onChange={(e) => { setStartDate(e.target.value); setEndDate(e.target.value); setDateFieldErrors([]); }}
+                      style={startDate && !dateFieldErrors.includes('startDate') ? { borderColor: START_COLOR, background: '#EEF4FF', color: START_COLOR } : undefined}
+                      className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        dateFieldErrors.includes('startDate') ? 'border-red-400' : startDate ? '' : 'border-slate-300 text-slate-700 font-normal'
+                      }`} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Hours</label>
+                    <select value={hours} onChange={(e) => setHours(Number(e.target.value))}
+                      style={overBalance ? { borderColor: '#DC2626', background: '#FEF2F2', color: '#DC2626' } : undefined}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} hour{h === 1 ? '' : 's'}</option>)}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+              /* Dates: type directly, or click the calendar on the right. Each field's dot/border
                   color matches the highlight that date gets on the calendar, so it's clear at a
-                  glance which one a calendar click is about to set. */}
+                  glance which one a calendar click is about to set. */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
@@ -698,6 +764,14 @@ export default function LeavePage() {
                     }`} />
                 </div>
               </div>
+              )}
+
+              {hourly && startDate && (
+                <p className="-mt-2 text-xs font-semibold" style={{ color: overBalance ? '#DC2626' : START_COLOR }}>
+                  {hours} hour{hours === 1 ? '' : 's'} on {formatLeaveDate(startDate)}
+                  <span className="font-normal text-slate-400"> · {fmtDays(hours / LEAVE_DAY_HOURS)} day from your balance ({LEAVE_DAY_HOURS} h = 1 day)</span>
+                </p>
+              )}
 
               {leaveDayCount && (
                 <p className="-mt-2 text-xs font-semibold" style={{ color: overBalance ? '#DC2626' : START_COLOR }}>
@@ -754,7 +828,7 @@ export default function LeavePage() {
         <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Leave History</p>
           {!showForm && (
-            <button onClick={() => { setShowForm(true); setEditingId(null); setEditingOriginalDays(0); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); }}
+            <button onClick={() => { setShowForm(true); setEditingId(null); setEditingOriginalDays(0); setStartDate(''); setEndDate(''); setReason(''); setCategory('ANNUAL'); setMcFile(null); setMcFileError(''); setDateFieldErrors([]); setByHours(false); setHours(2); }}
               className="rounded-2xl px-5 py-2.5 text-sm font-bold text-white transition"
               style={{ background: '#0c3b8f' }}>
               + Apply for Leave
@@ -801,7 +875,9 @@ export default function LeavePage() {
                   <tr key={r.leave_id} className="hover:bg-slate-50 transition">
                     <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">{r.category}</td>
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatLeaveDate(String(r.start_date).slice(0, 10))}</td>
-                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatLeaveDate(String(r.end_date).slice(0, 10))}</td>
+                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
+                      {leaveHoursOf(r) != null ? `${leaveHoursOf(r)} h` : formatLeaveDate(String(r.end_date).slice(0, 10))}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap"><StatusPill status={r.workflow_status} /></td>
                     <td className="px-6 py-4 text-slate-500 max-w-[180px] truncate">{r.reviewer_remarks || '—'}</td>
                     <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">{formatLeaveDate(r.created_at)}</td>
