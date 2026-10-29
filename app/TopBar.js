@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
+import { otherPortals, switchPortal } from './portalSwitch';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { endSession } from './authSession';
@@ -155,6 +156,15 @@ export default function TopBar({ onMenuClick, menuExpanded }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Other portals this person has a role for, opened already signed in (see portalSwitch.js).
+  const switchTargets = otherPortals(user, 'staff');
+  const [switchError, setSwitchError] = useState('');
+  const [switching, setSwitching] = useState(null);
+  const goToPortal = async (portalKey) => {
+    setSwitchError(''); setSwitching(portalKey);
+    const err = await switchPortal(portalKey);
+    if (err) { setSwitchError(err); setSwitching(null); }
+  };
   const [notifOpen, setNotifOpen] = useState(false);
   const menuRef = useRef(null);
   const notifRef = useRef(null);
@@ -257,9 +267,21 @@ export default function TopBar({ onMenuClick, menuExpanded }) {
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30">
+              <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30">
                 <Link href="/profile" onClick={() => setMenuOpen(false)}
                   className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile</Link>
+                {switchTargets.length > 0 && (
+                  <div className="my-1 border-y border-slate-100 py-1">
+                    <p className="px-4 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Switch portal</p>
+                    {switchTargets.map((p) => (
+                      <button key={p.key} type="button" onClick={() => goToPortal(p.key)} disabled={Boolean(switching)}
+                        className="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                        {switching === p.key ? 'Opening…' : p.label}
+                      </button>
+                    ))}
+                    {switchError && <p className="px-4 py-1.5 text-xs font-medium text-red-600">{switchError}</p>}
+                  </div>
+                )}
                 <button type="button" onClick={handleLogout}
                   className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Log out</button>
               </div>

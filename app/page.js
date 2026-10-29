@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { REMEMBERED_EMAIL_KEY, clearDeviceToken, forgetThisDevice, getDeviceToken, revokeSessionToken, saveSession } from './authSession';
+import { exchangeHandoff } from './portalSwitch';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -93,6 +94,21 @@ export default function StaffLoginPage() {
       const saved = localStorage.getItem(REMEMBERED_EMAIL_KEY);
       if (saved) { setRememberedEmail(saved); setEmail(saved); setRememberMe(true); }
     } catch {}
+
+    // Arriving from another portal's Switch portal menu: trade the one-time code for a session
+    // here and go straight in. The code is removed from the address bar either way.
+    const handoff = new URLSearchParams(window.location.search).get('handoff');
+    if (handoff && !resumeRef.current.started) {
+      resumeRef.current.started = true;
+      window.history.replaceState(null, '', window.location.pathname);
+      setResuming(true);
+      exchangeHandoff(handoff, 'staff').then(({ payload, error }) => {
+        if (error) { setError(error); setResuming(false); return; }
+        const loginError = finishLogin(payload, false);
+        if (loginError) { setError(loginError); setResuming(false); }
+      });
+      return;
+    }
 
     // A remembered sign-in skips the password. Each token works once, so the ref stops React's
     // development double-run from spending it twice.

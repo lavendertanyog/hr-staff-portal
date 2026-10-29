@@ -2,6 +2,16 @@
 // jargon). Newest first. `id` just needs to increase; it's what "seen" is tracked against.
 export const WHATS_NEW = [
   {
+    id: 13,
+    date: '29 Oct 2026',
+    title: 'Switch portal without signing in again',
+    body: 'If you also have a Manager, Account Manager or HR role, open the menu under your name (top right) and choose Switch portal. The other portal opens already signed in.',
+    points: [
+      'Only the portals for your roles are listed',
+      'Each portal still has its own sign-in, so logging out of one leaves the others as they are',
+    ],
+  },
+  {
     id: 12,
     date: '29 Oct 2026',
     title: 'Take leave by the hour',
