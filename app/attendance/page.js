@@ -1705,8 +1705,7 @@ export default function AttendancePage() {
 
       <div className="mb-10 flex items-start gap-3 pl-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Attendance</h1>
+          <h1 className="text-4xl font-semibold text-slate-950">Attendance</h1>
           <p className="mt-2 text-sm text-slate-500">Clock in/out live, or manually enter your actual times for project or general work.</p>
         </div>
         <button type="button" onClick={() => setShowHelp((v) => !v)} title="How it works"
