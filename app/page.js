@@ -127,7 +127,7 @@ export default function StaffLoginPage() {
     e.preventDefault();
     setError(''); setInfoMessage(''); setUnverifiedEmail('');
     const norm = email.trim().toLowerCase();
-    if (!norm.endsWith('@nextan.com.sg')) { setError(mode === 'login' ? 'Invalid email or password.' : 'Please enter a valid email address.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(norm)) { setError(mode === 'login' ? 'Invalid email or password.' : 'Please enter a valid email address.'); return; }
     if (mode !== 'reset' && (!password || password.length < 6)) { setError('Password must be at least 6 characters.'); return; }
     if (mode === 'signup' && password !== confirmPassword) { setError('Passwords do not match.'); return; }
 
@@ -164,7 +164,7 @@ export default function StaffLoginPage() {
       }
       if (mode === 'signup') {
         setMode('login'); setPassword(''); setConfirmPassword(''); setLoading(false);
-        setInfoMessage('Account created. Check your email for a link to verify your account before signing in.');
+        setInfoMessage(payload.message || 'Account created. Check your email for a link to verify your account before signing in.');
         return;
       }
       const loginError = finishLogin(payload, rememberMe);
@@ -205,7 +205,7 @@ export default function StaffLoginPage() {
             {mode === 'login' ? 'Hello Again!' : mode === 'signup' ? 'Create Account' : 'Forgot Password'}
           </h1>
           <p className="text-slate-500 text-base mb-8">
-            {mode === 'login' ? (rememberedEmail ? `Welcome back, ${deriveNameFromEmail(rememberedEmail)}` : 'Welcome Back') : mode === 'signup' ? 'Register with your Nextan email' : 'Enter your email and we’ll send you a temporary password'}
+            {mode === 'login' ? (rememberedEmail ? `Welcome back, ${deriveNameFromEmail(rememberedEmail)}` : 'Welcome Back') : mode === 'signup' ? 'Register with your email' : 'Enter your email and we’ll send you a temporary password'}
           </p>
 
           {resuming ? (
