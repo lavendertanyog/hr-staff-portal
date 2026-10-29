@@ -502,7 +502,7 @@ export default function StaffDashboard() {
               <circle cx="64" cy="250" r="9" fill="#E8EEFF" />
             </svg>
             <div className="relative max-w-lg">
-              <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#aab8e0]">{todayLabel || 'Staff Dashboard'}</p>
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#aab8e0]">{todayLabel || '\u00A0' /* keeps the line's height until the date is known */}</p>
               <h1 className="mt-3 text-4xl font-extrabold tracking-tight">{greeting}, {firstName}</h1>
               <p className="mt-3 flex items-center gap-2 text-sm text-[#d6def5]">
                 {loading ? 'Checking your attendance…' : activeSession ? (

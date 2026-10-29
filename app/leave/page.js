@@ -537,8 +537,7 @@ export default function LeavePage() {
   return (
     <div className="p-4 sm:p-8 overflow-x-hidden">
       <div className="mb-10 pl-3">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Staff Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Leave</h1>
+        <h1 className="text-4xl font-semibold text-slate-950">Leave</h1>
         <p className="mt-2 text-sm text-slate-500">Apply for leave and track your request history.</p>
       </div>
 
