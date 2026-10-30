@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Chart from 'chart.js/auto';
 import { authHeaders } from '../authSession';
 import { WHATS_NEW } from '../whatsNewData';
+import { DEFAULT_TIME_ZONE, timeZoneForCountry, zonedWallClock, holidayLabel } from '../officeTime';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -56,19 +57,19 @@ function monthRange(offset) {
   return { start: toISO(start), end: toISO(end), label };
 }
 
-// SGT is a fixed UTC+8 offset (no DST), so shifting the raw instant by +8h and reading its UTC
-// parts gives the exact SGT calendar date and time-of-day, regardless of the browser's own
-// timezone — matches fmtTimeSGT's timeZone-based conversion without needing Intl for math.
-function sgtParts(iso) {
-  const shifted = new Date(new Date(iso).getTime() + 8 * 3600000);
+// The office calendar date and time-of-day of an instant (the staff member's own office time
+// zone; none has DST), regardless of the browser's own timezone — matches fmtTime's
+// timeZone-based conversion.
+function officeParts(iso, timeZone) {
+  const shifted = zonedWallClock(iso, timeZone);
   return {
     dateStr: `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`,
     hour: shifted.getUTCHours() + shifted.getUTCMinutes() / 60 + shifted.getUTCSeconds() / 3600,
   };
 }
 
-function fmtTimeSGT(iso) {
-  return new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
+function fmtTime(iso, timeZone) {
+  return new Date(iso).toLocaleString('en-SG', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 // Labels the timeline's 0-24 hour axis as a clock (12 AM, 2 AM, ...) since the axis now
@@ -88,8 +89,8 @@ function toYMD(value) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
 }
 
-function sgtTodayYMD() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
+function todayYMD(timeZone = DEFAULT_TIME_ZONE) {
+  return new Date().toLocaleDateString('en-CA', { timeZone });
 }
 
 // "16 Oct" and "Fri" for a YYYY-MM-DD date.
@@ -127,6 +128,8 @@ function ArrowLink({ href, children }) {
 export default function StaffDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  // The staff member's own office time zone (set by HR), which every time here is shown in.
+  const officeTz = timeZoneForCountry(user?.home_office_country);
   const [projects, setProjects] = useState([]);
   const [inbox, setInbox] = useState([]);
   // Counted over the whole inbox feed (same as the Inbox page), not just the 6 shown here
@@ -171,7 +174,7 @@ export default function StaffDashboard() {
       axios.get(`${API_BASE}/api/v1/projects/progress-history/${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/attendance/active-session/${uid}`).catch(() => null),
       axios.get(`${API_BASE}/api/v1/leave/my-requests/${uid}`).catch(() => null),
-      axios.get(`${API_BASE}/api/v1/public-holidays`).catch(() => null),
+      axios.get(`${API_BASE}/api/v1/public-holidays`, { params: { country: user?.home_office_country || 'SG' } }).catch(() => null),
     ]).then(([projRes, inboxRes, allocRes, historyRes, sessionRes, leaveRes, holidayRes]) => {
       setProjects(projRes?.data?.data || []);
       const inboxItems = inboxRes?.data?.data || [];
@@ -322,10 +325,10 @@ export default function StaffDashboard() {
     // not the ~1.08h you'd get by clamping to that day's own 24h axis) — segments are then
     // split at the midnight boundary below, so the portion after 12am lands on the next day's
     // row instead of silently vanishing off the end of the start day's bar.
-    const nowParts = sgtParts(nowMinute * 60000);
+    const nowParts = officeParts(nowMinute * 60000, officeTz);
     const sessionInfo = (s) => {
-      const startParts = sgtParts(s.clock_in_time);
-      const endParts = s.clock_out_time ? sgtParts(s.clock_out_time) : null;
+      const startParts = officeParts(s.clock_in_time, officeTz);
+      const endParts = s.clock_out_time ? officeParts(s.clock_out_time, officeTz) : null;
       const crossesMidnight = !!(endParts && endParts.dateStr !== startParts.dateStr);
       // A session still clocked in (no clock_out_time yet) hasn't reached the end of the day —
       // its bar should stop at the current time, not stretch all the way to midnight as if the
@@ -405,7 +408,7 @@ export default function StaffDashboard() {
     }
 
     return { ganttLabels: labelsForDays, ganttDatasets: datasets };
-  }, [logRange, fetchStart, fetchEnd, sessionRows, projectColorIndex, nowMinute]);
+  }, [logRange, fetchStart, fetchEnd, sessionRows, projectColorIndex, nowMinute, officeTz]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -450,17 +453,17 @@ export default function StaffDashboard() {
 
   const staffName = deriveNameFromEmail(user?.email) || user?.full_name || 'Staff';
   const firstName = staffName.split(' ')[0];
-  const today = sgtTodayYMD();
+  const today = todayYMD(officeTz);
 
   // Only worked out once the user is loaded (always client-side), so the server render and the
   // first client render match and the time-based text never causes a hydration mismatch.
   const greeting = useMemo(() => {
     if (!user) return 'Welcome back';
-    const hour = Number(new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', hour12: false }));
+    const hour = Number(new Date().toLocaleString('en-SG', { timeZone: officeTz, hour: 'numeric', hourCycle: 'h23' }));
     return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  }, [user]);
+  }, [user, officeTz]);
   const todayLabel = user
-    ? new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'short', day: 'numeric', month: 'short' })
+    ? new Date().toLocaleDateString('en-SG', { timeZone: officeTz, weekday: 'short', day: 'numeric', month: 'short' })
     : '';
 
   // Next three things on the calendar: the user's own approved or pending leave that hasn't
@@ -486,10 +489,10 @@ export default function StaffDashboard() {
       .map((h) => ({ ...h, ymd: toYMD(h.holiday_date) }))
       .filter((h) => h.ymd >= today)
       .map((h) => ({
-        key: `holiday-${h.ymd}`,
+        key: `holiday-${h.holiday_id ?? h.ymd}`,
         date: h.ymd,
         when: `${weekday(h.ymd)} · Public holiday`,
-        title: h.name,
+        title: holidayLabel(h),
         badge: 'Holiday',
         badgeClass: BADGE_COLORS.HOLIDAY,
       }));
@@ -556,7 +559,7 @@ export default function StaffDashboard() {
                 {loading ? 'Checking your attendance…' : activeSession ? (
                   <>
                     <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
-                    <span>Clocked in since {fmtTimeSGT(activeSession.clock_in_time)} · <span className="tabular-nums">{elapsedLabel}</span></span>
+                    <span>Clocked in since {fmtTime(activeSession.clock_in_time, officeTz)} · <span className="tabular-nums">{elapsedLabel}</span></span>
                   </>
                 ) : 'You haven’t clocked in yet.'}
               </p>
@@ -661,7 +664,7 @@ export default function StaffDashboard() {
                       <div className="mt-4 rounded-2xl bg-slate-50 p-4">
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            {formatShort(selectedSession.day)} · {fmtTimeSGT(selectedSession.clock_in_time)} – {selectedSession.clock_out_time ? fmtTimeSGT(selectedSession.clock_out_time) : 'still active'}
+                            {formatShort(selectedSession.day)} · {fmtTime(selectedSession.clock_in_time, officeTz)} – {selectedSession.clock_out_time ? fmtTime(selectedSession.clock_out_time, officeTz) : 'still active'}
                           </p>
                           <button type="button" onClick={() => setSelectedSessionId(null)} className="text-xs text-slate-400 hover:text-slate-600">Close</button>
                         </div>

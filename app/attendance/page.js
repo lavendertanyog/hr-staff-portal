@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { showBrowserNotification } from '../pwa';
+import { timeZoneForCountry, offsetString, zonedWallClock, countryName, holidayLabel } from '../officeTime';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -329,14 +330,22 @@ export default function AttendancePage() {
 
   const todayISO = todayISOStr();
 
-  // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full datetime string with an
-  // explicit Singapore offset (+08:00, no DST) — without it, the naive string's timezone is
-  // ambiguous between the browser, the backend's validation check, and Postgres's own cast,
-  // and those can disagree about which instant it actually represents.
+  // The staff member's own office time zone (set by HR), which every time on this page is typed
+  // and shown in. Singapore until the user has loaded.
+  const officeTimeZone = timeZoneForCountry(user?.home_office_country);
+
+  // Combine a "YYYY-MM-DD" date with a "HH:MM" time input into a full datetime string with the
+  // office's explicit offset (+08:00 for Singapore, +05:30 for Sri Lanka; none has DST) — without
+  // it, the naive string's timezone is ambiguous between the browser, the backend's validation
+  // check, and Postgres's own cast, and those can disagree about which instant it represents.
   const combineDateTime = (dateStr, timeStr) => {
     if (!dateStr || !timeStr) return null;
-    return `${dateStr}T${timeStr}:00+08:00`;
+    return `${dateStr}T${timeStr}:00${offsetString(officeTimeZone)}`;
   };
+  // An instant's office-time date ("YYYY-MM-DD") and time ("HH:MM"), for filling the date and
+  // time inputs that combineDateTime reads back.
+  const officeDateInput = (instant) => zonedWallClock(instant, officeTimeZone).toISOString().slice(0, 10);
+  const officeTimeInput = (instant) => zonedWallClock(instant, officeTimeZone).toISOString().slice(11, 16);
 
   // Distinguishes *why* an end comes before a start — picking an End Date earlier than the
   // Start Date is a different mistake (and a different fix) than picking an End Time earlier
@@ -596,18 +605,22 @@ export default function AttendancePage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
-  // Public holidays are managed by HR (Calendar page) and shared across every portal — keyed by
-  // "YYYY-MM-DD" here for a quick lookup while rendering the calendar grid below.
+  // Public holidays are managed by HR (Calendar page) — the staff member's own office country's
+  // list, keyed by "YYYY-MM-DD" here for a quick lookup while rendering the calendar grid below.
+  // A date with several (Malaysian state holidays) joins their labels.
   const [publicHolidays, setPublicHolidays] = useState({});
+  const holidayCountry = user?.home_office_country || null;
   useEffect(() => {
-    axios.get(`${API_BASE}/api/v1/public-holidays`)
+    if (!user) return;
+    axios.get(`${API_BASE}/api/v1/public-holidays`, { params: { country: holidayCountry || 'SG' } })
       .then((r) => {
         const map = {};
-        (r.data?.data || []).forEach((h) => { map[h.holiday_date] = h.name; });
+        (r.data?.data || []).forEach((h) => { map[h.holiday_date] = map[h.holiday_date] ? `${map[h.holiday_date]}; ${holidayLabel(h)}` : holidayLabel(h); });
         setPublicHolidays(map);
       })
       .catch(() => {});
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(user), holidayCountry]);
 
   const filteredHistoryEntries = useMemo(() => {
     if (historyDate) return pastSessions.filter((s) => s.day === historyDate);
@@ -729,7 +742,7 @@ export default function AttendancePage() {
       if (!a.project_code) return false;
       if (getLatestProgressPct(a.project_code) >= 100) return false;
       return !progressHistory.some((h) =>
-        h.project_code === a.project_code && sgtDateStr(h.logged_at) === todayISO && !isAutoProgressEntry(h)
+        h.project_code === a.project_code && officeDateStr(h.logged_at) === todayISO && !isAutoProgressEntry(h)
       );
     });
     if (missingProgress) {
@@ -909,13 +922,11 @@ export default function AttendancePage() {
     setDayConflictEntries(null);
     const start = new Date(entry.clock_in_time);
     const end = entry.clock_out_time ? new Date(entry.clock_out_time) : new Date();
-    const toDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const toTimeStr = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     setEditingEntry(entry);
-    setEditStartDate(toDateStr(start));
-    setEditStartTime(toTimeStr(start));
-    setEditEndDate(toDateStr(end));
-    setEditEndTime(toTimeStr(end));
+    setEditStartDate(officeDateInput(start));
+    setEditStartTime(officeTimeInput(start));
+    setEditEndDate(officeDateInput(end));
+    setEditEndTime(officeTimeInput(end));
     setEditFieldErrors([]);
     const full = entry.allocations ? entry : pastSessions.find((s) => s.attendance_id === entry.attendance_id);
     const allocs = full?.allocations;
@@ -1022,7 +1033,7 @@ export default function AttendancePage() {
   };
 
   // Pure wall-clock arithmetic (no Date-object timezone conversion) so this matches exactly what
-  // combineDateTime later sends as the SGT instant, regardless of the browser's own timezone.
+  // combineDateTime later sends as the office-time instant, regardless of the browser's own timezone.
   const addHoursToClock = (dateStr, timeStr, hoursToAdd) => {
     const [h, m] = (timeStr || '00:00').split(':').map(Number);
     let totalMinutes = h * 60 + m + Math.round(hoursToAdd * 60);
@@ -1259,8 +1270,8 @@ export default function AttendancePage() {
     // that same minute — combineDateTime forces :00 seconds on both sides, matching the
     // backend's own clockInFloored check, so closing out in that same minute isn't rejected.
     const clockInMoment = new Date(closingActiveEntry.clock_in_time);
-    const startDateStr = `${clockInMoment.getFullYear()}-${String(clockInMoment.getMonth() + 1).padStart(2, '0')}-${String(clockInMoment.getDate()).padStart(2, '0')}`;
-    const startTimeStr = `${String(clockInMoment.getHours()).padStart(2, '0')}:${String(clockInMoment.getMinutes()).padStart(2, '0')}`;
+    const startDateStr = officeDateInput(clockInMoment);
+    const startTimeStr = officeTimeInput(clockInMoment);
     const activeOrderError = dateTimeOrderError(startDateStr, startTimeStr, manualClockOutDate, manualClockOutTime);
     if (activeOrderError) {
       setActiveFieldErrors([activeOrderError === 'date' ? 'endDate' : 'endTime']);
@@ -1296,11 +1307,11 @@ export default function AttendancePage() {
     finally { setManualSubmitting(false); }
   };
 
-  const fmtTimeSGT = (iso) => new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: 'numeric', minute: '2-digit', hour12: true });
-  // "YYYY-MM-DD" for an instant's SGT calendar day — en-CA formats dates in that order directly.
-  const sgtDateStr = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' });
+  const fmtTime = (iso) => new Date(iso).toLocaleString('en-SG', { timeZone: officeTimeZone, hour: 'numeric', minute: '2-digit', hour12: true });
+  // "YYYY-MM-DD" for an instant's office-time calendar day — en-CA formats dates in that order directly.
+  const officeDateStr = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: officeTimeZone });
 
-  // "28/8/2026" — used for the day-conflict warning. Only needs to represent whole SGT calendar
+  // "28/8/2026" — used for the day-conflict warning. Only needs to represent whole calendar
   // days, so a straight day/month/year split on the "YYYY-MM-DD" string is exact — no timezone
   // conversion involved.
   const fmtSlashDate = (dateStr) => {
@@ -1309,7 +1320,7 @@ export default function AttendancePage() {
   };
 
   // "Tue, 8 Sep" — the Recent Entries day-group header. Same exact-day-split approach as
-  // fmtSlashDate (no timezone conversion needed, "YYYY-MM-DD" already names an SGT calendar day).
+  // fmtSlashDate (no timezone conversion needed, "YYYY-MM-DD" already names an office-time calendar day).
   const fmtDayHeader = (dateStr) => {
     const [y, m, d] = dateStr.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -1854,7 +1865,7 @@ export default function AttendancePage() {
                     <div className="mb-5 space-y-4">
                       {dayConflictEntries.map((entry) => (
                         <ul key={entry.attendance_id} className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                          <li>Time : {fmtTimeSGT(entry.clock_in_time)} – {entry.clock_out_time ? fmtTimeSGT(entry.clock_out_time) : 'still active'}</li>
+                          <li>Time : {fmtTime(entry.clock_in_time)} – {entry.clock_out_time ? fmtTime(entry.clock_out_time) : 'still active'}</li>
                           <li>Date : {fmtSlashDate(manualClockInDate)}</li>
                         </ul>
                       ))}
@@ -1895,7 +1906,7 @@ export default function AttendancePage() {
                     </p>
                     <div className="mb-5 space-y-4">
                       <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                        <li>Time : {fmtTimeSGT(overlapEntry.clock_in_time)} – {overlapEntry.clock_out_time ? fmtTimeSGT(overlapEntry.clock_out_time) : 'still active'}</li>
+                        <li>Time : {fmtTime(overlapEntry.clock_in_time)} – {overlapEntry.clock_out_time ? fmtTime(overlapEntry.clock_out_time) : 'still active'}</li>
                         <li>Date : {fmtSlashDate(manualClockInDate)}</li>
                       </ul>
                     </div>
@@ -2041,7 +2052,7 @@ export default function AttendancePage() {
                   </div>
                   <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                    SG public holiday
+                    {countryName(holidayCountry)} public holiday
                   </p>
                 </div>
               )}
@@ -2071,7 +2082,7 @@ export default function AttendancePage() {
                         <div className="flex flex-col gap-1.5">
                           {g.entries.map((s) => {
                             const isActive = !s.clock_out_time;
-                            const isOvernight = s.clock_out_time && sgtDateStr(s.clock_out_time) !== s.day;
+                            const isOvernight = s.clock_out_time && officeDateStr(s.clock_out_time) !== s.day;
                             const durationLabel = fmtDuration(s.clock_in_time, isActive ? new Date(nowTick).toISOString() : s.clock_out_time);
                             return (
                             <div key={s.attendance_id} className="rounded-2xl border border-slate-200 px-3 py-2.5 flex items-center gap-3">
@@ -2087,12 +2098,12 @@ export default function AttendancePage() {
                               </span>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-semibold text-slate-800 truncate">
-                                  {fmtTimeSGT(s.clock_in_time)} <span className="text-slate-400 font-normal">→</span> {isActive ? 'Active now' : fmtTimeSGT(s.clock_out_time)}
+                                  {fmtTime(s.clock_in_time)} <span className="text-slate-400 font-normal">→</span> {isActive ? 'Active now' : fmtTime(s.clock_out_time)}
                                 </p>
                                 {isOvernight && (
                                   <span className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: '#FAEEDA', color: '#854F0B' }}>
                                     <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-                                    Ends {fmtShortDate(sgtDateStr(s.clock_out_time))}
+                                    Ends {fmtShortDate(officeDateStr(s.clock_out_time))}
                                   </span>
                                 )}
                               </div>
@@ -2165,7 +2176,7 @@ export default function AttendancePage() {
           <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <p className="text-lg font-semibold text-slate-900 mb-2">Delete this entry?</p>
             <p className="text-sm text-slate-500 mb-1">
-              {fmtSlashDate(deleteConfirmEntry.day)} &middot; {fmtTimeSGT(deleteConfirmEntry.clock_in_time)} – {deleteConfirmEntry.clock_out_time ? fmtTimeSGT(deleteConfirmEntry.clock_out_time) : 'still active'}
+              {fmtSlashDate(deleteConfirmEntry.day)} &middot; {fmtTime(deleteConfirmEntry.clock_in_time)} – {deleteConfirmEntry.clock_out_time ? fmtTime(deleteConfirmEntry.clock_out_time) : 'still active'}
             </p>
             <p className="text-sm text-slate-500 mb-6">This can't be undone.</p>
             <div className="flex gap-3">

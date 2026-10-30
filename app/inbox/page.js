@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { authHeaders } from '../authSession';
+import { timeZoneForCountry } from '../officeTime';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -33,6 +34,7 @@ function statusBadge(status) {
 export default function InboxPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const officeTz = timeZoneForCountry(user?.home_office_country);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'LEAVE' | 'BUDGET' | 'NOTIFICATION'
@@ -134,7 +136,7 @@ export default function InboxPage() {
                   <p className="text-xs text-slate-500 mt-0.5 truncate">{item.subtitle}</p>
                   {item.created_at && (
                     <p className="text-xs text-slate-400 mt-1 truncate">
-                      {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
+                      {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: officeTz })}
                     </p>
                   )}
                 </div>
@@ -168,7 +170,7 @@ export default function InboxPage() {
               <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{selectedItem.subtitle}</p>
               {selectedItem.created_at && (
                 <p className="mt-4 text-xs text-slate-400">
-                  {new Date(selectedItem.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Singapore' })}
+                  {new Date(selectedItem.created_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: officeTz })}
                 </p>
               )}
             </div>

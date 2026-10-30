@@ -2,14 +2,17 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
+import { OFFICE_COUNTRIES, DEFAULT_COUNTRY, countryName, holidayLabel } from '../officeTime';
 
-// Company calendar: Singapore public holidays plus who is on approved leave. Read-only — HR
-// manages holidays in the HR portal, and leave comes from approved leave requests. The same
-// file is used in the Staff, Manager and Account Manager portals.
+// Company calendar: one country's public holidays (picked from the dropdown, starting on the
+// user's own office country) plus who is on approved leave. Read-only — HR manages holidays in
+// the HR portal, and leave comes from approved leave requests. The same file is used in the
+// Staff, Manager and Account Manager portals.
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const LEAVE_PILLS_PER_DAY = 2;
+const HOLIDAY_PILLS_PER_DAY = 2;
 
 const toISODateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parseISO = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -26,6 +29,10 @@ const Chevron = ({ dir }) => (
 
 export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
   const userId = sessionUser?.user_id || null;
+  const ownCountry = OFFICE_COUNTRIES.some((c) => c.code === String(sessionUser?.home_office_country || '').toUpperCase())
+    ? String(sessionUser.home_office_country).toUpperCase()
+    : DEFAULT_COUNTRY;
+  const [country, setCountry] = useState(ownCountry);
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [holidays, setHolidays] = useState([]);
   const [leave, setLeave] = useState([]);
@@ -51,12 +58,12 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
   const pickMonthYear = (monthIdx) => { setGridMonth(new Date(pickerYear, monthIdx, 1)); setYear(pickerYear); setPickerOpen(false); };
   const jumpToToday = () => { const t = new Date(); t.setDate(1); setGridMonth(t); setYear(t.getFullYear()); setPickerOpen(false); };
 
-  const fetchYear = useCallback(async (y) => {
+  const fetchYear = useCallback(async (y, c) => {
     if (!userId) return;
     setLoading(true);
     setLoadError('');
     const [holidayRes, leaveRes] = await Promise.all([
-      axios.get(`${backendBaseUrl}/api/v1/public-holidays`, { params: { year: y } }).catch(() => null),
+      axios.get(`${backendBaseUrl}/api/v1/public-holidays`, { params: { year: y, country: c } }).catch(() => null),
       axios.get(`${backendBaseUrl}/api/v1/calendar/leave`, { params: { requesterId: userId, from: `${y}-01-01`, to: `${y}-12-31` } }).catch(() => null),
     ]);
     setHolidays(holidayRes?.data?.data || []);
@@ -65,7 +72,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
     setLoading(false);
   }, [backendBaseUrl, userId]);
 
-  useEffect(() => { void fetchYear(year); }, [year, fetchYear]);
+  useEffect(() => { void fetchYear(year, country); }, [year, country, fetchYear]);
 
   useEffect(() => {
     if (!dayOpen) return undefined;
@@ -78,16 +85,18 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
   const query = searchQuery.trim().toLowerCase();
 
   // Filtered by the All/Upcoming tab and the search box (holiday name or person name)
+  // (the search also matches a state name, e.g. "selangor")
   const shownHolidays = useMemo(() => holidays.filter((h) => (
-    !(listTab === 'upcoming' && h.holiday_date < todayISO) && (!query || h.name.toLowerCase().includes(query))
+    !(listTab === 'upcoming' && h.holiday_date < todayISO) && (!query || holidayLabel(h).toLowerCase().includes(query))
   )), [holidays, listTab, todayISO, query]);
   const shownLeave = useMemo(() => leave.filter((l) => (
     !(listTab === 'upcoming' && l.end_date < todayISO) && (!query || (l.full_name || '').toLowerCase().includes(query))
   )), [leave, listTab, todayISO, query]);
 
-  const holidayByDate = useMemo(() => {
+  // A date can have several holidays (e.g. two Malaysian state holidays on the same day)
+  const holidaysByDate = useMemo(() => {
     const map = {};
-    shownHolidays.forEach((h) => { map[h.holiday_date] = h; });
+    shownHolidays.forEach((h) => { (map[h.holiday_date] ||= []).push(h); });
     return map;
   }, [shownHolidays]);
 
@@ -110,7 +119,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
   // Month-grouped agenda for the list view and the Upcoming tab
   const agenda = useMemo(() => {
     const items = [
-      ...shownHolidays.map((h) => ({ kind: 'holiday', date: h.holiday_date, key: `h-${h.holiday_date}`, holiday: h })),
+      ...shownHolidays.map((h) => ({ kind: 'holiday', date: h.holiday_date, key: `h-${h.holiday_id ?? `${h.holiday_date}-${h.name}`}`, holiday: h })),
       ...shownLeave.map((l) => ({ kind: 'leave', date: l.start_date < `${year}-01-01` ? `${year}-01-01` : l.start_date, key: `l-${l.leave_id}`, leave: l })),
     ].sort((a, b) => (a.date === b.date ? (a.kind === 'holiday' ? -1 : 1) : a.date < b.date ? -1 : 1));
     const groups = [];
@@ -136,7 +145,8 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
   const leavePill = (l) => (isMine(l) ? 'bg-[#1540A8] text-white' : 'bg-[#E8EEFF] text-[#1540A8]');
 
   const showMonth = listTab === 'all' && viewMode === 'month';
-  const dayHoliday = dayOpen ? holidayByDate[dayOpen] : null;
+  const dayHolidays = dayOpen ? (holidaysByDate[dayOpen] || []) : [];
+  const holidayLegend = `${countryName(country)} public holiday`;
   const dayLeave = dayOpen ? (leaveByDate[dayOpen] || []) : [];
 
   return (
@@ -160,13 +170,26 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
               </button>
             ))}
           </div>
-          <div className="relative py-2.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" {...svg} stroke="#94A3B8" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-              <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search holiday or name…"
-              aria-label="Search holidays and people"
-              className="w-60 max-w-full rounded-full border border-slate-200 py-1.5 pl-8 pr-3 text-sm transition-all focus:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div className="flex flex-wrap items-center gap-3 py-2.5">
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              Holidays for
+              <span className="relative">
+                <select value={country} onChange={(e) => { setCountry(e.target.value); setDayOpen(null); }}
+                  aria-label="Which country's public holidays to show"
+                  className="appearance-none rounded-full border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {OFFICE_COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+                <svg width="12" height="12" viewBox="0 0 24 24" {...svg} stroke="#94A3B8" strokeWidth="2.5" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"><polyline points="6 9 12 15 18 9" /></svg>
+              </span>
+            </label>
+            <div className="relative">
+              <svg width="14" height="14" viewBox="0 0 24 24" {...svg} stroke="#94A3B8" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+                <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search holiday or name…"
+                aria-label="Search holidays and people"
+                className="w-60 max-w-full rounded-full border border-slate-200 py-1.5 pl-8 pr-3 text-sm transition-all focus:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
           </div>
         </div>
 
@@ -242,7 +265,7 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
           </div>
 
           <div className="flex items-center gap-4 justify-self-end text-xs font-medium text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" />Public holiday</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" />{holidayLegend}</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#C9D5FF]" />On leave</span>
           </div>
         </div>
@@ -262,17 +285,21 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                 {gridCells.map((d, i) => {
                   if (!d) return <div key={i} className="min-h-[110px] border-b border-slate-200" />;
                   const iso = toISODateStr(d);
-                  const holiday = holidayByDate[iso];
+                  const dayHols = holidaysByDate[iso] || [];
                   const onLeave = leaveByDate[iso] || [];
-                  const hasDetails = Boolean(holiday) || onLeave.length > 0;
+                  const hasDetails = dayHols.length > 0 || onLeave.length > 0;
                   const isToday = iso === todayISO;
                   const content = (
                     <>
                       <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${isToday ? 'bg-[#1540A8] text-white' : 'text-slate-700'}`}>
                         {d.getDate()}
                       </span>
-                      {holiday && (
-                        <p className="mt-1.5 w-full rounded-md bg-red-500 px-2 py-1 text-left text-[10px] font-semibold leading-tight text-white line-clamp-2">{holiday.name}</p>
+                      {dayHols.slice(0, HOLIDAY_PILLS_PER_DAY).map((h, hi) => (
+                        <p key={h.holiday_id ?? h.name} title={holidayLabel(h)}
+                          className={`${hi === 0 ? 'mt-1.5' : 'mt-1'} w-full rounded-md bg-red-500 px-2 py-1 text-left text-[10px] font-semibold leading-tight text-white line-clamp-2`}>{holidayLabel(h)}</p>
+                      ))}
+                      {dayHols.length > HOLIDAY_PILLS_PER_DAY && (
+                        <p className="mt-1 w-full text-left text-[10px] font-semibold text-red-600">+{dayHols.length - HOLIDAY_PILLS_PER_DAY} more holiday{dayHols.length - HOLIDAY_PILLS_PER_DAY === 1 ? '' : 's'}</p>
                       )}
                       {onLeave.slice(0, LEAVE_PILLS_PER_DAY).map((l) => (
                         <p key={l.leave_id} className={`mt-1 w-full truncate rounded-md px-2 py-1 text-left text-[10px] font-semibold leading-tight ${leavePill(l)}`}>
@@ -323,8 +350,8 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                           <div className={`w-[3px] flex-shrink-0 self-stretch rounded-full ${isHoliday ? 'bg-red-500' : 'bg-[#1540A8]'}`} />
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-medium leading-tight text-slate-400">{isHoliday ? 'Public holiday' : 'On leave'}</p>
-                            <p className="truncate text-sm font-semibold leading-snug text-slate-800">
-                              {isHoliday ? it.holiday.name : (isMine(it.leave) ? `${it.leave.full_name} (you)` : it.leave.full_name)}
+                            <p className={`text-sm font-semibold leading-snug text-slate-800 ${isHoliday ? '' : 'truncate'}`}>
+                              {isHoliday ? holidayLabel(it.holiday) : (isMine(it.leave) ? `${it.leave.full_name} (you)` : it.leave.full_name)}
                             </p>
                           </div>
                           {!isHoliday && (
@@ -356,12 +383,12 @@ export default function TeamCalendar({ backendBaseUrl, sessionUser }) {
                 className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">&times;</button>
             </div>
             <div className="space-y-4 overflow-y-auto px-6 py-5">
-              {dayHoliday && (
-                <div className="rounded-2xl bg-red-50 px-4 py-3">
-                  <p className="text-[11px] font-medium text-red-500">Public holiday</p>
-                  <p className="text-sm font-semibold text-red-700">{dayHoliday.name}</p>
+              {dayHolidays.map((h) => (
+                <div key={h.holiday_id ?? h.name} className="rounded-2xl bg-red-50 px-4 py-3">
+                  <p className="text-[11px] font-medium text-red-500">{holidayLegend}</p>
+                  <p className="text-sm font-semibold text-red-700">{holidayLabel(h)}</p>
                 </div>
-              )}
+              ))}
               {dayLeave.length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">On leave ({dayLeave.length})</p>
