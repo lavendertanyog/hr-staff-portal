@@ -6,6 +6,7 @@ import SidebarClient, { PAGE_BG } from './SidebarClient';
 import AttendanceReminders from './AttendanceReminders';
 import TopBar from './TopBar';
 import WalkthroughTour from './WalkthroughTour';
+import { registerServiceWorker } from './pwa';
 
 const SIDEBAR_PREFIXES = ['/dashboard', '/attendance', '/leave', '/calendar', '/progress', '/claims', '/inbox', '/profile', '/whats-new'];
 const MOBILE_MEDIA_QUERY = '(max-width: 860px)';
@@ -25,6 +26,8 @@ export default function AppShell({ children }) {
     try { localStorage.setItem('sidebar_collapsed', next ? '1' : '0'); } catch {}
     return next;
   });
+  // Lets the portal be installed as an app and show notifications on phones.
+  useEffect(() => { registerServiceWorker(); }, []);
   const scrollRef = useRef(null);
 
   // The content lives in its own scrollable div (not the window), so Next.js's

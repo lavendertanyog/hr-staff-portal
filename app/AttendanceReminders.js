@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
+import { showBrowserNotification } from './pwa';
 
 // Short beep via Web Audio API — no audio asset needed.
 function playBeep() {
@@ -21,15 +22,6 @@ function playBeep() {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.4);
-  } catch {}
-}
-
-function showBrowserNotification(title, body) {
-  try {
-    if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body });
-    }
   } catch {}
 }
 

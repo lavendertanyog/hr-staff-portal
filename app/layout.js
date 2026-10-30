@@ -10,6 +10,13 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata = {
   title: 'Nextan Staff Portal',
   description: 'Staff workspace for attendance, leave and progress',
+  applicationName: 'Nextan Staff',
+  appleWebApp: { capable: true, title: 'Nextan Staff', statusBarStyle: 'default' },
+  icons: { icon: '/icon-192.png', apple: '/apple-touch-icon.png' },
+};
+
+export const viewport = {
+  themeColor: '#16307a',
 };
 
 export default function RootLayout({ children }) {
